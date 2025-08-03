@@ -120,6 +120,11 @@ export class APNsService {
       console.error('Device token is required');
       throw new Error('Device token is required');
     }
+    
+    if (!payload) {
+      console.error('Payload is required but received:', payload);
+      throw new Error('Payload is required for sending notifications');
+    }
 
     // Validate device token format
     if (!/^[a-f0-9]{64}$/i.test(deviceToken)) {

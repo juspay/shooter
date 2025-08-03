@@ -114,7 +114,17 @@ export async function POST({ request }) {
     console.log('- Payload:', JSON.stringify(payload, null, 2));
     console.log('- APNs service configured:', apnsService.isConfigured());
     
+    console.log('=== BEFORE CALLING SENDNOTIFICATION ===');
+    console.log('- deviceToken value:', deviceToken);
+    console.log('- payload value:', payload);
+    console.log('- payload type:', typeof payload);
+    console.log('- payload stringify:', JSON.stringify(payload));
+    
     try {
+      console.log('Calling sendNotification with:');
+      console.log('  arg1 (deviceToken):', deviceToken);  
+      console.log('  arg2 (payload):', payload);
+      
       const result = await apnsService.sendNotification(deviceToken, payload);
       
       console.log('✅ Notification sent successfully!');
