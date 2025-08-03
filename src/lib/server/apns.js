@@ -87,10 +87,28 @@ export class APNsService {
 
   async sendNotification(deviceToken, payload) {
     console.log('=== SENDING NOTIFICATION ===');
+    console.log('Function arguments:');
+    console.log('- deviceToken type:', typeof deviceToken);
+    console.log('- deviceToken value:', deviceToken ? `${deviceToken.substring(0, 8)}...` : 'NOT PROVIDED');
+    console.log('- payload type:', typeof payload);
+    console.log('- payload value:', payload);
+    console.log('- payload is null:', payload === null);
+    console.log('- payload is undefined:', payload === undefined);
+    
+    if (payload) {
+      console.log('- payload.title:', payload.title);
+      console.log('- payload.body:', payload.body);
+      console.log('- payload.data:', payload.data);
+    }
+    
     console.log('Provider available:', !!this.provider);
     console.log('Config error:', this.configError);
-    console.log('Device token:', deviceToken ? `${deviceToken.substring(0, 8)}...` : 'NOT PROVIDED');
-    console.log('Payload:', JSON.stringify(payload, null, 2));
+    
+    try {
+      console.log('Payload JSON stringify test:', JSON.stringify(payload, null, 2));
+    } catch (jsonErr) {
+      console.error('Failed to stringify payload:', jsonErr);
+    }
 
     if (!this.provider) {
       const error = `APNs provider not initialized. ${this.configError || 'Check your configuration.'}`;
@@ -116,7 +134,7 @@ export class APNsService {
     notification.badge = payload.badge || 1;
     notification.sound = payload.sound || 'default';
     notification.alert = {
-      title: payload.title || 'Claude Code Notification',
+      title: payload.title || 'Claude Code Notification', 
       body: payload.body || 'Hello from Claude!'
     };
     notification.payload = payload.data || {};
