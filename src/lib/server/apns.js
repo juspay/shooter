@@ -121,9 +121,16 @@ export class APNsService {
       throw new Error('Device token is required');
     }
     
-    if (!payload) {
-      console.error('Payload is required but received:', payload);
+    if (payload === null || payload === undefined) {
+      console.error('Payload is null or undefined. Received:', payload);
+      console.error('Type of payload:', typeof payload);
       throw new Error('Payload is required for sending notifications');
+    }
+    
+    // Defensive check for payload properties
+    if (typeof payload !== 'object') {
+      console.error('Payload is not an object. Type:', typeof payload, 'Value:', payload);
+      throw new Error('Payload must be an object');
     }
 
     // Validate device token format
@@ -136,13 +143,14 @@ export class APNsService {
     const notification = new apn.Notification();
     
     notification.expiry = Math.floor(Date.now() / 1000) + 3600; // 1 hour
-    notification.badge = payload.badge || 1;
-    notification.sound = payload.sound || 'default';
+    // Safe property access with fallbacks
+    notification.badge = (payload && payload.badge) || 1;
+    notification.sound = (payload && payload.sound) || 'default';
     notification.alert = {
-      title: payload.title || 'Claude Code Notification', 
-      body: payload.body || 'Hello from Claude!'
+      title: (payload && payload.title) || 'Claude Code Notification', 
+      body: (payload && payload.body) || 'Hello from Claude!'
     };
-    notification.payload = payload.data || {};
+    notification.payload = (payload && payload.data) || {};
     notification.topic = process.env.APNS_BUNDLE_ID;
 
     console.log('Notification details:');
