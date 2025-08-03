@@ -1,0 +1,28 @@
+{
+  "name": "claude-ios-notifier",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite dev --open",
+    "preview": "vite preview",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
+  },
+  "devDependencies": {
+    "@sveltejs/adapter-vercel": "^5.4.7",
+    "@sveltejs/kit": "^2.14.0",
+    "@sveltejs/vite-plugin-svelte": "^4.0.0",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^24.1.0",
+    "svelte": "^5.22.0",
+    "svelte-check": "^4.1.0",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5"
+  },
+  "dependencies": {
+    "apn": "^2.2.0",
+    "jsonwebtoken": "^9.0.2",
+    "dotenv": "^16.4.7"
+  }
+}
