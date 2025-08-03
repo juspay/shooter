@@ -10,7 +10,7 @@
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
   },
   "devDependencies": {
-    "@sveltejs/adapter-vercel": "^5.4.7",
+    "@sveltejs/adapter-auto": "^3.3.1",
     "@sveltejs/kit": "^2.14.0",
     "@sveltejs/vite-plugin-svelte": "^4.0.0",
     "@types/jsonwebtoken": "^9.0.10",
