@@ -1,16 +1,16 @@
 #!/bin/bash
 
-# Build script for ClaudeNotifier iOS app
+# Build script for Shooter iOS app
 # This script builds the app for simulator and device
 
 set -e  # Exit on any error
 
-echo "🚀 Starting ClaudeNotifier build process..."
+echo "🚀 Starting Shooter build process..."
 
 # Configuration
-PROJECT_NAME="ClaudeNotifier"
-WORKSPACE_FILE="ClaudeNotifier.xcodeproj"
-SCHEME_NAME="ClaudeNotifier"
+PROJECT_NAME="Shooter"
+WORKSPACE_FILE="Shooter.xcodeproj"
+SCHEME_NAME="Shooter"
 
 # Build paths
 BUILD_DIR="build"

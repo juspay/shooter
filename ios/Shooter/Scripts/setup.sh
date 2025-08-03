@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# Setup script for ClaudeNotifier iOS development
+# Setup script for Shooter iOS development
 # This script sets up the development environment
 
 set -e  # Exit on any error
 
-echo "🔧 Setting up ClaudeNotifier development environment..."
+echo "🔧 Setting up Shooter development environment..."
 
 # Check if Xcode is installed
 check_xcode() {
@@ -54,12 +54,12 @@ validate_project() {
     echo "🔍 Validating project structure..."
     
     required_files=(
-        "ClaudeNotifier.xcodeproj/project.pbxproj"
-        "ClaudeNotifier/ClaudeNotifierApp.swift"
-        "ClaudeNotifier/ContentView.swift"
-        "ClaudeNotifier/NotificationManager.swift"
-        "ClaudeNotifier/AppDelegate.swift"
-        "ClaudeNotifier/ClaudeNotifier.entitlements"
+        "Shooter.xcodeproj/project.pbxproj"
+        "Shooter/ShooterApp.swift"
+        "Shooter/ContentView.swift"
+        "Shooter/NotificationManager.swift"
+        "Shooter/AppDelegate.swift"
+        "Shooter/Shooter.entitlements"
     )
     
     for file in "${required_files[@]}"; do
@@ -84,9 +84,9 @@ main() {
     echo "🎉 Setup completed successfully!"
     echo ""
     echo "📝 Next steps:"
-    echo "   1. Open ClaudeNotifier.xcodeproj in Xcode"
+    echo "   1. Open Shooter.xcodeproj in Xcode"
     echo "   2. Configure your development team in project settings"
-    echo "   3. Update bundle identifier to your own"
+    echo "   3. Bundle identifier is set to: in.justpay.shooter"
     echo "   4. Add APNs capability in Signing & Capabilities"
     echo "   5. Run the app in simulator or device"
     echo ""

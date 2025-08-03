@@ -15,15 +15,15 @@ struct AppConfig {
     
     // App Information
     struct App {
-        static let name = "Claude Notifier"
-        static let bundleId = "com.example.claudenotifier"
+        static let name = "Shooter"
+        static let bundleId = "in.justpay.shooter"
         static let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
         static let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
     }
     
     // Notification Configuration
     struct Notifications {
-        static let categories: [String] = ["CLAUDE_CODE", "BUILD_STATUS", "DEPLOYMENT"]
+        static let categories: [String] = ["SHOOTER", "BUILD_STATUS", "DEPLOYMENT"]
         static let soundName = "default"
     }
     

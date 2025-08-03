@@ -2,7 +2,7 @@ import SwiftUI
 import UserNotifications
 
 @main
-struct ClaudeNotifierApp: App {
+struct ShooterApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
     @StateObject private var notificationManager = NotificationManager()
     

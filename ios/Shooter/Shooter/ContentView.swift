@@ -16,7 +16,7 @@ struct ContentView: View {
                         .font(.system(size: 60))
                         .foregroundColor(.blue)
                     
-                    Text("Claude Notifier")
+                    Text("Shooter")
                         .font(.largeTitle)
                         .fontWeight(.bold)
                     
@@ -124,7 +124,7 @@ struct ContentView: View {
                 Spacer()
             }
             .padding()
-            .navigationTitle("Claude Notifier")
+            .navigationTitle("Shooter")
             .navigationBarTitleDisplayMode(.inline)
             .onReceive(notificationManager.$lastNotificationMessage) { message in
                 if !message.isEmpty {

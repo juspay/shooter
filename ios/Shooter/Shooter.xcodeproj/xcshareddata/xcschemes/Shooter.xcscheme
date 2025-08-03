@@ -16,9 +16,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "A7B8E19C2C5F1A3B00123456"
-               BuildableName = "ClaudeNotifier.app"
-               BlueprintName = "ClaudeNotifier"
-               ReferencedContainer = "container:ClaudeNotifier.xcodeproj">
+               BuildableName = "Shooter.app"
+               BlueprintName = "Shooter"
+               ReferencedContainer = "container:Shooter.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -45,9 +45,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "A7B8E19C2C5F1A3B00123456"
-            BuildableName = "ClaudeNotifier.app"
-            BlueprintName = "ClaudeNotifier"
-            ReferencedContainer = "container:ClaudeNotifier.xcodeproj">
+            BuildableName = "Shooter.app"
+            BlueprintName = "Shooter"
+            ReferencedContainer = "container:Shooter.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
       <EnvironmentVariables>
@@ -69,9 +69,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "A7B8E19C2C5F1A3B00123456"
-            BuildableName = "ClaudeNotifier.app"
-            BlueprintName = "ClaudeNotifier"
-            ReferencedContainer = "container:ClaudeNotifier.xcodeproj">
+            BuildableName = "Shooter.app"
+            BlueprintName = "Shooter"
+            ReferencedContainer = "container:Shooter.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

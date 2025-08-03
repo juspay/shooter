@@ -1,4 +1,4 @@
-# ClaudeNotifier iOS App
+# Shooter iOS App
 
 A SwiftUI-based iOS application for receiving push notifications from Claude Code. This app demonstrates modern iOS development practices with APNs integration.
 
@@ -6,14 +6,14 @@ A SwiftUI-based iOS application for receiving push notifications from Claude Cod
 
 ```
 ios/
-├── ClaudeNotifier/
-│   ├── ClaudeNotifier.xcodeproj/          # Xcode project file
-│   ├── ClaudeNotifier/                    # Source code
-│   │   ├── ClaudeNotifierApp.swift        # Main app entry point
+├── Shooter/
+│   ├── Shooter.xcodeproj/                 # Xcode project file
+│   ├── Shooter/                           # Source code
+│   │   ├── ShooterApp.swift               # Main app entry point
 │   │   ├── AppDelegate.swift              # App lifecycle management
 │   │   ├── ContentView.swift              # Main UI view
 │   │   ├── NotificationManager.swift      # Push notification handling
-│   │   ├── ClaudeNotifier.entitlements    # App capabilities
+│   │   ├── Shooter.entitlements           # App capabilities
 │   │   ├── Assets.xcassets/               # App icons and images
 │   │   └── Preview Content/               # SwiftUI previews
 │   ├── Scripts/                           # Build and setup scripts
@@ -36,20 +36,20 @@ ios/
 
 1. **Run the setup script:**
    ```bash
-   cd ios/ClaudeNotifier
+   cd ios/Shooter
    ./Scripts/setup.sh
    ```
 
 2. **Open in Xcode:**
    ```bash
-   open ClaudeNotifier.xcodeproj
+   open Shooter.xcodeproj
    ```
 
 3. **Configure your development team:**
    - Select the project in Xcode
    - Go to "Signing & Capabilities"
    - Select your development team
-   - Update the bundle identifier to be unique
+   - Bundle identifier is set to: in.justpay.shooter
 
 ### Building
 
@@ -108,7 +108,7 @@ Or build directly in Xcode (⌘+B).
 
 The app uses the following configuration:
 - **Default Server URL**: `https://shooter-dpucs3r83-sachin-sharmas-projects-7dbbe7a8.vercel.app`
-- **Bundle ID**: `com.example.claudenotifier` (update this to your own)
+- **Bundle ID**: `in.justpay.shooter`
 - **Minimum iOS Version**: 15.0
 
 ## 🏃‍♂️ Running the App
