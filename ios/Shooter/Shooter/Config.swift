@@ -16,7 +16,7 @@ struct AppConfig {
     // App Information
     struct App {
         static let name = "Shooter"
-        static let bundleId = "in.justpay.shooter"
+        static let bundleId = "in.juspay.shooter"
         static let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
         static let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
     }

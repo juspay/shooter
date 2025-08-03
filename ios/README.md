@@ -49,7 +49,7 @@ ios/
    - Select the project in Xcode
    - Go to "Signing & Capabilities"
    - Select your development team
-   - Bundle identifier is set to: in.justpay.shooter
+   - Bundle identifier is set to: in.juspay.shooter
 
 ### Building
 
@@ -108,7 +108,7 @@ Or build directly in Xcode (⌘+B).
 
 The app uses the following configuration:
 - **Default Server URL**: `https://shooter-dpucs3r83-sachin-sharmas-projects-7dbbe7a8.vercel.app`
-- **Bundle ID**: `in.justpay.shooter`
+- **Bundle ID**: `in.juspay.shooter`
 - **Minimum iOS Version**: 15.0
 
 ## 🏃‍♂️ Running the App

@@ -86,7 +86,7 @@ main() {
     echo "📝 Next steps:"
     echo "   1. Open Shooter.xcodeproj in Xcode"
     echo "   2. Configure your development team in project settings"
-    echo "   3. Bundle identifier is set to: in.justpay.shooter"
+    echo "   3. Bundle identifier is set to: in.juspay.shooter"
     echo "   4. Add APNs capability in Signing & Capabilities"
     echo "   5. Run the app in simulator or device"
     echo ""
