@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 60;
+	objectVersion = 56;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -42,7 +42,7 @@
 		A7B8E1942C5F1A3B00123456 = {
 			isa = PBXGroup;
 			children = (
-				A7B8E19F2C5F1A3B00123456 /* ClaudeNotifier */,
+				A7B8E19F2C5F1A3B00123456 /* Shooter */,
 				A7B8E19E2C5F1A3B00123456 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -50,7 +50,7 @@
 		A7B8E19E2C5F1A3B00123456 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				A7B8E19D2C5F1A3B00123456 /* ClaudeNotifier.app */,
+				A7B8E19D2C5F1A3B00123456 /* Shooter.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -152,7 +152,7 @@
 				A7B8E1AF2C5F1A5B00123456 /* NotificationManager.swift in Sources */,
 				A7B8E1B42C5F1A8B00123456 /* Config.swift in Sources */,
 				A7B8E1B22C5F1A7B00123456 /* AppDelegate.swift in Sources */,
-				A7B8E1A12C5F1A3B00123456 /* ClaudeNotifierApp.swift in Sources */,
+				A7B8E1A12C5F1A3B00123456 /* ShooterApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -287,6 +287,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"Shooter/Preview Content\"";
+				DEVELOPMENT_TEAM = YM9U73Z2JM;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -316,6 +317,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"Shooter/Preview Content\"";
+				DEVELOPMENT_TEAM = YM9U73Z2JM;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;

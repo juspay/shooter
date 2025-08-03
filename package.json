@@ -25,7 +25,7 @@
   "dependencies": {
     "@sveltejs/adapter-vercel": "^5.8.1",
     "apn": "^2.2.0",
-    "dotenv": "^16.4.7",
+    "dotenv": "^16.6.1",
     "jsonwebtoken": "^9.0.2"
   }
 }

@@ -1,11 +1,18 @@
 <script>
   let title = 'Claude Code Test';
   let message = 'Hello from the POC!';
+  let apiKey = '';
   let result = '';
   let loading = false;
   let statusType = '';
 
   async function sendNotification() {
+    if (!apiKey.trim()) {
+      result = 'Error: API key is required';
+      statusType = 'error';
+      return;
+    }
+
     loading = true;
     result = '';
     statusType = '';
@@ -15,7 +22,7 @@
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer test-key'
+          'Authorization': `Bearer ${apiKey}`
         },
         body: JSON.stringify({
           title,
@@ -62,6 +69,11 @@
 
 <div class="form">
   <label>
+    API Key:
+    <input bind:value={apiKey} type="password" placeholder="Enter API key" />
+  </label>
+  
+  <label>
     Notification Title:
     <input bind:value={title} type="text" />
   </label>
@@ -72,7 +84,7 @@
   </label>
   
   <div style="display: flex; gap: 1rem;">
-    <button on:click={sendNotification} disabled={loading}>
+    <button on:click={sendNotification} disabled={loading || !apiKey.trim()}>
       {loading ? 'Sending...' : '📱 Send Notification'}
     </button>
     

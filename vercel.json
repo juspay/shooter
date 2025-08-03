@@ -1,8 +1,8 @@
 {
   "framework": "sveltekit",
-  "buildCommand": "bun run build",
+  "installCommand": "rm -rf node_modules package-lock.json && npm install --legacy-peer-deps",
+  "buildCommand": "npm run build",
   "devCommand": "bun run dev",
-  "installCommand": "bun install",
   "env": {
     "NODE_ENV": "production"
   }
