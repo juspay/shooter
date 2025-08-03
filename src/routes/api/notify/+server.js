@@ -1,10 +1,13 @@
 import { json } from '@sveltejs/kit';
 import { APNsService } from '$lib/server/apns.js';
 
-const apnsService = new APNsService();
-
 export async function POST({ request }) {
   try {
+    // Initialize APNs service inside the function to ensure proper environment access
+    console.log('=== INITIALIZING APNS SERVICE ===');
+    const apnsService = new APNsService();
+    console.log('APNs service initialized successfully');
+    
     // Debug logging
     console.log('=== NOTIFY API DEBUG ===');
     console.log('API_KEY from env:', process.env.API_KEY ? 'SET' : 'NOT SET');
