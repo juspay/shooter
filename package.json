@@ -7,7 +7,9 @@
     "build": "vite build",
     "dev": "vite dev --open",
     "preview": "vite preview",
-    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "start": "node build",
+    "deploy": "vercel --prod"
   },
   "devDependencies": {
     "@sveltejs/adapter-auto": "^3.3.1",

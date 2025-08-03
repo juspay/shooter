@@ -1,0 +1,23 @@
+{
+  "framework": "sveltekit",
+  "buildCommand": "bun run build",
+  "devCommand": "bun run dev",
+  "installCommand": "bun install",
+  "functions": {
+    "src/routes/api/notify/+server.js": {
+      "memory": 512,
+      "maxDuration": 10
+    },
+    "src/routes/api/webhook/+server.js": {
+      "memory": 512,
+      "maxDuration": 10
+    },
+    "src/routes/api/health/+server.js": {
+      "memory": 256,
+      "maxDuration": 5
+    }
+  },
+  "env": {
+    "NODE_ENV": "production"
+  }
+}
