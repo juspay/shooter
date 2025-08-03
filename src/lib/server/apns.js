@@ -143,20 +143,38 @@ export class APNsService {
     const notification = new apn.Notification();
     
     notification.expiry = Math.floor(Date.now() / 1000) + 3600; // 1 hour
-    // Safe property access with fallbacks
+    notification.topic = process.env.APNS_BUNDLE_ID;
+    
+    // Use the correct APNs library API
+    notification.alert = (payload && payload.title && payload.body) ? {
+      title: payload.title,
+      body: payload.body
+    } : 'Claude Code Notification';
+    
     notification.badge = (payload && payload.badge) || 1;
     notification.sound = (payload && payload.sound) || 'default';
-    notification.alert = {
-      title: (payload && payload.title) || 'Claude Code Notification', 
-      body: (payload && payload.body) || 'Hello from Claude!'
-    };
     notification.payload = (payload && payload.data) || {};
-    notification.topic = process.env.APNS_BUNDLE_ID;
 
+    console.log('🔍 Debug notification object after setting properties:');
+    console.log('- notification type:', typeof notification);
+    console.log('- notification.alert type:', typeof notification.alert);
+    console.log('- notification.alert value:', notification.alert);
+    console.log('- notification.aps type:', typeof notification.aps);
+    console.log('- notification.aps value:', notification.aps);
+    console.log('- notification keys:', Object.keys(notification));
+    
+    // Let's see if we can access the properties differently
+    console.log('🔍 Testing property access:');
+    console.log('- Direct alert access works:', !!notification.alert);
+    console.log('- APS alert access:', notification.aps ? notification.aps.alert : 'No aps object');
+    
     console.log('Notification details:');
     console.log('- Topic (Bundle ID):', notification.topic);
-    console.log('- Title:', notification.alert.title);
-    console.log('- Body:', notification.alert.body);
+    
+    // Safe property access for debugging
+    const alertToShow = notification.alert || (notification.aps && notification.aps.alert) || { title: 'Unknown', body: 'Unknown' };
+    console.log('- Title:', alertToShow.title || 'No title');
+    console.log('- Body:', alertToShow.body || 'No body');
     console.log('- Badge:', notification.badge);
     console.log('- Sound:', notification.sound);
     console.log('- Expiry:', new Date(notification.expiry * 1000).toISOString());
@@ -228,9 +246,50 @@ export class APNsService {
           code: error.code
         });
         
-        // Try to identify what's being parsed
-        if (error.message.includes('position')) {
-          console.error('Error at specific position in JSON string');
+        // Extract position from error message
+        const positionMatch = error.message.match(/position (\d+)/);
+        if (positionMatch) {
+          const position = parseInt(positionMatch[1]);
+          console.error(`🔍 JSON error at position ${position}`);
+          
+          // Check both the APNs key and notification JSON
+          const apnsKey = process.env.APNS_KEY || process.env.APNS_KEY_BASE64 || '';
+          console.error('🔍 APNs key analysis:');
+          console.error(`Key length: ${apnsKey.length}`);
+          
+          if (position < apnsKey.length) {
+            const startPos = Math.max(0, position - 15);
+            const endPos = Math.min(apnsKey.length, position + 15);
+            const segment = apnsKey.substring(startPos, endPos);
+            console.error(`Key segment around position ${position}:`);
+            console.error(`"${segment}"`);
+            console.error(`Character at ${position}: "${apnsKey[position]}" (ASCII: ${apnsKey.charCodeAt(position)})`);
+          }
+          
+          // Also check the notification JSON
+          try {
+            const notifJson = JSON.stringify({
+              alert: notification.alert,
+              badge: notification.badge,
+              sound: notification.sound,
+              payload: notification.payload,
+              topic: notification.topic,
+              expiry: notification.expiry
+            });
+            console.error('🔍 Notification JSON analysis:');
+            console.error(`JSON length: ${notifJson.length}`);
+            
+            if (position < notifJson.length) {
+              const startPos = Math.max(0, position - 15);
+              const endPos = Math.min(notifJson.length, position + 15);
+              const segment = notifJson.substring(startPos, endPos);
+              console.error(`JSON segment around position ${position}:`);
+              console.error(`"${segment}"`);
+              console.error(`Character at ${position}: "${notifJson[position]}" (ASCII: ${notifJson.charCodeAt(position)})`);
+            }
+          } catch (jsonError) {
+            console.error('Could not analyze notification JSON:', jsonError.message);
+          }
         }
       }
       
