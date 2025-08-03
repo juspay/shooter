@@ -1,4 +1,4 @@
-# Claude Code → iOS Push Notifications: Next Phases Roadmap
+# SHOOTER → iOS Push Notifications: Next Phases Roadmap
 
 ## Current Status: Phase 1 Complete ✅
 
@@ -26,34 +26,34 @@
 - iPhone receives notification from production deployment
 - End-to-end latency < 5 seconds
 
-### 🔌 Priority 2: Claude Code Integration Research
+### 🔌 Priority 2: SHOOTER Integration Research
 **Timeline**: 3-5 days  
 **Status**: 🔬 Research phase
 
 **Research Questions**:
-1. How does Claude Code expose HTTP client capabilities?
+1. How does SHOOTER expose HTTP client capabilities?
 2. Can we create a plugin/extension for notification sending?
-3. What events in Claude Code could trigger notifications?
-4. How to securely store API keys and endpoints in Claude Code?
+3. What events in SHOOTER could trigger notifications?
+4. How to securely store API keys and endpoints in SHOOTER?
 
 **Potential Integration Points**:
-- **Code Completion Events**: Notify when Claude completes a complex task
-- **Error Detection**: Alert when Claude encounters errors in code
+- **Code Completion Events**: Notify when SHOOTER completes a complex task
+- **Error Detection**: Alert when SHOOTER encounters errors in code
 - **Build Status**: Notify about successful/failed builds
-- **Session Management**: Alert when Claude starts/stops working on a project
+- **Session Management**: Alert when SHOOTER starts/stops working on a project
 
 **Investigation Plan**:
 ```bash
-# Research Claude Code architecture
-1. Examine Claude Code CLI documentation
+# Research SHOOTER architecture
+1. Examine SHOOTER CLI documentation
 2. Look for plugin/extension capabilities
 3. Test HTTP request functionality
 4. Explore configuration options
 
 # Create proof-of-concept
-1. Simple HTTP request from Claude Code environment
+1. Simple HTTP request from SHOOTER environment
 2. Test API key management
-3. Verify network access from Claude Code
+3. Verify network access from SHOOTER
 ```
 
 ### 🎯 Priority 3: Enhanced Notification Features

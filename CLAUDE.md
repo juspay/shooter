@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This repository contains architectural plans for building a bidirectional communication system between Claude Code and iOS applications using push notifications. The system enables Claude Code to send notifications to iOS devices and receive interactive responses.
+This repository contains architectural plans for building a bidirectional communication system between SHOOTER and iOS applications using push notifications. The system enables SHOOTER to send notifications to iOS devices and receive interactive responses.
 
 ## Project Structure
 
@@ -43,7 +43,7 @@ The system is designed to be built in four phases:
 - Response handling and server communication
 - Local notification history
 
-### Claude Code Integration
+### SHOOTER Integration
 - HTTP client for sending notifications to SvelteKit API
 - Event detection and notification triggering
 - Webhook server for receiving responses (Phase 3+)

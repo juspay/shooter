@@ -1,8 +1,8 @@
-# Claude Code → iOS Push Notifications: Debugging Journey
+# SHOOTER → iOS Push Notifications: Debugging Journey
 
 ## Overview
 
-This document chronicles the complete debugging journey of implementing a bidirectional communication system between Claude Code and iOS devices using push notifications. Started as a proof-of-concept and evolved into a working production system.
+This document chronicles the complete debugging journey of implementing a bidirectional communication system between SHOOTER and iOS devices using push notifications. Started as a proof-of-concept and evolved into a working production system.
 
 ## Timeline & Major Milestones
 

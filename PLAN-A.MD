@@ -1,4 +1,4 @@
-🚀 SvelteKit + Vercel Private Push Architecture for iOS/Swift App
+🎯 SHOOTER: SvelteKit + Vercel Private Push Architecture for iOS/Swift App
 
 **Status**: ✅ **IMPLEMENTED AND WORKING** (Local), ⚠️ **Production Issue** (Environment Variables)
 
@@ -12,19 +12,19 @@ Send real-time push notifications (alert/silent/interactive) to your own iOS/Swi
 
 All device tokens, secrets, and APNs credentials are managed securely (env vars/JSON). The system is suitable for local development, testing, or personal production use, with minimal infra cost.
 
-**🎉 BREAKTHROUGH**: Successfully debugged and fixed JSON parsing errors. Local environment delivers notifications perfectly to iPhone!
+**🎯 SHOOTER BREAKTHROUGH**: Successfully debugged and fixed JSON parsing errors. Local environment fires notifications perfectly to iPhone!
 
 ⸻
 
 2. High-Level Architecture Diagram
 
 flowchart TD
-    CLI[(CLI or Script)] -->|POST /api/push| API[SvelteKit API (Vercel)]
+    SHOOTER[(SHOOTER)] -->|POST /api/notify| API[SvelteKit API (Vercel)]
     App((Swift/iOS App)) -- Reg Device Token --> API
     API -- Store Token --> TOKENS[Device Token Store]
-    API -- Push via HTTP/2 + JWT (.p8) --> APNS[Apple Push Notification Service]
-    APNS -- Notify --> App
-    Admin[Admin UI (SvelteKit, optional)] -- View/Edit --> API
+    API -- Fire via HTTP/2 + JWT (.p8) --> APNS[Apple Push Notification Service]
+    APNS -- Deliver --> App
+    Admin[SHOOTER UI (SvelteKit)] -- Control --> API
 
 
 ⸻

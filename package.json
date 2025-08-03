@@ -1,6 +1,6 @@
 {
-  "name": "claude-ios-notifier",
-  "version": "0.0.1",
+  "name": "shooter-ios-notifier",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {

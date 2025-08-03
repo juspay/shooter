@@ -1,6 +1,6 @@
 <script>
-  let title = '🚀 Claude Code Notification';
-  let message = 'Push notification system is working perfectly! 🎉';
+  let title = '🎯 SHOOTER Notification';
+  let message = 'SHOOTER system firing notifications perfectly! 🎯';
   let apiKey = '';
   let result = '';
   let loading = false;
@@ -90,15 +90,15 @@
   }
 
   function quickTest() {
-    title = '⚡ Quick Test';
-    message = `Test notification sent at ${new Date().toLocaleTimeString()}`;
+    title = '🎯 SHOOTER Quick Test';
+    message = `SHOOTER firing test notification at ${new Date().toLocaleTimeString()}`;
     sendNotification();
   }
 </script>
 
 <svelte:head>
-  <title>Claude Code → iOS Push Notifications</title>
-  <meta name="description" content="Bidirectional communication between Claude Code and iOS devices via push notifications" />
+  <title>SHOOTER → iOS Push Notifications</title>
+  <meta name="description" content="Bidirectional communication between SHOOTER and iOS devices via push notifications" />
 </svelte:head>
 
 <div class="app">
@@ -107,7 +107,7 @@
       <div class="logo">
         <span class="logo-icon">📱</span>
         <div class="logo-text">
-          <h1>Claude Code</h1>
+          <h1>SHOOTER</h1>
           <p>iOS Push Notifications</p>
         </div>
       </div>
@@ -255,10 +255,10 @@
         </div>
         <div class="card-content">
           <ol>
-            <li>Claude Code sends HTTP request to SvelteKit API</li>
+            <li>SHOOTER sends HTTP request to SvelteKit API</li>
             <li>SvelteKit server processes request and validates API key</li>
-            <li>APNs service sends push notification to iOS device</li>
-            <li>iOS app receives and displays notification</li>
+            <li>APNs service fires push notification to iOS device</li>
+            <li>iOS app receives and displays SHOOTER notification</li>
           </ol>
         </div>
       </div>
@@ -293,6 +293,6 @@
 
   <footer class="footer">
     <p>Built with SvelteKit • APNs • Vercel</p>
-    <p>Part of the Claude Code → iOS Push Notification System</p>
+    <p>Part of the SHOOTER → iOS Push Notification System</p>
   </footer>
 </div>

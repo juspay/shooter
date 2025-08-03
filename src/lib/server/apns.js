@@ -149,35 +149,18 @@ export class APNsService {
     notification.alert = (payload && payload.title && payload.body) ? {
       title: payload.title,
       body: payload.body
-    } : 'Claude Code Notification';
+    } : 'SHOOTER Notification';
     
     notification.badge = (payload && payload.badge) || 1;
     notification.sound = (payload && payload.sound) || 'default';
     notification.payload = (payload && payload.data) || {};
 
-    console.log('🔍 Debug notification object after setting properties:');
-    console.log('- notification type:', typeof notification);
-    console.log('- notification.alert type:', typeof notification.alert);
-    console.log('- notification.alert value:', notification.alert);
-    console.log('- notification.aps type:', typeof notification.aps);
-    console.log('- notification.aps value:', notification.aps);
-    console.log('- notification keys:', Object.keys(notification));
-    
-    // Let's see if we can access the properties differently
-    console.log('🔍 Testing property access:');
-    console.log('- Direct alert access works:', !!notification.alert);
-    console.log('- APS alert access:', notification.aps ? notification.aps.alert : 'No aps object');
-    
-    console.log('Notification details:');
-    console.log('- Topic (Bundle ID):', notification.topic);
-    
-    // Safe property access for debugging
-    const alertToShow = notification.alert || (notification.aps && notification.aps.alert) || { title: 'Unknown', body: 'Unknown' };
-    console.log('- Title:', alertToShow.title || 'No title');
-    console.log('- Body:', alertToShow.body || 'No body');
-    console.log('- Badge:', notification.badge);
-    console.log('- Sound:', notification.sound);
-    console.log('- Expiry:', new Date(notification.expiry * 1000).toISOString());
+    // Quick debug info (reduced verbosity)
+    const alertData = notification.aps ? notification.aps.alert : null;
+    console.log('📱 SHOOTER Notification prepared:');
+    console.log('- Title:', alertData ? alertData.title : 'No title');
+    console.log('- Body:', alertData ? alertData.body : 'No body');
+    console.log('- Target Bundle:', notification.topic);
 
     try {
       console.log('🚀 Sending push notification...');
