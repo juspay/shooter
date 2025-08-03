@@ -23,8 +23,9 @@
     "vite": "^6.0.5"
   },
   "dependencies": {
+    "@sveltejs/adapter-vercel": "^5.8.1",
     "apn": "^2.2.0",
-    "jsonwebtoken": "^9.0.2",
-    "dotenv": "^16.4.7"
+    "dotenv": "^16.4.7",
+    "jsonwebtoken": "^9.0.2"
   }
 }
