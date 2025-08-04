@@ -1,0 +1,30 @@
+{
+  "hooks": [
+    {
+      "event": "PreToolUse",
+      "command": "python3 /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notify_tool_start.py",
+      "matcher": {
+        "tools": ["Edit", "Write", "MultiEdit", "Bash", "Read"]
+      }
+    },
+    {
+      "event": "PostToolUse", 
+      "command": "python3 /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notify_tool_complete.py",
+      "matcher": {
+        "tools": ["Edit", "Write", "MultiEdit", "Bash"]
+      }
+    },
+    {
+      "event": "UserPromptSubmit",
+      "command": "python3 /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notify_session_activity.py"
+    },
+    {
+      "event": "Stop",
+      "command": "python3 /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notify_session_end.py"
+    },
+    {
+      "event": "SessionStart",
+      "command": "python3 /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notify_session_start.py"
+    }
+  ]
+}

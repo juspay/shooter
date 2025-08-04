@@ -4,12 +4,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This repository contains architectural plans for building a bidirectional communication system between SHOOTER and iOS applications using push notifications. The system enables SHOOTER to send notifications to iOS devices and receive interactive responses.
+This repository contains a **WORKING** bidirectional communication system between Claude Code and iOS applications using push notifications. The system enables Claude Code to automatically send real-time notifications to iOS devices when coding events occur, with plans for interactive responses.
 
 ## Project Structure
 
-- `PLAN-A.MD` - Basic SvelteKit + Vercel + APNs architecture for one-way push notifications
+### Core Implementation ✅
+- `CLAUDE-CODE-INTEGRATION.md` - **WORKING** Claude Code lifecycle hooks integration
+- `.claude/` - Claude Code hook configuration and Python scripts
+- `src/` - SvelteKit API server (working locally, production needs env fix)
+- `ios/` - Swift iOS app (working, receiving notifications)
+
+### Architecture Documentation
+- `PLAN-A.MD` - Basic SvelteKit + Vercel + APNs architecture (✅ IMPLEMENTED)
 - `PLAN-B.MD` - Comprehensive bidirectional communication system with detailed implementation guide
+- `DEBUGGING-JOURNEY.md` - Complete implementation history and lessons learned
+- `NEXT-PHASES.md` - Roadmap for enhanced features and production readiness
 
 ## Key Technologies
 
@@ -43,11 +52,13 @@ The system is designed to be built in four phases:
 - Response handling and server communication
 - Local notification history
 
-### SHOOTER Integration
-- HTTP client for sending notifications to SvelteKit API
-- Event detection and notification triggering
-- Webhook server for receiving responses (Phase 3+)
-- Configuration management for API keys and endpoints
+### Claude Code Integration ✅ **WORKING**
+- **Lifecycle Hooks**: Automatic detection of tool usage, user prompts, session events
+- **HTTP Client**: Python scripts send POST requests to SvelteKit API
+- **Context-Aware Notifications**: Smart categorization (debug, feature, testing, learning)
+- **Real-time Events**: File edits, commands, session start/stop notifications
+- **Configuration**: `.claude/settings.json` + Python hooks in `.claude/hooks/`
+- **Setup**: Interactive configuration script (`python3 .claude/setup.py`)
 
 ## Security Requirements
 
