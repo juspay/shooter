@@ -2,140 +2,181 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject var notificationManager: NotificationManager
-    @State private var serverUrl = AppConfig.defaultServerURL
-    @State private var lastNotification = "No notifications received yet"
+    @State private var showingConfigSheet = false
     @State private var showingAlert = false
     @State private var alertMessage = ""
     
     var body: some View {
-        NavigationView {
-            VStack(spacing: 30) {
+        NavigationStack {
+            VStack(spacing: 0) {
                 // Header
-                VStack(spacing: 10) {
-                    Image(systemName: "bell.badge")
-                        .font(.system(size: 60))
-                        .foregroundColor(.blue)
-                    
-                    Text("Shooter")
-                        .font(.largeTitle)
-                        .fontWeight(.bold)
-                    
-                    Text("Receive push notifications from Claude Code")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                }
+                headerView
                 
-                // Status Section
-                VStack(alignment: .leading, spacing: 15) {
-                    HStack {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(notificationManager.isAuthorized ? .green : .red)
-                        Text("Notification Permission")
-                        Spacer()
-                        Text(notificationManager.isAuthorized ? "Granted" : "Denied")
-                            .foregroundColor(notificationManager.isAuthorized ? .green : .red)
-                    }
-                    
-                    HStack {
-                        Image(systemName: "device.iphone")
-                            .foregroundColor(.blue)
-                        Text("Device Token")
-                        Spacer()
-                        Text(notificationManager.deviceToken != nil ? "✓" : "Pending")
-                            .foregroundColor(notificationManager.deviceToken != nil ? .green : .orange)
-                    }
-                    
-                    if let token = notificationManager.deviceToken {
-                        VStack(alignment: .leading, spacing: 5) {
-                            Text("Device Token:")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            Text(token)
-                                .font(.system(.caption, design: .monospaced))
-                                .padding(8)
-                                .background(Color.gray.opacity(0.1))
-                                .cornerRadius(8)
-                                .onTapGesture {
-                                    UIPasteboard.general.string = token
-                                    alertMessage = "Device token copied to clipboard!"
-                                    showingAlert = true
-                                }
-                        }
-                    }
+                // Content based on state
+                if !notificationManager.isAuthorized {
+                    // Permission request state
+                    permissionRequestView
+                } else if notificationManager.notifications.isEmpty {
+                    // Empty state
+                    emptyNotificationsView
+                } else {
+                    // Notifications list
+                    notificationsListView
                 }
-                .padding()
-                .background(Color.gray.opacity(0.05))
-                .cornerRadius(15)
-                
-                // Server Configuration
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Server Configuration")
-                        .font(.headline)
-                    
-                    TextField("Server URL", text: $serverUrl)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                        .keyboardType(.URL)
-                        .autocapitalization(.none)
-                    
-                    Button(action: {
-                        notificationManager.registerWithServer(serverUrl: serverUrl)
-                    }) {
-                        HStack {
-                            Image(systemName: "arrow.up.circle.fill")
-                            Text("Register Device Token")
-                        }
-                        .foregroundColor(.white)
-                        .padding()
-                        .background(Color.blue)
-                        .cornerRadius(10)
-                    }
-                    .disabled(notificationManager.deviceToken == nil)
-                }
-                .padding()
-                .background(Color.gray.opacity(0.05))
-                .cornerRadius(15)
-                
-                // Test Notification
-                Button(action: {
-                    notificationManager.sendTestNotification()
-                }) {
-                    HStack {
-                        Image(systemName: "bell.fill")
-                        Text("Send Test Notification")
-                    }
-                    .foregroundColor(.white)
-                    .padding()
-                    .background(Color.green)
-                    .cornerRadius(10)
-                }
-                
-                // Last Notification
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("Last Notification:")
-                        .font(.headline)
-                    Text(lastNotification)
-                        .font(.body)
-                        .padding()
-                        .background(Color.gray.opacity(0.05))
-                        .cornerRadius(10)
-                }
-                
-                Spacer()
             }
-            .padding()
-            .navigationTitle("Shooter")
-            .navigationBarTitleDisplayMode(.inline)
-            .onReceive(notificationManager.$lastNotificationMessage) { message in
-                if !message.isEmpty {
-                    lastNotification = message
+            .navigationTitle("🎯 SHOOTER")
+            .navigationBarTitleDisplayMode(.large)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        showingConfigSheet = true
+                    } label: {
+                        Image(systemName: "gear")
+                            .font(.title2)
+                    }
                 }
+            }
+            .sheet(isPresented: $showingConfigSheet) {
+                ConfigurationView()
+                    .environmentObject(notificationManager)
             }
             .alert("Info", isPresented: $showingAlert) {
                 Button("OK") { }
             } message: {
                 Text(alertMessage)
             }
+            .onAppear {
+                // Auto-setup for local development
+                notificationManager.autoSetupForDevelopment()
+            }
+            .refreshable {
+                // Pull to refresh
+                await notificationManager.refreshNotifications()
+            }
+        }
+    }
+    
+    // MARK: - Header View
+    private var headerView: some View {
+        VStack(spacing: 8) {
+            HStack {
+                // System status indicator
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(notificationManager.isConnected ? .green : .red)
+                        .frame(width: 8, height: 8)
+                    Text(notificationManager.isConnected ? "Online" : "Offline")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                
+                Spacer()
+                
+                // Last update time
+                if let lastUpdate = notificationManager.lastUpdate {
+                    Text("Updated \(lastUpdate, style: .relative)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal)
+        }
+        .padding(.vertical, 8)
+        .background(.ultraThinMaterial)
+    }
+    
+    // MARK: - Permission Request View
+    private var permissionRequestView: some View {
+        VStack(spacing: 30) {
+            Spacer()
+            
+            VStack(spacing: 20) {
+                Image(systemName: "bell.slash")
+                    .font(.system(size: 80))
+                    .foregroundStyle(.secondary)
+                
+                VStack(spacing: 8) {
+                    Text("Enable Notifications")
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                    
+                    Text("Allow SHOOTER to send you real-time notifications from Claude Code")
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+                }
+                
+                Button {
+                    notificationManager.requestPermission()
+                } label: {
+                    Text("Enable Notifications")
+                        .font(.headline)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(.blue)
+                        .cornerRadius(12)
+                }
+                .padding(.horizontal, 40)
+            }
+            
+            Spacer()
+        }
+    }
+    
+    // MARK: - Empty Notifications View
+    private var emptyNotificationsView: some View {
+        VStack(spacing: 30) {
+            Spacer()
+            
+            VStack(spacing: 20) {
+                Image(systemName: "bell.badge")
+                    .font(.system(size: 80))
+                    .foregroundStyle(.secondary)
+                
+                VStack(spacing: 8) {
+                    Text("No Notifications Yet")
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                    
+                    Text("Notifications from Claude Code will appear here when hooks are triggered")
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+                }
+                
+                Button {
+                    notificationManager.sendTestNotification()
+                } label: {
+                    HStack {
+                        Image(systemName: "bell.fill")
+                        Text("Send Test Notification")
+                    }
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(.green)
+                    .cornerRadius(12)
+                }
+                .padding(.horizontal, 40)
+            }
+            
+            Spacer()
+        }
+    }
+    
+    // MARK: - Notifications List View
+    private var notificationsListView: some View {
+        ScrollView {
+            LazyVStack(spacing: 12) {
+                ForEach(notificationManager.notifications) { notification in
+                    NotificationCardView(notification: notification)
+                }
+            }
+            .padding()
         }
     }
 }

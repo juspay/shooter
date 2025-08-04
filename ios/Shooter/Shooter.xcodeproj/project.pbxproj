@@ -14,6 +14,9 @@
 		A7B8E1AF2C5F1A5B00123456 /* NotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B8E1AE2C5F1A5B00123456 /* NotificationManager.swift */; };
 		A7B8E1B22C5F1A7B00123456 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B8E1B12C5F1A7B00123456 /* AppDelegate.swift */; };
 		A7B8E1B42C5F1A8B00123456 /* Config.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B8E1B32C5F1A8B00123456 /* Config.swift */; };
+		A7B8E1B52C5F1A9B00123456 /* NotificationModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B8E1B62C5F1A9B00123456 /* NotificationModels.swift */; };
+		A7B8E1B72C5F1AAB00123456 /* NotificationCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B8E1B82C5F1AAB00123456 /* NotificationCardView.swift */; };
+		A7B8E1B92C5F1ABB00123456 /* ConfigurationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B8E1BA2C5F1ABB00123456 /* ConfigurationView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -26,6 +29,9 @@
 		A7B8E1B02C5F1A6B00123456 /* Shooter.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Shooter.entitlements; sourceTree = "<group>"; };
 		A7B8E1B12C5F1A7B00123456 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		A7B8E1B32C5F1A8B00123456 /* Config.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Config.swift; sourceTree = "<group>"; };
+		A7B8E1B62C5F1A9B00123456 /* NotificationModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationModels.swift; sourceTree = "<group>"; };
+		A7B8E1B82C5F1AAB00123456 /* NotificationCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationCardView.swift; sourceTree = "<group>"; };
+		A7B8E1BA2C5F1ABB00123456 /* ConfigurationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigurationView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -62,7 +68,10 @@
 				A7B8E1A02C5F1A3B00123456 /* ShooterApp.swift */,
 				A7B8E1B12C5F1A7B00123456 /* AppDelegate.swift */,
 				A7B8E1A22C5F1A3B00123456 /* ContentView.swift */,
+				A7B8E1BA2C5F1ABB00123456 /* ConfigurationView.swift */,
+				A7B8E1B82C5F1AAB00123456 /* NotificationCardView.swift */,
 				A7B8E1AE2C5F1A5B00123456 /* NotificationManager.swift */,
+				A7B8E1B62C5F1A9B00123456 /* NotificationModels.swift */,
 				A7B8E1B32C5F1A8B00123456 /* Config.swift */,
 				A7B8E1A42C5F1A3C00123456 /* Assets.xcassets */,
 				A7B8E1A62C5F1A3C00123456 /* Preview Content */,
@@ -153,6 +162,9 @@
 				A7B8E1B42C5F1A8B00123456 /* Config.swift in Sources */,
 				A7B8E1B22C5F1A7B00123456 /* AppDelegate.swift in Sources */,
 				A7B8E1A12C5F1A3B00123456 /* ShooterApp.swift in Sources */,
+				A7B8E1B52C5F1A9B00123456 /* NotificationModels.swift in Sources */,
+				A7B8E1B72C5F1AAB00123456 /* NotificationCardView.swift in Sources */,
+				A7B8E1B92C5F1ABB00123456 /* ConfigurationView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
