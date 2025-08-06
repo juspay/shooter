@@ -72,8 +72,8 @@ struct NotificationCardView: View {
             
             Text(notification.status.rawValue.uppercased())
                 .font(.caption2)
-                .foregroundStyle(notification.statusColor)
                 .fontWeight(.medium)
+                .foregroundColor(notification.statusColor)
         }
     }
     

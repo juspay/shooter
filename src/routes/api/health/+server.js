@@ -1,22 +1,23 @@
 import { json } from '@sveltejs/kit';
+import { env } from '$env/dynamic/private';
 
 export async function GET() {
   const health = {
     status: 'healthy',
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development',
+    environment: env.NODE_ENV || 'development',
     version: '1.0.0',
     checks: {
-      hasDeviceToken: !!process.env.DEVICE_TOKEN,
-      hasAPNsConfig: !!(process.env.APNS_KEY_ID && process.env.APNS_TEAM_ID && process.env.APNS_KEY),
-      hasBundleId: !!process.env.APNS_BUNDLE_ID,
-      hasApiKey: !!process.env.API_KEY
+      hasDeviceToken: !!env.DEVICE_TOKEN,
+      hasAPNsConfig: !!(env.APNS_KEY_ID && env.APNS_TEAM_ID && (env.APNS_KEY || env.APNS_KEY_BASE64)),
+      hasBundleId: !!env.APNS_BUNDLE_ID,
+      hasApiKey: !!env.API_KEY
     },
     configuration: {
-      deviceTokenLength: process.env.DEVICE_TOKEN ? process.env.DEVICE_TOKEN.length : 0,
-      apnsKeyId: process.env.APNS_KEY_ID ? process.env.APNS_KEY_ID.substring(0, 4) + '...' : null,
-      bundleId: process.env.APNS_BUNDLE_ID || null,
-      production: process.env.NODE_ENV === 'production'
+      deviceTokenLength: env.DEVICE_TOKEN ? env.DEVICE_TOKEN.length : 0,
+      apnsKeyId: env.APNS_KEY_ID ? env.APNS_KEY_ID.substring(0, 4) + '...' : null,
+      bundleId: env.APNS_BUNDLE_ID || null,
+      production: env.NODE_ENV === 'production'
     }
   };
 

@@ -1,18 +1,19 @@
 import { json } from '@sveltejs/kit';
-import { APNsService } from '$lib/server/apns.js';
+import { LibraryAPNsService } from '$lib/server/library-apns.js';
+import { env } from '$env/dynamic/private';
 
 export async function POST({ request }) {
   try {
-    // Initialize APNs service inside the function to ensure proper environment access
-    console.log('=== INITIALIZING APNS SERVICE ===');
-    const apnsService = new APNsService();
-    console.log('APNs service initialized successfully');
+    // Use proven library instead of manual implementation
+    console.log('=== INITIALIZING LIBRARY APNS SERVICE ===');
+    const apnsClient = new LibraryAPNsService();
+    console.log('Library APNs service initialized successfully');
     
     // Debug logging
     console.log('=== NOTIFY API DEBUG ===');
-    console.log('API_KEY from env:', process.env.API_KEY ? 'SET' : 'NOT SET');
-    console.log('API_KEY length:', process.env.API_KEY ? process.env.API_KEY.length : 0);
-    console.log('API_KEY value:', process.env.API_KEY);
+    console.log('API_KEY from env:', env.API_KEY ? 'SET' : 'NOT SET');
+    console.log('API_KEY length:', env.API_KEY ? env.API_KEY.length : 0);
+    console.log('API_KEY value:', env.API_KEY);
     
     // Validate API key
     const authHeader = request.headers.get('authorization');
@@ -24,7 +25,7 @@ export async function POST({ request }) {
     }
 
     const apiKey = authHeader.substring(7);
-    const expectedKey = (process.env.API_KEY || 'test-key').trim();
+    const expectedKey = (env.API_KEY || 'test-key').trim();
     
     console.log('Received API key:', apiKey);
     console.log('Expected API key:', expectedKey);
@@ -61,15 +62,15 @@ export async function POST({ request }) {
     }
 
     // Check APNs configuration
-    if (!apnsService.isConfigured()) {
+    if (!apnsClient.isConfigured()) {
       return json({ 
-        error: 'APNs service not configured',
+        error: 'APNs client not configured',
         details: 'Missing APNS_KEY, APNS_KEY_ID, or APNS_TEAM_ID environment variables'
       }, { status: 500 });
     }
 
     // Get device token
-    const deviceToken = process.env.DEVICE_TOKEN?.trim();
+    const deviceToken = env.DEVICE_TOKEN?.trim();
     console.log('Device token from env:', deviceToken ? `${deviceToken.substring(0, 8)}... (${deviceToken.length} chars)` : 'NOT SET');
     
     if (!deviceToken) {
@@ -83,10 +84,12 @@ export async function POST({ request }) {
     const payload = {
       title,
       body: message,
+      badge: 1,
+      sound: 'default',
       data: {
         ...data,
         timestamp: new Date().toISOString(),
-        source: 'sveltekit-api'
+        source: 'modern-apns-api'
       }
     };
     
@@ -115,7 +118,7 @@ export async function POST({ request }) {
     console.log('About to send notification:');
     console.log('- Device token:', deviceToken ? `${deviceToken.substring(0, 8)}...` : 'undefined');
     console.log('- Payload:', JSON.stringify(payload, null, 2));
-    console.log('- APNs service configured:', apnsService.isConfigured());
+    console.log('- APNs client configured:', apnsClient.isConfigured());
     
     console.log('=== BEFORE CALLING SENDNOTIFICATION ===');
     console.log('- deviceToken value:', deviceToken);
@@ -128,7 +131,7 @@ export async function POST({ request }) {
       console.log('  arg1 (deviceToken):', deviceToken);  
       console.log('  arg2 (payload):', payload);
       
-      const result = await apnsService.sendNotification(deviceToken, payload);
+      const result = await apnsClient.sendNotification(deviceToken, payload);
       
       console.log('✅ Notification sent successfully!');
       console.log('Result:', JSON.stringify(result, null, 2));
@@ -140,7 +143,7 @@ export async function POST({ request }) {
         timestamp: new Date().toISOString()
       });
     } catch (notificationError) {
-      console.error('💥 APNs sendNotification error:', notificationError);
+      console.error('💥 Direct APNs HTTP/2 sendNotification error:', notificationError);
       console.error('Error details:', notificationError.message);
       console.error('Error stack:', notificationError.stack);
       

@@ -23,6 +23,7 @@
     "vite": "^6.0.5"
   },
   "dependencies": {
+    "@parse/node-apn": "^6.5.0",
     "@sveltejs/adapter-vercel": "^5.8.1",
     "apn": "^2.2.0",
     "dotenv": "^16.6.1",

@@ -203,7 +203,11 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         // Auto-register with server if we have permission and device token
         if isAuthorized, deviceToken != nil {
             registerWithServer(serverUrl: serverUrl)
-            checkServerConnection()
+            
+            // Call async method properly
+            Task {
+                await checkServerConnection()
+            }
         }
         
         // Load mock notifications for development

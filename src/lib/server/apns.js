@@ -1,16 +1,17 @@
 import apn from 'apn';
 import jwt from 'jsonwebtoken';
+import { env } from '$env/dynamic/private';
 
 export class APNsService {
   constructor() {
     console.log('=== APNs SERVICE INITIALIZATION ===');
     
-    let apnsKey = process.env.APNS_KEY;
-    const apnsKeyBase64 = process.env.APNS_KEY_BASE64;
-    const keyId = process.env.APNS_KEY_ID;
-    const teamId = process.env.APNS_TEAM_ID;
-    const bundleId = process.env.APNS_BUNDLE_ID;
-    const nodeEnv = process.env.NODE_ENV;
+    let apnsKey = env.APNS_KEY;
+    const apnsKeyBase64 = env.APNS_KEY_BASE64;
+    const keyId = env.APNS_KEY_ID;
+    const teamId = env.APNS_TEAM_ID;
+    const bundleId = env.APNS_BUNDLE_ID;
+    const nodeEnv = env.NODE_ENV;
 
     // Try to use base64 version if available (to avoid newline issues)
     if (apnsKeyBase64) {
@@ -72,7 +73,7 @@ export class APNsService {
           keyId: keyId,
           teamId: teamId,
         },
-        production: nodeEnv === 'production'
+        production: false // Use sandbox for development device tokens
       });
       console.log('✅ APNs provider initialized successfully');
       this.configError = null;
@@ -143,7 +144,7 @@ export class APNsService {
     const notification = new apn.Notification();
     
     notification.expiry = Math.floor(Date.now() / 1000) + 3600; // 1 hour
-    notification.topic = process.env.APNS_BUNDLE_ID;
+    notification.topic = env.APNS_BUNDLE_ID;
     
     // Use the correct APNs library API
     notification.alert = (payload && payload.title && payload.body) ? {
@@ -236,7 +237,7 @@ export class APNsService {
           console.error(`🔍 JSON error at position ${position}`);
           
           // Check both the APNs key and notification JSON
-          const apnsKey = process.env.APNS_KEY || process.env.APNS_KEY_BASE64 || '';
+          const apnsKey = env.APNS_KEY || env.APNS_KEY_BASE64 || '';
           console.error('🔍 APNs key analysis:');
           console.error(`Key length: ${apnsKey.length}`);
           
