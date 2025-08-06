@@ -15,23 +15,46 @@ function getTimestamp() {
     return new Date().toLocaleTimeString();
 }
 
-function getEventConfig(eventType, hookData = {}) {
+function getToolInfo() {
+    // Claude Code provides these environment variables to hooks
+    const toolName = process.env.CLAUDE_TOOL_NAME || process.argv[2] || 'Unknown';
+    const filePaths = process.env.CLAUDE_FILE_PATHS || '';
+    const commandLine = process.env.CLAUDE_COMMAND_LINE || '';
+    
+    // Extract file name if available
+    const files = filePaths ? filePaths.split(',').map(f => path.basename(f.trim())).join(', ') : '';
+    
+    return {
+        tool: toolName,
+        files: files,
+        command: commandLine
+    };
+}
+
+function getEventConfig(eventType) {
     const project = getProjectName();
     const timestamp = getTimestamp();
-    const tool = hookData.tool || process.argv[3] || 'Unknown';
-    const file = hookData.file || hookData.path || '';
+    const toolInfo = getToolInfo();
+    
+    // Create contextual messages based on tool and files
+    let contextMessage = '';
+    if (toolInfo.files) {
+        contextMessage = ` on ${toolInfo.files}`;
+    } else if (toolInfo.command) {
+        contextMessage = ` (${toolInfo.command.substring(0, 50)}${toolInfo.command.length > 50 ? '...' : ''})`;
+    }
     
     const configs = {
         'PreToolUse': {
             emoji: '🛠️',
-            title: `${tool} Starting | ${project}`,
-            message: `About to use ${tool}${file ? ` on ${path.basename(file)}` : ''} at ${timestamp}`,
+            title: `${toolInfo.tool} Starting | ${project}`,
+            message: `About to use ${toolInfo.tool}${contextMessage} at ${timestamp}`,
             category: 'tool'
         },
         'PostToolUse': {
             emoji: '✅',
-            title: `${tool} Complete | ${project}`,
-            message: `Finished using ${tool}${file ? ` on ${path.basename(file)}` : ''} at ${timestamp}`,
+            title: `${toolInfo.tool} Complete | ${project}`,
+            message: `Finished using ${toolInfo.tool}${contextMessage} at ${timestamp}`,
             category: 'tool'
         },
         'UserPromptSubmit': {
@@ -58,7 +81,7 @@ function getEventConfig(eventType, hookData = {}) {
             message: `Claude sent a notification at ${timestamp}`,
             category: 'system'
         },
-        'Subagent Stop': {
+        'SubagentStop': {
             emoji: '🤖',
             title: `Subagent Complete | ${project}`,
             message: `Subagent task completed at ${timestamp}`,
@@ -111,49 +134,42 @@ function sendNotification(title, body, data = {}) {
     req.end();
 }
 
+function logEnvironmentInfo() {
+    // Debug logging for environment variables
+    console.log('=== CLAUDE CODE HOOK DEBUG ===');
+    console.log('Event Type:', process.argv[2] || 'UNKNOWN');
+    console.log('Tool Name:', process.env.CLAUDE_TOOL_NAME || 'NOT_SET');
+    console.log('File Paths:', process.env.CLAUDE_FILE_PATHS || 'NOT_SET');
+    console.log('Command Line:', process.env.CLAUDE_COMMAND_LINE || 'NOT_SET');
+    console.log('Working Directory:', process.cwd());
+    console.log('================================');
+}
+
 function main() {
-    // Get event type from command line argument or environment
-    const eventType = process.argv[2] || process.env.CLAUDE_HOOK_EVENT || 'Unknown';
+    // Get event type from command line argument
+    const eventType = process.argv[2] || 'Unknown';
+    
+    // Debug logging
+    logEnvironmentInfo();
     
     console.log(`🔄 Processing ${eventType} event...`);
     
-    // Try to read hook data from stdin
-    let hookInput = '';
-    
-    if (process.stdin.isTTY) {
-        // No stdin input, process with basic data
-        processEvent(eventType, {});
-    } else {
-        // Read from stdin
-        process.stdin.on('data', (chunk) => {
-            hookInput += chunk;
-        });
-        
-        process.stdin.on('end', () => {
-            let hookData = {};
-            try {
-                if (hookInput.trim()) {
-                    hookData = JSON.parse(hookInput);
-                }
-            } catch (error) {
-                console.log('⚠️ Could not parse hook data, using defaults');
-            }
-            
-            processEvent(eventType, hookData);
-        });
-    }
-}
-
-function processEvent(eventType, hookData) {
-    const config = getEventConfig(eventType, hookData);
+    const config = getEventConfig(eventType);
+    const toolInfo = getToolInfo();
     
     const notificationData = {
         event: eventType,
         category: config.category,
         project: getProjectName(),
         timestamp: new Date().toISOString(),
-        tool: hookData.tool || process.argv[3],
-        hookData: hookData
+        tool: toolInfo.tool,
+        files: toolInfo.files,
+        command: toolInfo.command,
+        claudeEnv: {
+            toolName: process.env.CLAUDE_TOOL_NAME,
+            filePaths: process.env.CLAUDE_FILE_PATHS,
+            commandLine: process.env.CLAUDE_COMMAND_LINE
+        }
     };
     
     console.log(`📱 Sending ${eventType} notification: ${config.title}`);
