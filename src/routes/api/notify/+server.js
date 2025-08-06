@@ -2,6 +2,70 @@ import { json } from '@sveltejs/kit';
 import { LibraryAPNsService } from '$lib/server/library-apns.js';
 import { env } from '$env/dynamic/private';
 
+// 🎯 INTELLIGENT NOTIFICATION FILTERING
+function intelligentNotificationFilter(title, message, data) {
+  const source = data?.source || 'unknown';
+  const category = data?.category || 'unknown';
+  const timestamp = Date.now();
+  
+  // Always allow smart completion detector notifications
+  if (source === 'smart-completion-detector') {
+    return { 
+      send: true, 
+      reason: 'Smart completion detector - completion or intervention needed' 
+    };
+  }
+  
+  // Filter out known spam patterns from old universal notifier
+  const spamPatterns = [
+    /Starting.*shooter/i,     // "Write Starting | shooter"
+    /Complete.*shooter/i,     // "Edit Complete | shooter" 
+    /Tools starting/i,        // "Tools starting in shooter"
+    /Tool starting/i,         // "Tool starting in shooter"
+    /unknown.*shooter/i,      // "unknown | shooter"
+    /PreToolUse/i,           // Any PreToolUse notifications
+    /PostToolUse/i,          // Any PostToolUse notifications
+  ];
+  
+  const isSpam = spamPatterns.some(pattern => 
+    pattern.test(title) || pattern.test(message)
+  );
+  
+  if (isSpam) {
+    return { 
+      send: false, 
+      reason: 'Filtered spam notification from old hook system' 
+    };
+  }
+  
+  // Allow explicit completion/intervention notifications
+  const importantPatterns = [
+    /session complete/i,
+    /intervention needed/i,
+    /error/i,
+    /failed/i,
+    /blocked/i,
+    /attention/i
+  ];
+  
+  const isImportant = importantPatterns.some(pattern => 
+    pattern.test(title) || pattern.test(message)
+  );
+  
+  if (isImportant) {
+    return { 
+      send: true, 
+      reason: 'Important notification - completion or intervention' 
+    };
+  }
+  
+  // Default: allow unknown notifications (to be safe)
+  return { 
+    send: true, 
+    reason: 'Unknown notification type - allowing to be safe' 
+  };
+}
+
 export async function POST({ request }) {
   try {
     // Use proven library instead of manual implementation
@@ -60,6 +124,19 @@ export async function POST({ request }) {
       console.log('Missing title or message');
       return json({ error: 'Title and message are required' }, { status: 400 });
     }
+
+    // 🎯 SMART NOTIFICATION FILTERING
+    const shouldSendNotification = intelligentNotificationFilter(title, message, data);
+    if (!shouldSendNotification.send) {
+      console.log(`🚫 Notification filtered: ${shouldSendNotification.reason}`);
+      return json({ 
+        success: true, 
+        message: 'Notification filtered (not sent)',
+        reason: shouldSendNotification.reason,
+        timestamp: new Date().toISOString()
+      });
+    }
+    console.log(`✅ Notification approved: ${shouldSendNotification.reason}`);
 
     // Check APNs configuration
     if (!apnsClient.isConfigured()) {
