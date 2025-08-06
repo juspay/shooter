@@ -17,14 +17,16 @@ function intelligentNotificationFilter(title, message, data) {
   }
   
   // Filter out known spam patterns from old universal notifier
+  // These patterns match ANY project name, not just "shooter"
   const spamPatterns = [
-    /Starting.*shooter/i,     // "Write Starting | shooter"
-    /Complete.*shooter/i,     // "Edit Complete | shooter" 
-    /Tools starting/i,        // "Tools starting in shooter"
-    /Tool starting/i,         // "Tool starting in shooter"
-    /unknown.*shooter/i,      // "unknown | shooter"
-    /PreToolUse/i,           // Any PreToolUse notifications
-    /PostToolUse/i,          // Any PostToolUse notifications
+    /\w+\s+Starting\s*\|\s*\w+/i,    // "Write Starting | projectname"
+    /\w+\s+Complete\s*\|\s*\w+/i,    // "Edit Complete | projectname" 
+    /Tools?\s+starting/i,            // "Tools starting in projectname"
+    /Tool\s+starting/i,              // "Tool starting in projectname"
+    /unknown\s*\|\s*\w+/i,           // "unknown | projectname"
+    /PreToolUse/i,                   // Any PreToolUse notifications
+    /PostToolUse/i,                  // Any PostToolUse notifications
+    /\w+\s+\|\s+\w+$/i,             // Generic "Tool | Project" pattern
   ];
   
   const isSpam = spamPatterns.some(pattern => 
@@ -126,17 +128,26 @@ export async function POST({ request }) {
     }
 
     // 🎯 SMART NOTIFICATION FILTERING
+    console.log('=== NOTIFICATION FILTERING ANALYSIS ===');
+    console.log('Title:', JSON.stringify(title));
+    console.log('Message:', JSON.stringify(message));
+    console.log('Data source:', data?.source || 'unknown');
+    console.log('Data category:', data?.category || 'unknown');
+    
     const shouldSendNotification = intelligentNotificationFilter(title, message, data);
     if (!shouldSendNotification.send) {
-      console.log(`🚫 Notification filtered: ${shouldSendNotification.reason}`);
+      console.log(`🚫 FILTERED OUT: ${shouldSendNotification.reason}`);
+      console.log('=== END FILTERING ANALYSIS (BLOCKED) ===');
       return json({ 
         success: true, 
         message: 'Notification filtered (not sent)',
         reason: shouldSendNotification.reason,
+        filteringAnalysis: { title, message, source: data?.source },
         timestamp: new Date().toISOString()
       });
     }
-    console.log(`✅ Notification approved: ${shouldSendNotification.reason}`);
+    console.log(`✅ SENDING: ${shouldSendNotification.reason}`);
+    console.log('=== END FILTERING ANALYSIS (APPROVED) ===');
 
     // Check APNs configuration
     if (!apnsClient.isConfigured()) {
