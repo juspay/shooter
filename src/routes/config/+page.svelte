@@ -8,8 +8,8 @@
 
   // Smart defaults for local development
   if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
-    apiKey = 'shooter2024';
-    deviceToken = 'ffd431c70b0f0971b76c5b5d1bce24ac52753e06854496d29200ced822a11bab';
+    apiKey = 'your-api-key-here';
+    deviceToken = 'your-device-token-here';
   }
 
   async function saveConfiguration() {

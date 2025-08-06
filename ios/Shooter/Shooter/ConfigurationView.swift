@@ -64,7 +64,7 @@ struct ConfigurationView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("API Key")
                                 .font(.subheadline)
-                            SecureField("shooter2024", text: $apiKey)
+                            SecureField("your-api-key-here", text: $apiKey)
                                 .textFieldStyle(.plain)
                         }
                     }
@@ -247,7 +247,7 @@ struct ConfigurationView: View {
             serverUrl = AppConfig.defaultServerURL
         }
         if apiKey.isEmpty {
-            apiKey = "shooter2024" // Smart default for local development
+            apiKey = "your-api-key-here" // Smart default for local development
         }
     }
     

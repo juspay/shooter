@@ -14,12 +14,12 @@ from datetime import datetime
 import traceback
 
 # SHOOTER API Configuration
-SHOOTER_API_URL = "https://shooter-zfjv5c9h7-sachin-sharmas-projects-7dbbe7a8.vercel.app/api/notify"
+SHOOTER_API_URL = "https://shooter-k0pm43fy7-sachin-sharmas-projects-7dbbe7a8.vercel.app/api/notify"
 # For local development, uncomment the next line:
 # SHOOTER_API_URL = "http://localhost:5173/api/notify"
 
-API_KEY = "shooter2024"  # Actual API key from .env
-DEVICE_TOKEN = "ffd431c70b0f0971b76c5b5d1bce24ac52753e06854496d29200ced822a11bab"  # Actual device token
+API_KEY = os.getenv("SHOOTER_API_KEY", "your-api-key-here")
+DEVICE_TOKEN = os.getenv("SHOOTER_DEVICE_TOKEN", "your-device-token-here")
 
 def send_notification(title, body, data=None):
     """

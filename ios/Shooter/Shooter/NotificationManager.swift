@@ -11,7 +11,7 @@ class NotificationManager: NSObject, ObservableObject {
     @Published var lastUpdate: Date?
     
     private var serverUrl: String = AppConfig.defaultServerURL
-    private var apiKey: String = "shooter2024"
+    private var apiKey: String = "your-api-key-here"
     
     override init() {
         super.init()
