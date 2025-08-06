@@ -5,8 +5,18 @@ const fs = require('fs');
 const path = require('path');
 
 const API_URL = 'https://shooter-7npps1px3-sachin-sharmas-projects-7dbbe7a8.vercel.app/api/notify';
-const API_KEY = process.env.SHOOTER_API_KEY || 'shooter2024';
-const DEVICE_TOKEN = process.env.SHOOTER_DEVICE_TOKEN || 'ffd431c70b0f0971b76c5b5d1bce24ac52753e06854496d29200ced822a11bab';
+const API_KEY = process.env.SHOOTER_API_KEY;
+const DEVICE_TOKEN = process.env.SHOOTER_DEVICE_TOKEN;
+
+// Validate required environment variables
+if (!API_KEY) {
+    console.error('❌ SHOOTER_API_KEY environment variable is required');
+    process.exit(1);
+}
+if (!DEVICE_TOKEN) {
+    console.error('❌ SHOOTER_DEVICE_TOKEN environment variable is required');
+    process.exit(1);
+}
 
 // Configuration
 const COMPLETION_TIMEOUT = 45000; // 45 seconds to wait for inactivity
