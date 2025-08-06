@@ -128,26 +128,39 @@ export async function POST({ request }) {
     }
 
     // 🎯 SMART NOTIFICATION FILTERING
-    console.log('=== NOTIFICATION FILTERING ANALYSIS ===');
-    console.log('Title:', JSON.stringify(title));
-    console.log('Message:', JSON.stringify(message));
-    console.log('Data source:', data?.source || 'unknown');
-    console.log('Data category:', data?.category || 'unknown');
+    const requestId = Math.random().toString(36).substring(2, 15);
+    const timestamp = new Date().toISOString();
+    
+    console.log(`\n=== 📱 NOTIFICATION REQUEST [${requestId}] @ ${timestamp} ===`);
+    console.log(`📍 Project: ${data?.project || 'unknown'}`);
+    console.log(`🔧 Tool: ${data?.tool || 'unknown'}`);
+    console.log(`📂 Files: ${data?.files || 'none'}`);
+    console.log(`💬 Title: ${JSON.stringify(title)}`);
+    console.log(`📝 Message: ${JSON.stringify(message)}`);
+    console.log(`🏷️ Source: ${data?.source || 'unknown'}`);
+    console.log(`📊 Category: ${data?.category || 'unknown'}`);
+    console.log(`🌐 User-Agent: ${request.headers.get('user-agent') || 'unknown'}`);
+    console.log(`🔑 Auth: ${request.headers.get('authorization') ? 'Bearer ***' : 'none'}`);
     
     const shouldSendNotification = intelligentNotificationFilter(title, message, data);
+    
     if (!shouldSendNotification.send) {
-      console.log(`🚫 FILTERED OUT: ${shouldSendNotification.reason}`);
-      console.log('=== END FILTERING ANALYSIS (BLOCKED) ===');
+      console.log(`\n🚫 DECISION: FILTERED OUT`);
+      console.log(`📋 Reason: ${shouldSendNotification.reason}`);
+      console.log(`🔍 Filter Analysis: ${JSON.stringify({ title, message, source: data?.source }, null, 2)}`);
+      console.log(`=== END REQUEST [${requestId}] - BLOCKED ===\n`);
+      
       return json({ 
         success: true, 
         message: 'Notification filtered (not sent)',
         reason: shouldSendNotification.reason,
-        filteringAnalysis: { title, message, source: data?.source },
+        filteringAnalysis: { title, message, source: data?.source, requestId },
         timestamp: new Date().toISOString()
       });
     }
-    console.log(`✅ SENDING: ${shouldSendNotification.reason}`);
-    console.log('=== END FILTERING ANALYSIS (APPROVED) ===');
+    
+    console.log(`\n✅ DECISION: APPROVED FOR SENDING`);
+    console.log(`📋 Reason: ${shouldSendNotification.reason}`);
 
     // Check APNs configuration
     if (!apnsClient.isConfigured()) {
@@ -215,29 +228,43 @@ export async function POST({ request }) {
     console.log('- payload stringify:', JSON.stringify(payload));
     
     try {
-      console.log('Calling sendNotification with:');
-      console.log('  arg1 (deviceToken):', deviceToken);  
-      console.log('  arg2 (payload):', payload);
+      console.log(`\n🚀 SENDING TO APNs...`);
+      console.log(`📱 Device Token: ${deviceToken.substring(0, 8)}...`);
+      console.log(`📦 Payload Size: ${JSON.stringify(payload).length} bytes`);
       
       const result = await apnsClient.sendNotification(deviceToken, payload);
       
-      console.log('✅ Notification sent successfully!');
-      console.log('Result:', JSON.stringify(result, null, 2));
+      console.log(`\n✅ APNs DELIVERY SUCCESS!`);
+      console.log(`📊 Result: ${JSON.stringify(result, null, 2)}`);
+      console.log(`📱 Devices Sent: ${result.sent || 0}`);
+      console.log(`❌ Devices Failed: ${result.failed || 0}`);
+      if (result.details && result.details.length > 0) {
+        console.log(`🔍 APNs Details:`);
+        result.details.forEach((detail, index) => {
+          console.log(`  ${index + 1}. Device: ${detail.device?.substring(0, 8)}...`);
+          console.log(`     APNs ID: ${detail['apns-unique-id']}`);
+          console.log(`     Status: ${detail.status || 'success'}`);
+        });
+      }
+      console.log(`=== END REQUEST [${requestId}] - DELIVERED ===\n`);
       
       return json({
         success: true,
         message: 'Notification sent successfully',
         result,
+        requestId,
         timestamp: new Date().toISOString()
       });
     } catch (notificationError) {
-      console.error('💥 Direct APNs HTTP/2 sendNotification error:', notificationError);
-      console.error('Error details:', notificationError.message);
-      console.error('Error stack:', notificationError.stack);
+      console.error(`\n💥 APNs DELIVERY FAILED!`);
+      console.error(`📋 Error: ${notificationError.message}`);
+      console.error(`🔍 Details: ${notificationError.stack}`);
+      console.error(`=== END REQUEST [${requestId}] - FAILED ===\n`);
       
       return json({ 
         error: 'Failed to send notification',
         details: notificationError.message,
+        requestId,
         timestamp: new Date().toISOString()
       }, { status: 500 });
     }
