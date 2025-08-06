@@ -2,29 +2,37 @@
   "hooks": [
     {
       "event": "PreToolUse",
-      "command": "python3 /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notify_tool_start.py",
+      "command": "node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/universal_notifier.cjs PreToolUse",
       "matcher": {
-        "tools": ["Edit", "Write", "MultiEdit", "Bash", "Read"]
+        "tools": ["Edit", "Write", "MultiEdit", "Bash", "Read", "Grep", "Glob", "LS", "Task", "WebFetch", "TodoWrite", "NotebookEdit", "ExitPlanMode"]
       }
     },
     {
       "event": "PostToolUse", 
-      "command": "python3 /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notify_tool_complete.py",
+      "command": "node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/universal_notifier.cjs PostToolUse",
       "matcher": {
-        "tools": ["Edit", "Write", "MultiEdit", "Bash"]
+        "tools": ["Edit", "Write", "MultiEdit", "Bash", "Task", "TodoWrite", "NotebookEdit"]
       }
     },
     {
       "event": "UserPromptSubmit",
-      "command": "python3 /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notify_session_activity.py"
+      "command": "node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/universal_notifier.cjs UserPromptSubmit"
     },
     {
       "event": "Stop",
-      "command": "python3 /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notify_session_end.py"
+      "command": "node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/universal_notifier.cjs Stop"
     },
     {
       "event": "SessionStart",
-      "command": "python3 /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notify_session_start.py"
+      "command": "node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/universal_notifier.cjs SessionStart"
+    },
+    {
+      "event": "Notification",
+      "command": "node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/universal_notifier.cjs Notification"
+    },
+    {
+      "event": "Subagent Stop", 
+      "command": "node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/universal_notifier.cjs 'Subagent Stop'"
     }
   ]
 }
