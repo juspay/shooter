@@ -6,5 +6,40 @@
       "Write(*)",
       "Read(*)"
     ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/smart_completion_notifier.cjs PreToolUse"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/smart_completion_notifier.cjs Stop"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/smart_completion_notifier.cjs Notification"
+          }
+        ]
+      }
+    ]
   }
 }

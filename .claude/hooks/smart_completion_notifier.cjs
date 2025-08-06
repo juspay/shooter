@@ -20,8 +20,7 @@ if (!DEVICE_TOKEN) {
 
 // Configuration
 const COMPLETION_TIMEOUT = 45000; // 45 seconds to wait for inactivity
-const STATE_DIR = '/tmp/claude_session_tracker';
-const STATE_FILE = path.join(STATE_DIR, 'session_state.json');
+const STATE_DIR = `/tmp/claude_session_tracker`;
 
 function ensureStateDir() {
     if (!fs.existsSync(STATE_DIR)) {
@@ -31,9 +30,12 @@ function ensureStateDir() {
 
 function getSessionState() {
     ensureStateDir();
+    const projectName = getProjectName();
+    const stateFile = path.join(STATE_DIR, `session_state_${projectName}.json`);
+    
     try {
-        if (fs.existsSync(STATE_FILE)) {
-            const data = fs.readFileSync(STATE_FILE, 'utf8');
+        if (fs.existsSync(stateFile)) {
+            const data = fs.readFileSync(stateFile, 'utf8');
             return JSON.parse(data);
         }
     } catch (error) {
@@ -45,14 +47,18 @@ function getSessionState() {
         lastActivityTime: Date.now(),
         sessionId: Date.now().toString(),
         pendingCompletion: false,
-        completionTimeoutId: null
+        completionTimeoutId: null,
+        project: projectName
     };
 }
 
 function saveSessionState(state) {
     ensureStateDir();
+    const projectName = getProjectName();
+    const stateFile = path.join(STATE_DIR, `session_state_${projectName}.json`);
+    
     try {
-        fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
+        fs.writeFileSync(stateFile, JSON.stringify(state, null, 2));
     } catch (error) {
         console.error('❌ Could not save session state:', error.message);
     }
