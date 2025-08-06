@@ -4,7 +4,7 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 
-const API_URL = 'https://shooter-4feu4kwno-sachin-sharmas-projects-7dbbe7a8.vercel.app/api/notify';
+const API_URL = 'https://shooter-7npps1px3-sachin-sharmas-projects-7dbbe7a8.vercel.app/api/notify';
 const API_KEY = process.env.SHOOTER_API_KEY || 'shooter2024';
 const DEVICE_TOKEN = process.env.SHOOTER_DEVICE_TOKEN || 'ffd431c70b0f0971b76c5b5d1bce24ac52753e06854496d29200ced822a11bab';
 
