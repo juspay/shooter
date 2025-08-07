@@ -16,6 +16,14 @@ function intelligentNotificationFilter(title, message, data) {
     };
   }
   
+  // Always allow Stop hook completion notifications
+  if (source === 'stop-hook') {
+    return { 
+      send: true, 
+      reason: 'Stop hook completion notification - session finished' 
+    };
+  }
+  
   // Filter out known spam patterns from old universal notifier
   // These patterns match ANY project name, not just "shooter"
   const spamPatterns = [
