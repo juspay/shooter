@@ -88,6 +88,7 @@ export async function POST({ request }) {
     console.log('API_KEY from env:', env.API_KEY ? 'SET' : 'NOT SET');
     console.log('API_KEY length:', env.API_KEY ? env.API_KEY.length : 0);
     console.log('API_KEY value:', env.API_KEY);
+    console.log('Device token updated:', new Date().toISOString());
     
     // Validate API key
     const authHeader = request.headers.get('authorization');
