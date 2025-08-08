@@ -6,7 +6,7 @@ export async function GET() {
     status: 'healthy',
     timestamp: new Date().toISOString(),
     environment: env.NODE_ENV || 'development',
-    version: '1.0.3',
+    version: '1.0.4',
     checks: {
       hasDeviceToken: !!env.DEVICE_TOKEN,
       hasAPNsConfig: !!(env.APNS_KEY_ID && env.APNS_TEAM_ID && (env.APNS_KEY || env.APNS_KEY_BASE64)),
