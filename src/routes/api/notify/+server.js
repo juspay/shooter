@@ -2,11 +2,47 @@ import { json } from '@sveltejs/kit';
 import { LibraryAPNsService } from '$lib/server/library-apns.js';
 import { env } from '$env/dynamic/private';
 
+// 🎯 NOTIFICATION DEDUPLICATION CACHE
+const notificationCache = new Map();
+const DEDUP_WINDOW = 10000; // 10 seconds deduplication window
+
+function isDuplicateNotification(title, message, data) {
+  const key = `${title}|${message}|${data?.category || 'unknown'}`;
+  const now = Date.now();
+  
+  if (notificationCache.has(key)) {
+    const lastSent = notificationCache.get(key);
+    if (now - lastSent < DEDUP_WINDOW) {
+      return true; // Duplicate within time window
+    }
+  }
+  
+  // Record this notification
+  notificationCache.set(key, now);
+  
+  // Clean up old entries
+  for (const [k, v] of notificationCache.entries()) {
+    if (now - v > DEDUP_WINDOW) {
+      notificationCache.delete(k);
+    }
+  }
+  
+  return false;
+}
+
 // 🎯 INTELLIGENT NOTIFICATION FILTERING
 function intelligentNotificationFilter(title, message, data) {
   const source = data?.source || 'unknown';
   const category = data?.category || 'unknown';
   const timestamp = Date.now();
+  
+  // Check for duplicate notifications first
+  if (isDuplicateNotification(title, message, data)) {
+    return {
+      send: false,
+      reason: 'Duplicate notification within 10-second window'
+    };
+  }
   
   // Always allow smart completion detector notifications (both old and new naming)
   if (source === 'smart-completion-detector' || source === 'shooter-completion-detector') {

@@ -4,17 +4,13 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 
-const API_URL = 'https://shooter-7npps1px3-sachin-sharmas-projects-7dbbe7a8.vercel.app/api/notify';
-const API_KEY = process.env.SHOOTER_API_KEY;
-const DEVICE_TOKEN = process.env.SHOOTER_DEVICE_TOKEN;
+const API_URL = 'https://shooter-dtufsplzq-sachin-sharmas-projects-7dbbe7a8.vercel.app/api/notify';
+const API_KEY = process.env.SHOOTER_API_KEY || 'shooter2024';
+const DEVICE_TOKEN = process.env.SHOOTER_DEVICE_TOKEN || null; // Use server-side device token
 
 // Validate required environment variables
 if (!API_KEY) {
     console.error('❌ SHOOTER_API_KEY environment variable is required');
-    process.exit(1);
-}
-if (!DEVICE_TOKEN) {
-    console.error('❌ SHOOTER_DEVICE_TOKEN environment variable is required');
     process.exit(1);
 }
 
@@ -86,14 +82,14 @@ function sendNotification(title, body, category = 'completion') {
     const payload = JSON.stringify({
         title,
         message: body,
-        deviceToken: DEVICE_TOKEN,
+        ...(DEVICE_TOKEN && { deviceToken: DEVICE_TOKEN }), // Only include if we have a device token
         data: {
             category,
             project: getProjectName(),
             timestamp,
             requestId,
             clientTimestamp: timestamp,
-            source: 'smart-completion-detector'
+            source: 'shooter-completion-detector'
         }
     });
 
@@ -189,8 +185,8 @@ function handleNotification() {
     console.log('🔔 Claude needs attention - sending immediate notification');
     
     sendNotification(
-        `🚨 Intervention Needed | ${project}`,
-        `Claude Code needs your attention at ${timestamp}`,
+        `🚨 Shooter Needs Attention`,
+        `Intervention needed in ${project} at ${timestamp}`,
         'intervention'
     );
 }
@@ -220,8 +216,8 @@ function checkForCompletion() {
         console.log(`✅ Session appears complete - sending notification after ${duration}s of inactivity`);
         
         sendNotification(
-            `✅ Session Complete | ${project}`,
-            `Claude Code finished all tasks at ${timestamp}. Ready for your next request.`,
+            `✅ Shooter Complete`,
+            `Session completed in ${project} at ${timestamp}. Ready for your next request.`,
             'completion'
         );
         

@@ -3,7 +3,7 @@
 const https = require('https');
 const { execSync } = require('child_process');
 
-console.log('✅ Claude Code completed session in shooter at ' + new Date().toLocaleTimeString());
+console.log('✅ Shooter session completed at ' + new Date().toLocaleTimeString());
 
 // Get project context
 function getProjectContext() {
@@ -65,7 +65,7 @@ function sendCompletionNotification() {
         message: enhancedMessage,
         data: {
             category: 'completion',
-            source: 'smart-completion-detector',
+            source: 'shooter-completion-detector',
             project: context.project,
             branch: context.gitBranch,
             timestamp: new Date().toISOString()
@@ -73,7 +73,7 @@ function sendCompletionNotification() {
     });
 
     const options = {
-        hostname: 'shooter-7npps1px3-sachin-sharmas-projects-7dbbe7a8.vercel.app',
+        hostname: 'shooter-dtufsplzq-sachin-sharmas-projects-7dbbe7a8.vercel.app',
         port: 443,
         path: '/api/notify',
         method: 'POST',

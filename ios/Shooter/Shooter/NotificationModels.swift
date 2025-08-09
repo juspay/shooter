@@ -125,7 +125,7 @@ extension NotificationItem {
         ),
         NotificationItem(
             title: "🎯 SHOOTER: Session Started",
-            message: "09:40:00 • Claude Code session active in shooter",
+            message: "09:40:00 • SHOOTER session active in project",
             timestamp: Date().addingTimeInterval(-480),
             type: .sessionStart,
             status: .delivered,

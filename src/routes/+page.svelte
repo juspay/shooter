@@ -49,7 +49,7 @@
     {
       id: 5,
       title: '🎯 SHOOTER: Session Started',
-      message: '09:40:00 • Claude Code session active in shooter',
+      message: '09:40:00 • SHOOTER session active in project',
       timestamp: Date.now() - 1000 * 60 * 8, // 8 minutes ago
       type: 'session_start',
       status: 'delivered',
@@ -244,7 +244,7 @@
     <div class="notifications-header">
       <div class="notifications-title">
         <h2>📱 Live Notifications</h2>
-        <p>Real-time updates from your Claude Code sessions</p>
+        <p>Real-time updates from your SHOOTER development sessions</p>
       </div>
       
       <div class="notifications-actions">
@@ -284,7 +284,7 @@
       <div class="empty-state">
         <div class="empty-icon">📱</div>
         <h3>No Notifications Yet</h3>
-        <p>Notifications from Claude Code will appear here when hooks are triggered</p>
+        <p>Notifications from SHOOTER will appear here when development events occur</p>
         <button class="btn btn-secondary" on:click={sendTestNotification} disabled={loading}>
           {#if loading}
             <div class="btn-spinner"></div>

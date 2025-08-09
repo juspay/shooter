@@ -2,7 +2,7 @@ import Foundation
 
 struct AppConfig {
     // Server Configuration
-    static let defaultServerURL = "https://shooter-dpucs3r83-sachin-sharmas-projects-7dbbe7a8.vercel.app"
+    static let defaultServerURL = "https://shooter-dtufsplzq-sachin-sharmas-projects-7dbbe7a8.vercel.app"
     static let apiVersion = "v1"
     
     // Endpoints

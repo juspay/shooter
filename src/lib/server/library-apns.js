@@ -30,7 +30,7 @@ export class LibraryAPNsService {
                 keyId: this.keyId,
                 teamId: this.teamId,
             },
-            production: false // MUST be false - iOS app uses development aps-environment
+            production: false // Sandbox mode for development iOS app
         };
         
         console.log('Creating APNs provider with options:');

@@ -100,7 +100,7 @@ struct ContentView: View {
                         .font(.title2)
                         .fontWeight(.semibold)
                     
-                    Text("Allow SHOOTER to send you real-time notifications from Claude Code")
+                    Text("Allow SHOOTER to send you real-time notifications from your development sessions")
                         .font(.body)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -140,7 +140,7 @@ struct ContentView: View {
                         .font(.title2)
                         .fontWeight(.semibold)
                     
-                    Text("Notifications from Claude Code will appear here when hooks are triggered")
+                    Text("Notifications from SHOOTER will appear here when development events occur")
                         .font(.body)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)

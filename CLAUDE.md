@@ -4,13 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This repository contains a **WORKING** bidirectional communication system between Claude Code and iOS applications using push notifications. The system enables Claude Code to automatically send real-time notifications to iOS devices when coding events occur, with plans for interactive responses.
+This repository contains a **WORKING** bidirectional communication system between Shooter and iOS applications using push notifications. The system enables Shooter to automatically send real-time notifications to iOS devices when coding events occur, with plans for interactive responses.
 
 ## Project Structure
 
 ### Core Implementation ✅
-- `CLAUDE-CODE-INTEGRATION.md` - **WORKING** Claude Code lifecycle hooks integration
-- `.claude/` - Claude Code hook configuration and Python scripts
+- `CLAUDE-CODE-INTEGRATION.md` - **WORKING** Shooter lifecycle hooks integration
+- `.claude/` - Shooter hook configuration and Python scripts
 - `src/` - SvelteKit API server (working locally, production needs env fix)
 - `ios/` - Swift iOS app (working, receiving notifications)
 
@@ -52,7 +52,7 @@ The system is designed to be built in four phases:
 - Response handling and server communication
 - Local notification history
 
-### Claude Code Integration ✅ **WORKING**
+### Shooter Integration ✅ **WORKING**
 - **Lifecycle Hooks**: Automatic detection of tool usage, user prompts, session events
 - **HTTP Client**: Python scripts send POST requests to SvelteKit API
 - **Context-Aware Notifications**: Smart categorization (debug, feature, testing, learning)
@@ -62,7 +62,7 @@ The system is designed to be built in four phases:
 
 ## Security Requirements
 
-- Bearer token authentication for Claude Code → SvelteKit communication
+- Bearer token authentication for Shooter → SvelteKit communication
 - Apple APNs JWT tokens with automatic rotation
 - HMAC signature validation for webhook security
 - Environment-based configuration management
@@ -70,7 +70,7 @@ The system is designed to be built in four phases:
 
 ## Development Workflow
 
-✅ **IMPLEMENTED AND WORKING** - Claude Code notification system is live and comprehensive:
+✅ **IMPLEMENTED AND WORKING** - Shooter notification system is live and comprehensive:
 
 1. Follow PLAN-A.MD for basic implementation
 2. Use PLAN-B.MD for comprehensive system architecture

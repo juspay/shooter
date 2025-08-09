@@ -247,7 +247,7 @@ struct ConfigurationView: View {
             serverUrl = AppConfig.defaultServerURL
         }
         if apiKey.isEmpty {
-            apiKey = "your-api-key-here" // Smart default for local development
+            apiKey = "shooter2024" // Smart default for local development
         }
     }
     
