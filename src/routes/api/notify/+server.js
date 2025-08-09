@@ -8,8 +8,8 @@ function intelligentNotificationFilter(title, message, data) {
   const category = data?.category || 'unknown';
   const timestamp = Date.now();
   
-  // Always allow smart completion detector notifications
-  if (source === 'smart-completion-detector') {
+  // Always allow smart completion detector notifications (both old and new naming)
+  if (source === 'smart-completion-detector' || source === 'shooter-completion-detector') {
     return { 
       send: true, 
       reason: 'Smart completion detector - completion or intervention needed' 
@@ -24,17 +24,12 @@ function intelligentNotificationFilter(title, message, data) {
     };
   }
   
-  // Filter out known spam patterns from old universal notifier
-  // These patterns match ANY project name, not just "shooter"
+  // Filter out only very specific spam patterns to be less restrictive
   const spamPatterns = [
-    /\w+\s+Starting\s*\|\s*\w+/i,    // "Write Starting | projectname"
-    /\w+\s+Complete\s*\|\s*\w+/i,    // "Edit Complete | projectname" 
-    /Tools?\s+starting/i,            // "Tools starting in projectname"
-    /Tool\s+starting/i,              // "Tool starting in projectname"
-    /unknown\s*\|\s*\w+/i,           // "unknown | projectname"
     /PreToolUse/i,                   // Any PreToolUse notifications
     /PostToolUse/i,                  // Any PostToolUse notifications
-    /\w+\s+\|\s+\w+$/i,             // Generic "Tool | Project" pattern
+    /^(Read|Write|Edit|Bash)\s+Starting\s*\|\s*\w+$/i,  // Only basic tool starting patterns
+    /^unknown\s*\|\s*\w+$/i,         // Only "unknown | projectname" exactly
   ];
   
   const isSpam = spamPatterns.some(pattern => 
@@ -69,10 +64,10 @@ function intelligentNotificationFilter(title, message, data) {
     };
   }
   
-  // Default: allow unknown notifications (to be safe)
+  // Default: allow all notifications unless explicitly filtered
   return { 
     send: true, 
-    reason: 'Unknown notification type - allowing to be safe' 
+    reason: 'General notification - allowing by default' 
   };
 }
 
