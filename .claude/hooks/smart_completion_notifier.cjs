@@ -5,7 +5,7 @@ const fs = require('fs');
 const path = require('path');
 
 const API_URL = 'https://shooter-dtufsplzq-sachin-sharmas-projects-7dbbe7a8.vercel.app/api/notify';
-const API_KEY = process.env.SHOOTER_API_KEY || 'shooter2024';
+const API_KEY = process.env.SHOOTER_API_KEY;
 const DEVICE_TOKEN = process.env.SHOOTER_DEVICE_TOKEN || null; // Use server-side device token
 
 // Validate required environment variables
@@ -22,6 +22,23 @@ function ensureStateDir() {
   if (!fs.existsSync(STATE_DIR)) {
     fs.mkdirSync(STATE_DIR, { recursive: true });
   }
+}
+
+function getToolInfo() {
+    // Claude Code provides these environment variables during tool execution
+    const toolName = process.env.CLAUDE_TOOL_NAME || 'Unknown';
+    const filePaths = process.env.CLAUDE_FILE_PATHS || '';
+    const commandLine = process.env.CLAUDE_COMMAND_LINE || '';
+
+    // Extract file names if available
+    const files = filePaths ? filePaths.split(',').map(f => path.basename(f.trim())).join(', ') : '';
+
+    return {
+        tool: toolName,
+        files: files,
+        command: commandLine,
+        fullPaths: filePaths
+    };
 }
 
 function getSessionState() {
@@ -189,6 +206,32 @@ function handleNotification() {
     `Intervention needed in ${project} at ${timestamp}`,
     'intervention'
   );
+}
+
+function createContextualMessage(state) {
+    const project = getProjectName();
+    const timestamp = getTimestamp();
+    const totalTools = state.totalToolUses || 0;
+
+    let message = `Session completed in ${project} at ${timestamp}`;
+
+    // Add context about recent work
+    if (totalTools > 0) {
+        message += `\n\n📊 Used ${totalTools} tools`;
+
+        if (state.recentTools && state.recentTools.length > 0) {
+            const toolSummary = state.recentTools.slice(0, 3).join(', ');
+            message += `\n🛠️ Recent: ${toolSummary}`;
+        }
+
+        if (state.recentFiles && state.recentFiles.length > 0) {
+            const fileSummary = state.recentFiles.slice(0, 3).join(', ');
+            message += `\n📁 Files: ${fileSummary}`;
+        }
+    }
+
+    message += `\n\n🎯 Ready for your next request!`;
+    return message;
 }
 
 function checkForCompletion() {
