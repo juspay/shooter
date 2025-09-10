@@ -20,7 +20,7 @@
     "svelte": "^5.22.0",
     "svelte-check": "^4.1.0",
     "typescript": "^5.7.2",
-    "vite": "^6.0.5"
+    "vite": "^6.3.6"
   },
   "dependencies": {
     "@parse/node-apn": "^6.5.0",
