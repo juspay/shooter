@@ -1,14 +1,42 @@
 {
   "extends": "./.svelte-kit/tsconfig.json",
   "compilerOptions": {
+    // Bun-optimized TypeScript configuration
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": false,
+    "noEmit": true,
+
+    // Enhanced type safety for Shooter dashboard
+    "strict": true,
+    "exactOptionalPropertyTypes": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+
+    // File handling
     "allowJs": true,
     "checkJs": true,
+    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true,
-    "skipLibCheck": true,
+
+    // Development experience
     "sourceMap": true,
-    "strict": true,
-    "moduleResolution": "bundler"
-  }
+    "declaration": true,
+    "declarationMap": true,
+    "skipLibCheck": true
+  },
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.js",
+    "src/**/*.svelte",
+    "test-setup.ts",
+    "**/*.test.ts",
+    "**/*.spec.ts"
+  ],
+  "exclude": ["node_modules", ".svelte-kit", "build", "dist"]
 }

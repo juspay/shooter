@@ -1,0 +1,430 @@
+/*
+  Shooter Design Tokens
+  Consolidated from app.css and shooter-design-system.css
+  Using explicit naming convention for clarity
+*/
+
+:root {
+  /* ========================================
+     COLOR TOKENS - RAW VALUES
+     ======================================== */
+
+  /* Grayscale Palette */
+  --color-black: #000000;
+  --color-gray-100: #1c1c1e;
+  --color-gray-200: #2c2c2e;
+  --color-gray-300: #3a3a3c;
+  --color-gray-400: #48484a;
+  --color-gray-500: #636366;
+  --color-gray-600: #8e8e93;
+  --color-gray-700: #aeaeb2;
+  --color-gray-800: #c7c7cc;
+  --color-gray-900: #d1d1d6;
+  --color-white: #ffffff;
+
+  /* Brand Colors - Primary (iOS Blue) */
+  --color-blue-500: #4da3ff;
+  --color-blue-600: #007aff;
+  --color-blue-700: #0056cc;
+  --color-blue-800: #003d99;
+
+  /* Status Colors */
+  --color-green-600: #30d158;
+  --color-green-700: #28a745;
+  --color-red-600: #ff453a;
+  --color-red-700: #da3633;
+  --color-orange-600: #ff9f0a;
+  --color-orange-700: #d29922;
+  --color-yellow-600: #ffd60a;
+  --color-cyan-500: #00ddff;
+  --color-cyan-600: #00c7ff;
+  --color-cyan-700: #0099cc;
+  --color-green-500: #00ff88;
+  --color-red-500: #ff4444;
+  --color-orange-500: #ffa500;
+  --color-gray-550: #888888;
+
+  /* Color variants with transparency (light versions for backgrounds) */
+  --color-blue-500-light: rgba(77, 163, 255, 0.15);
+  --color-blue-600-light: rgba(0, 122, 255, 0.15);
+  --color-green-600-light: rgba(48, 209, 88, 0.15);
+  --color-red-600-light: rgba(255, 69, 58, 0.15);
+  --color-orange-600-light: rgba(255, 159, 10, 0.15);
+
+  /* Opacity variants for common colors */
+  /* Blue opacity variants */
+  --color-blue-600-alpha-10: rgba(0, 122, 255, 0.1);
+  --color-blue-600-alpha-15: rgba(0, 122, 255, 0.15);
+  --color-blue-600-alpha-20: rgba(0, 122, 255, 0.2);
+  --color-blue-600-alpha-30: rgba(0, 122, 255, 0.3);
+  --color-blue-600-alpha-40: rgba(0, 122, 255, 0.4);
+  --color-blue-700-alpha-30: rgba(10, 132, 255, 0.3);
+
+  /* Green opacity variants */
+  --color-green-600-alpha-10: rgba(48, 209, 88, 0.1);
+  --color-green-600-alpha-20: rgba(52, 199, 89, 0.2);
+  --color-green-600-alpha-30: rgba(52, 199, 89, 0.3);
+  --color-green-500-alpha-10: rgba(0, 255, 136, 0.1);
+  --color-green-500-alpha-20: rgba(0, 255, 136, 0.2);
+  --color-green-500-alpha-30: rgba(0, 255, 136, 0.3);
+  --color-green-500-alpha-40: rgba(0, 255, 136, 0.4);
+
+  /* Red opacity variants */
+  --color-red-600-alpha-10: rgba(255, 69, 58, 0.1);
+  --color-red-600-alpha-20: rgba(255, 69, 58, 0.2);
+  --color-red-600-alpha-30: rgba(255, 69, 58, 0.3);
+  --color-red-600-alpha-40: rgba(255, 69, 58, 0.4);
+  --color-red-700-alpha-10: rgba(220, 53, 69, 0.1);
+  --color-red-700-alpha-30: rgba(220, 53, 69, 0.3);
+  --color-red-500-alpha-10: rgba(255, 68, 68, 0.1);
+  --color-red-500-alpha-20: rgba(255, 68, 68, 0.2);
+  --color-red-500-alpha-30: rgba(255, 68, 68, 0.3);
+
+  /* Orange opacity variants */
+  --color-orange-600-alpha-10: rgba(255, 159, 10, 0.1);
+  --color-orange-500-alpha-10: rgba(255, 165, 0, 0.1);
+
+  /* Cyan opacity variants */
+  --color-cyan-500-alpha-10: rgba(0, 221, 255, 0.1);
+  --color-cyan-500-alpha-20: rgba(0, 221, 255, 0.2);
+  --color-cyan-500-alpha-30: rgba(0, 221, 255, 0.3);
+  --color-cyan-500-alpha-40: rgba(0, 221, 255, 0.4);
+  --color-cyan-600-alpha-10: rgba(0, 255, 255, 0.1);
+  --color-cyan-600-alpha-20: rgba(0, 255, 255, 0.2);
+  --color-cyan-600-alpha-30: rgba(0, 255, 255, 0.3);
+  --color-cyan-600-alpha-40: rgba(0, 255, 255, 0.4);
+
+  /* White opacity variants */
+  --color-white-alpha-10: rgba(255, 255, 255, 0.1);
+  --color-white-alpha-20: rgba(255, 255, 255, 0.2);
+  --color-white-alpha-30: rgba(255, 255, 255, 0.3);
+
+  /* Black opacity variants */
+  --color-black-alpha-15: rgba(0, 0, 0, 0.15);
+  --color-black-alpha-20: rgba(0, 0, 0, 0.2);
+  --color-black-alpha-30: rgba(0, 0, 0, 0.3);
+  --color-black-alpha-40: rgba(0, 0, 0, 0.4);
+  --color-black-alpha-50: rgba(0, 0, 0, 0.5);
+  --color-black-alpha-60: rgba(0, 0, 0, 0.6);
+  --color-black-alpha-75: rgba(0, 0, 0, 0.75);
+  --color-black-alpha-80: rgba(0, 0, 0, 0.8);
+
+  /* Gray opacity variants */
+  --color-gray-100-alpha-85: rgba(28, 28, 30, 0.85);
+  --color-gray-300-alpha-60: rgba(58, 58, 60, 0.6);
+
+  /* Text Colors with Alpha */
+  --color-text-primary: #ffffff;
+  --color-text-secondary: #ebebf5;
+  --color-text-tertiary: #ebebf599;  /* 60% opacity */
+  --color-text-quaternary: #ebebf54d;  /* 30% opacity */
+
+  /* ========================================
+     SEMANTIC COLOR TOKENS - USE CASES
+     ======================================== */
+
+  /* Background Colors */
+  --bg-color-primary: var(--color-black);
+  --bg-color-secondary: var(--color-gray-100);
+  --bg-color-tertiary: var(--color-gray-200);
+  --bg-color-elevated: var(--color-gray-300);
+  --bg-color-card: var(--color-gray-300-alpha-60);
+  --bg-color-blur: var(--color-gray-100-alpha-85);
+  --bg-color-overlay: var(--color-black-alpha-75);
+  --bg-color-hover: var(--color-white-alpha-10);
+  --bg-color-active: var(--color-white-alpha-20);
+  --bg-color-subtle: var(--color-black-alpha-30);
+  --bg-color-muted: var(--color-black-alpha-40);
+  --bg-color-light: var(--color-gray-900);
+
+  /* Overlay Colors */
+  --overlay-dark-heavy: var(--color-black-alpha-80);
+  --overlay-dark-medium: var(--color-black-alpha-60);
+  --overlay-dark-light: var(--color-black-alpha-50);
+  --overlay-dark-subtle: var(--color-black-alpha-20);
+  --overlay-dark-hint: var(--color-black-alpha-15);
+  --overlay-light-heavy: var(--color-white-alpha-30);
+  --overlay-light-medium: var(--color-white-alpha-20);
+  --overlay-light-subtle: var(--color-white-alpha-10);
+
+  /* Text Colors */
+  --text-color-primary: var(--color-text-primary);
+  --text-color-secondary: var(--color-text-secondary);
+  --text-color-tertiary: var(--color-text-tertiary);
+  --text-color-quaternary: var(--color-text-quaternary);
+  --text-color-disabled: var(--color-gray-500);
+  --text-color-placeholder: var(--color-gray-600);
+  --text-color-muted: var(--color-gray-600);
+  --text-color-hint: var(--color-gray-800);
+  --text-color-inverse: var(--color-white);
+
+  /* Border Colors */
+  --border-color-primary: #38383a;
+  --border-color-secondary: var(--color-gray-200);
+  --border-color-tertiary: #555555;
+  --border-color-focus: var(--color-blue-600);
+  --border-color-error: var(--color-red-600);
+  --separator-color: #38383a;
+
+  /* Accent/Primary Colors - Cyan/Blue */
+  --accent-color-primary: var(--color-cyan-500);
+  --accent-color-primary-hover: var(--color-cyan-600);
+  --accent-color-subtle: var(--color-cyan-500-alpha-10);
+  --accent-color-light: var(--color-cyan-500-alpha-20);
+  --accent-color-border: var(--color-cyan-500-alpha-30);
+  --accent-color-bg: var(--color-cyan-600-alpha-20);
+  --accent-color-strong: var(--color-cyan-500-alpha-40);
+  --accent-color-secondary: var(--color-cyan-600-alpha-30);
+  --accent-color-secondary-subtle: var(--color-cyan-600-alpha-10);
+  --accent-color-secondary-bg: var(--color-cyan-600-alpha-20);
+  --accent-color-secondary-strong: var(--color-cyan-600-alpha-40);
+
+  /* Status Colors - Semantic */
+  --status-color-success: var(--color-green-600);
+  --status-color-success-hover: var(--color-green-700);
+  --status-color-success-subtle: var(--color-green-600-alpha-10);
+  --status-color-success-light: var(--color-green-600-alpha-15);
+  --status-color-success-bg: var(--color-green-600-alpha-20);
+  --status-color-success-border: var(--color-green-600-alpha-30);
+  --status-color-success-bg-light: var(--color-green-600-light);
+  --status-color-success-active: var(--color-green-800);
+  --status-color-success-bright: var(--color-green-500-alpha-30);
+  --status-color-success-bright-bg: var(--color-green-500-alpha-20);
+  --status-color-success-bright-subtle: var(--color-green-500-alpha-10);
+  --status-color-success-bright-strong: var(--color-green-500-alpha-40);
+
+  --status-color-error: var(--color-red-600);
+  --status-color-error-hover: var(--color-red-700);
+  --status-color-error-subtle: var(--color-red-600-alpha-10);
+  --status-color-error-light: var(--color-red-600-alpha-15);
+  --status-color-error-bg: var(--color-red-600-alpha-20);
+  --status-color-error-border: var(--color-red-600-alpha-30);
+  --status-color-error-bg-light: var(--color-red-600-light);
+  --status-color-error-active: var(--color-red-800);
+  --status-color-error-strong: var(--color-red-600-alpha-40);
+  --status-color-error-alt-subtle: var(--color-red-700-alpha-10);
+  --status-color-error-alt-border: var(--color-red-700-alpha-30);
+  --status-color-error-bright: var(--color-red-500-alpha-30);
+  --status-color-error-bright-bg: var(--color-red-500-alpha-20);
+  --status-color-error-bright-subtle: var(--color-red-500-alpha-10);
+
+  --status-color-warning: var(--color-orange-600);
+  --status-color-warning-hover: var(--color-orange-700);
+  --status-color-warning-subtle: var(--color-orange-600-alpha-10);
+  --status-color-warning-light: var(--color-orange-600-alpha-15);
+  --status-color-warning-bg: var(--color-orange-600-alpha-20);
+  --status-color-warning-border: var(--color-orange-600-alpha-30);
+  --status-color-warning-bg-light: var(--color-orange-600-light);
+  --status-color-warning-bright-subtle: var(--color-orange-500-alpha-10);
+  --status-color-warning-alt: var(--color-yellow-600);
+
+  --status-color-info: var(--color-blue-600);
+  --status-color-info-hover: var(--color-blue-700);
+  --status-color-info-subtle: var(--color-blue-600-alpha-10);
+  --status-color-info-light: var(--color-blue-600-alpha-15);
+  --status-color-info-bg: var(--color-blue-600-alpha-20);
+  --status-color-info-border: var(--color-blue-600-alpha-30);
+  --status-color-info-bg-light: var(--color-blue-600-light);
+  --status-color-info-bg-lighter: var(--color-blue-500-light);
+  --status-color-info-primary: var(--color-blue-500);
+  --status-color-info-active: var(--color-blue-800);
+
+  /* Special/Highlight Color */
+  --highlight-color-primary: var(--color-purple-600);
+
+  /* Interactive Elements - Buttons */
+  --bg-color-button-primary: var(--color-blue-600);
+  --bg-color-button-primary-hover: var(--color-blue-700);
+  --bg-color-button-primary-active: var(--color-blue-800);
+
+  --bg-color-button-secondary: var(--color-green-600);
+  --bg-color-button-secondary-hover: var(--color-green-700);
+
+  --bg-color-button-tertiary: var(--color-gray-200);
+  --bg-color-button-tertiary-hover: var(--color-gray-300);
+
+  /* Interactive Elements - Inputs */
+  --bg-color-input: var(--color-gray-200);
+  --bg-color-input-focus: var(--color-gray-200);
+  --border-color-input: var(--border-color-primary);
+  --border-color-input-focus: var(--color-blue-600);
+
+  /* Gradient Tokens */
+  --gradient-blue-cyan: linear-gradient(135deg, var(--color-blue-600), var(--color-cyan-600));
+  --gradient-cyan: linear-gradient(135deg, var(--color-cyan-500), var(--color-cyan-700));
+  --gradient-cyan-blue: linear-gradient(135deg, var(--color-cyan-500), var(--color-blue-600));
+  --gradient-green: linear-gradient(135deg, var(--color-green-500), var(--color-green-600));
+  --gradient-primary: linear-gradient(135deg, var(--color-blue-600), var(--color-blue-700));
+
+  /* ========================================
+     SPACING TOKENS - 8px Grid System
+     All spacing follows 8px grid: 8, 16, 24, 32, 40, 48, 64
+     Exceptions: 4px for half-grid fine spacing
+     ======================================== */
+
+  --spacing-xxxs: 4px;    /* Half-grid for fine spacing */
+  --spacing-xxs: 4px;     /* Half-grid for fine spacing */
+  --spacing-xs: 8px;      /* Base grid unit */
+  --spacing-sm: 16px;     /* Was 12px - updated to 8px grid */
+  --spacing-md: 24px;     /* Was 16px - updated to 8px grid */
+  --spacing-lg: 32px;     /* Was 24px - updated to 8px grid */
+  --spacing-xl: 40px;     /* Was 32px - updated to 8px grid */
+  --spacing-xxl: 48px;
+  --spacing-xxxl: 64px;
+
+  /* Component-specific Spacing */
+  --spacing-button-x-sm: var(--spacing-sm);  /* 16px */
+  --spacing-button-x-md: var(--spacing-md);  /* 24px */
+  --spacing-button-x-lg: var(--spacing-lg);  /* 32px */
+
+  --spacing-input-x: var(--spacing-sm);      /* 16px */
+  --spacing-card: var(--spacing-md);         /* 24px */
+
+  /* ========================================
+     BORDER RADIUS TOKENS - 8px Grid Aligned
+     Following 8px grid for consistency: 4, 8, 16, 24
+     ======================================== */
+
+  --radius-xxs: 4px;     /* Was 2px - rounded to half-grid */
+  --radius-xs: 4px;
+  --radius-sm: 8px;      /* Was 6px - updated to 8px grid */
+  --radius-md: 8px;
+  --radius-lg: 16px;     /* Was 12px - updated to 8px grid */
+  --radius-xl: 16px;
+  --radius-2xl: 24px;    /* Was 20px - updated to 8px grid */
+  --radius-3xl: 24px;
+  --radius-full: 9999px;
+
+  /* Component-specific Radius */
+  --radius-button: var(--radius-lg);    /* 16px */
+  --radius-input: var(--radius-lg);     /* 16px */
+  --radius-card: var(--radius-xl);      /* 16px */
+  --radius-modal: var(--radius-2xl);    /* 24px */
+  --radius-badge: var(--radius-full);
+  --radius-bubble: 16px;                /* Was 18px - updated to 8px grid */
+
+  /* ========================================
+     SHADOW TOKENS
+     ======================================== */
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.12);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.15);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.3);
+  --shadow-xl: 0 25px 50px rgba(0, 0, 0, 0.5);
+  --shadow-2xl: 0 30px 60px rgba(0, 0, 0, 0.6);
+
+  /* Focus and Error Shadows */
+  --shadow-focus: 0 0 0 3px rgba(0, 122, 255, 0.2);
+  --shadow-error: 0 0 0 3px rgba(255, 69, 58, 0.2);
+
+  /* Shooter-specific shadow aliases (legacy compatibility) */
+  --shooter-shadow-sm: var(--shadow-sm);
+  --shooter-shadow-md: var(--shadow-md);
+  --shooter-shadow-lg: var(--shadow-lg);
+  --shooter-shadow-xl: var(--shadow-xl);
+  --shooter-shadow-2xl: var(--shadow-2xl);
+
+  /* ========================================
+     Z-INDEX TOKENS
+     ======================================== */
+
+  --z-index-base: 1;
+  --z-index-dropdown: 100;
+  --z-index-sticky: 200;
+  --z-index-fixed: 300;
+  --z-index-modal-backdrop: 400;
+  --z-index-modal: 500;
+  --z-index-popover: 600;
+  --z-index-tooltip: 700;
+  --z-index-toast: 800;
+
+  /* Shooter-specific z-index aliases (legacy compatibility) */
+  --shooter-z-base: var(--z-index-base);
+  --shooter-z-dropdown: var(--z-index-dropdown);
+  --shooter-z-sticky: var(--z-index-sticky);
+  --shooter-z-fixed: var(--z-index-fixed);
+  --shooter-z-modal-backdrop: var(--z-index-modal-backdrop);
+  --shooter-z-modal: var(--z-index-modal);
+  --shooter-z-popover: var(--z-index-popover);
+  --shooter-z-tooltip: var(--z-index-tooltip);
+  --shooter-z-toast: var(--z-index-toast);
+
+  /* ========================================
+     TRANSITION TOKENS
+     ======================================== */
+
+  --transition-fast: 150ms ease;
+  --transition-base: 200ms ease;
+  --transition-slow: 300ms ease;
+  --transition-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* ========================================
+     TYPOGRAPHY TOKENS (internal use only)
+     These are used ONLY in typography.css
+     Components should NEVER reference these directly
+     ======================================== */
+
+  /* Font Families */
+  --font-family-system: -apple-system, BlinkMacSystemFont, 'Segoe UI',
+                        Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans',
+                        'Helvetica Neue', sans-serif;
+  --font-family-mono: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono',
+                      Consolas, 'Courier New', monospace;
+
+  /* Font Sizes */
+  --font-size-xxxs: 10px;
+  --font-size-xxs: 12px;
+  --font-size-xs: 14px;
+  --font-size-sm: 16px;
+  --font-size-md: 18px;
+  --font-size-lg: 20px;
+  --font-size-xl: 24px;
+  --font-size-2xl: 30px;
+  --font-size-3xl: 36px;
+  --font-size-4xl: 44px;
+
+  /* Font Weights */
+  --font-weight-light: 300;
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  /* ========================================
+     COMPONENT SIZE TOKENS
+     ======================================== */
+
+  /* Button Heights */
+  --size-button-sm: 32px;
+  --size-button-md: 40px;
+  --size-button-lg: 48px;
+
+  /* Input Heights */
+  --size-input-sm: 32px;
+  --size-input-md: 40px;
+  --size-input-lg: 48px;
+
+  /* ========================================
+     RESPONSIVE BREAKPOINTS
+     These are used in media queries
+     ======================================== */
+
+  --breakpoint-mobile: 640px;
+  --breakpoint-tablet: 768px;
+  --breakpoint-desktop: 1024px;
+  --breakpoint-large: 1280px;
+}
+
+/* ========================================
+   DARK MODE OVERRIDES (FUTURE)
+   Currently dark mode is default
+   This section is placeholder for future light mode
+   ======================================== */
+
+[theme='light'] {
+  /* Future light mode tokens */
+  /* --bg-color-primary: var(--color-white); */
+  /* --bg-color-secondary: var(--color-gray-900); */
+  /* --text-color-primary: var(--color-black); */
+  /* ... complete light mode palette */
+}

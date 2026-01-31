@@ -10,8 +10,8 @@ class NotificationManager: NSObject, ObservableObject {
     @Published var isConnected = false
     @Published var lastUpdate: Date?
     
-    private var serverUrl: String = AppConfig.defaultServerURL
-    private var apiKey: String = "shooter2024"
+    private var serverUrl: String = ""
+    private var apiKey: String = ""
     
     override init() {
         super.init()
@@ -58,38 +58,10 @@ class NotificationManager: NSObject, ObservableObject {
     }
     
     func registerWithServer(serverUrl: String) {
-        guard let token = deviceToken,
-              let url = URL(string: "\(serverUrl)\(AppConfig.Endpoints.register)") else {
-            print("Invalid server URL or missing device token")
-            return
-        }
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
-        let body = [
-            "deviceToken": token,
-            "platform": "ios"
-        ]
-        
-        do {
-            request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        } catch {
-            print("Failed to encode request body: \(error)")
-            return
-        }
-        
-        URLSession.shared.dataTask(with: request) { data, response, error in
-            if let error = error {
-                print("Failed to register with server: \(error)")
-                return
-            }
-            
-            if let httpResponse = response as? HTTPURLResponse {
-                print("Registration response status: \(httpResponse.statusCode)")
-            }
-        }.resume()
+        // Note: The current server doesn't have a register endpoint
+        // Device token registration happens when sending notifications
+        print("Device token registered locally: \(deviceToken ?? "none")")
+        print("Server URL configured: \(serverUrl)")
     }
     
     func sendTestNotification() {
@@ -210,11 +182,7 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
             }
         }
         
-        // Load mock notifications for development
-        if notifications.isEmpty {
-            notifications = NotificationItem.mockNotifications
-            lastUpdate = Date()
-        }
+        // Don't load mock data in production - only show real notifications
     }
     
     func refreshNotifications() async {
@@ -238,9 +206,10 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
     }
     
     func sendTestNotificationThroughServer(serverUrl: String, apiKey: String, completion: @escaping (Bool, String) -> Void) {
-        guard let token = deviceToken,
-              let url = URL(string: "\(serverUrl)/api/notify") else {
-            completion(false, "Invalid server URL or missing device token")
+        guard !serverUrl.isEmpty,
+              !apiKey.isEmpty,
+              let url = URL(string: "\(serverUrl)/notify") else {
+            completion(false, "❌ Invalid server URL or missing API key")
             return
         }
         
@@ -252,9 +221,9 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         let body = [
             "title": "🧪 SHOOTER: Configuration Test",
             "message": "Test notification sent at \(Date().formatted(date: .omitted, time: .standard))",
-            "deviceToken": token,
             "data": [
-                "source": "config-test",
+                "source": "ios-config-test",
+                "category": "test",
                 "timestamp": "\(Int(Date().timeIntervalSince1970))"
             ]
         ] as [String: Any]
@@ -267,19 +236,27 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         }
         
         URLSession.shared.dataTask(with: request) { data, response, error in
-            if let error = error {
-                completion(false, "Network error: \(error.localizedDescription)")
-                return
-            }
-            
-            if let httpResponse = response as? HTTPURLResponse {
-                if httpResponse.statusCode == 200 {
-                    completion(true, "✅ Test notification sent successfully! Check your device.")
-                } else {
-                    completion(false, "❌ Server error: HTTP \(httpResponse.statusCode)")
+            DispatchQueue.main.async {
+                if let error = error {
+                    completion(false, "Network error: \(error.localizedDescription)")
+                    return
                 }
-            } else {
-                completion(false, "❌ Invalid response from server")
+                
+                if let httpResponse = response as? HTTPURLResponse {
+                    print("Test notification response: \(httpResponse.statusCode)")
+                    
+                    if httpResponse.statusCode == 200 {
+                        completion(true, "✅ Test notification sent successfully! Check your device.")
+                    } else if httpResponse.statusCode == 401 {
+                        completion(false, "❌ Invalid API key - check your configuration")
+                    } else if httpResponse.statusCode == 500 {
+                        completion(false, "❌ Server configuration error - check APNs setup")
+                    } else {
+                        completion(false, "❌ Server error: HTTP \(httpResponse.statusCode)")
+                    }
+                } else {
+                    completion(false, "❌ Invalid response from server")
+                }
             }
         }.resume()
     }
@@ -319,11 +296,18 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
     }
     
     private func loadConfiguration() {
+        // Load saved configuration or set defaults
         if let savedServerUrl = UserDefaults.standard.string(forKey: "serverUrl") {
             serverUrl = savedServerUrl
+        } else {
+            serverUrl = AppConfig.defaultServerURL
         }
+        
         if let savedApiKey = UserDefaults.standard.string(forKey: "apiKey") {
             apiKey = savedApiKey
+        } else {
+            // No default API key - user must configure
+            apiKey = ""
         }
     }
 }

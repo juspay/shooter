@@ -35,12 +35,14 @@ ios/
 ### Setup
 
 1. **Run the setup script:**
+
    ```bash
    cd ios/Shooter
    ./Scripts/setup.sh
    ```
 
 2. **Open in Xcode:**
+
    ```bash
    open Shooter.xcodeproj
    ```
@@ -59,7 +61,7 @@ Use the build script for automated building:
 # Build for simulator only
 ./Scripts/build.sh simulator
 
-# Build for device only  
+# Build for device only
 ./Scripts/build.sh device
 
 # Run tests
@@ -74,12 +76,14 @@ Or build directly in Xcode (⌘+B).
 ## 📱 Features
 
 ### Core Functionality
+
 - **Push Notification Registration**: Automatically requests permission and registers device token
 - **Server Integration**: Connects to the SvelteKit backend for notification delivery
 - **Real-time Updates**: Displays incoming notifications in the app
 - **Device Token Management**: Secure handling and display of APNs device tokens
 
 ### User Interface
+
 - **SwiftUI Architecture**: Modern declarative UI with environment objects
 - **Notification Status**: Visual indicators for permission and registration status
 - **Test Notifications**: Built-in local notification testing
@@ -107,6 +111,7 @@ Or build directly in Xcode (⌘+B).
 ### Environment Configuration
 
 The app uses the following configuration:
+
 - **Default Server URL**: `https://shooter-dpucs3r83-sachin-sharmas-projects-7dbbe7a8.vercel.app`
 - **Bundle ID**: `in.juspay.shooter`
 - **Minimum iOS Version**: 15.0
@@ -114,11 +119,13 @@ The app uses the following configuration:
 ## 🏃‍♂️ Running the App
 
 ### In Simulator
+
 1. Select an iOS Simulator in Xcode
 2. Press ⌘+R to build and run
 3. Note: Push notifications won't work in simulator
 
 ### On Device
+
 1. Connect your iOS device
 2. Select your device in Xcode
 3. Ensure you have a valid development certificate
@@ -128,10 +135,13 @@ The app uses the following configuration:
 ## 🧪 Testing
 
 ### Local Notifications
+
 The app includes a "Send Test Notification" button that triggers local notifications to verify the UI and notification handling.
 
 ### Push Notifications
+
 To test real push notifications:
+
 1. Run the app on a physical device
 2. Grant notification permissions
 3. Copy the device token from the app
@@ -140,6 +150,7 @@ To test real push notifications:
 ## 🛠️ Development
 
 ### Architecture
+
 - **SwiftUI**: Modern declarative UI framework
 - **Combine**: Reactive programming for data flow
 - **UserNotifications**: iOS framework for notification handling
@@ -148,18 +159,21 @@ To test real push notifications:
 ### Key Components
 
 **NotificationManager**: Handles all push notification logic
+
 - Permission requests
 - Device token registration
 - Notification processing
 - Server communication
 
 **ContentView**: Main UI displaying app status and controls
+
 - Real-time status updates
 - Device token display
 - Server configuration
 - Test controls
 
 **AppDelegate**: Manages app lifecycle and remote notifications
+
 - Device token callbacks
 - Notification registration
 - Background processing
@@ -169,16 +183,19 @@ To test real push notifications:
 ### Common Issues
 
 **"No valid signing certificate found"**
+
 - Ensure you have a valid Apple Developer account
 - Check your signing settings in Xcode
 - Download development certificates in Xcode preferences
 
 **"Push notifications not working"**
+
 - Verify you're testing on a physical device (not simulator)
 - Check that Push Notifications capability is enabled
 - Ensure your APNs configuration is correct on the server
 
 **"Device token not generated"**
+
 - Check notification permissions are granted
 - Verify you're on a physical device
 - Check Xcode console for error messages
@@ -186,6 +203,7 @@ To test real push notifications:
 ### Debug Information
 
 The app logs important information to the Xcode console:
+
 - Device token registration
 - Notification permissions
 - Server communication

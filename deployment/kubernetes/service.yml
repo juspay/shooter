@@ -1,0 +1,263 @@
+# Kubernetes services for SHOOTER application and dependencies
+apiVersion: v1
+kind: Service
+metadata:
+  name: shooter-service
+  namespace: shooter
+  labels:
+    app: shooter
+    component: app
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3000
+      protocol: TCP
+  selector:
+    app: shooter
+    component: app
+
+---
+# Redis service
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-service
+  namespace: shooter
+  labels:
+    app: shooter
+    component: redis
+spec:
+  type: ClusterIP
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: 6379
+      protocol: TCP
+  selector:
+    app: shooter
+    component: redis
+
+---
+# PostgreSQL service
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-service
+  namespace: shooter
+  labels:
+    app: shooter
+    component: postgres
+spec:
+  type: ClusterIP
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+      protocol: TCP
+  selector:
+    app: shooter
+    component: postgres
+
+---
+# Redis deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: shooter
+  labels:
+    app: shooter
+    component: redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: shooter
+      component: redis
+  template:
+    metadata:
+      labels:
+        app: shooter
+        component: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          ports:
+            - containerPort: 6379
+          args:
+            - redis-server
+            - --maxmemory
+            - 256mb
+            - --maxmemory-policy
+            - allkeys-lru
+            - --save
+            - '900 1'
+            - --save
+            - '300 10'
+            - --save
+            - '60 10000'
+            - --appendonly
+            - 'yes'
+            - --appendfsync
+            - everysec
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          livenessProbe:
+            exec:
+              command:
+                - redis-cli
+                - ping
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            exec:
+              command:
+                - redis-cli
+                - ping
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          volumeMounts:
+            - name: redis-data
+              mountPath: /data
+      volumes:
+        - name: redis-data
+          persistentVolumeClaim:
+            claimName: redis-pvc
+
+---
+# PostgreSQL deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: shooter
+  labels:
+    app: shooter
+    component: postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: shooter
+      component: postgres
+  template:
+    metadata:
+      labels:
+        app: shooter
+        component: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:15-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: shooter
+            - name: POSTGRES_USER
+              value: shooter
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: shooter-secrets
+                  key: DB_PASSWORD
+            - name: POSTGRES_INITDB_ARGS
+              value: '--auth-host=scram-sha-256'
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - shooter
+                - -d
+                - shooter
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - shooter
+                - -d
+                - shooter
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+            - name: init-scripts
+              mountPath: /docker-entrypoint-initdb.d
+      volumes:
+        - name: postgres-data
+          persistentVolumeClaim:
+            claimName: postgres-pvc
+        - name: init-scripts
+          configMap:
+            name: postgres-init-scripts
+
+---
+# Redis PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-pvc
+  namespace: shooter
+  labels:
+    app: shooter
+    component: redis
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: fast-ssd
+
+---
+# PostgreSQL PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: shooter
+  labels:
+    app: shooter
+    component: postgres
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: fast-ssd
+
+---
+# ConfigMap for PostgreSQL init scripts
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init-scripts
+  namespace: shooter
+  labels:
+    app: shooter
+    component: postgres
+data:
+  init.sql: |
+    -- Include the content from ../docker/init.sql here
+    -- (This would be the same content as the init.sql file we created earlier)

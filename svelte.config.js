@@ -7,7 +7,10 @@ const config = {
   kit: {
     adapter: adapter({
       runtime: 'nodejs20.x'
-    })
+    }),
+    alias: {
+      '$types': 'src/lib/types'
+    }
   }
 };
 

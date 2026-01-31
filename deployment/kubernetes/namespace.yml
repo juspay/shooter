@@ -1,0 +1,11 @@
+# Kubernetes namespace for SHOOTER notification system
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: shooter
+  labels:
+    app: shooter
+    environment: production
+    version: '1.0.0'
+  annotations:
+    description: 'SHOOTER iOS notification system'

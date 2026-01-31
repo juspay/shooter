@@ -2,15 +2,16 @@ import Foundation
 
 struct AppConfig {
     // Server Configuration
-    static let defaultServerURL = "https://shooter-dtufsplzq-sachin-sharmas-projects-7dbbe7a8.vercel.app"
+    static let defaultServerURL = "http://localhost:5173"  // Default to local development
+    static let productionServerURL = "https://your-production-domain.vercel.app"
     static let apiVersion = "v1"
     
     // Endpoints
     struct Endpoints {
-        static let notify = "/api/notify"
-        static let health = "/api/health"
-        static let register = "/api/register"
-        static let webhook = "/api/webhook"
+        static let notify = "/notify"
+        static let health = "/health"
+        static let register = "/register"
+        static let webhook = "/webhook"
     }
     
     // App Information

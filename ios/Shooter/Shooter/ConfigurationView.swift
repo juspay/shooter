@@ -71,7 +71,7 @@ struct ConfigurationView: View {
                 } header: {
                     Text("Configuration")
                 } footer: {
-                    Text("These settings are pre-configured for local development. Only change if connecting to a different server.")
+                    Text("Enter your server URL and API key. The API key should match the one configured in your server environment.")
                 }
                 
                 // Device Token Section
@@ -125,7 +125,7 @@ struct ConfigurationView: View {
                             Text("Save Configuration")
                         }
                     }
-                    .disabled(serverUrl.isEmpty)
+                    .disabled(serverUrl.isEmpty || apiKey.isEmpty)
                     
                     if !notificationManager.isAuthorized {
                         Button {
@@ -242,18 +242,31 @@ struct ConfigurationView: View {
     
     // MARK: - Actions
     private func loadConfiguration() {
-        // Load saved configuration or set smart defaults
+        // Load saved configuration or set defaults
         if serverUrl.isEmpty {
             serverUrl = AppConfig.defaultServerURL
         }
         if apiKey.isEmpty {
-            apiKey = "shooter2024" // Smart default for local development
+            // Load from UserDefaults if available
+            apiKey = UserDefaults.standard.string(forKey: "apiKey") ?? ""
         }
     }
     
     private func testConfiguration() {
         guard !serverUrl.isEmpty else {
             alertMessage = "Please enter a server URL"
+            showingAlert = true
+            return
+        }
+        
+        guard !apiKey.isEmpty else {
+            alertMessage = "Please enter an API key"
+            showingAlert = true
+            return
+        }
+        
+        guard notificationManager.deviceToken != nil else {
+            alertMessage = "Device token not available. Please restart the app and ensure notifications are enabled."
             showingAlert = true
             return
         }

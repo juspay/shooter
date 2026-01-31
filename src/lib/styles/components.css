@@ -1,0 +1,482 @@
+/*
+  Shooter Component Classes
+  Reusable component patterns with global- prefix
+  All values use design tokens from tokens.css
+*/
+
+/* ========================================
+   BUTTON COMPONENTS
+   ======================================== */
+
+.global-button-base {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-md) var(--spacing-lg);
+  border-radius: var(--radius-button);
+  border: none;
+  cursor: pointer;
+  transition: all var(--transition-base);
+  font-family: inherit;
+  min-height: var(--size-button-md);
+}
+
+.global-button-base:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.global-button-primary {
+  background: var(--bg-color-button-primary);
+  color: var(--color-white);
+}
+
+.global-button-primary:hover:not(:disabled) {
+  background: var(--bg-color-button-primary-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.global-button-primary:active:not(:disabled) {
+  background: var(--bg-color-button-primary-active);
+  transform: translateY(0);
+}
+
+.global-button-secondary {
+  background: var(--bg-color-button-secondary);
+  color: var(--color-white);
+}
+
+.global-button-secondary:hover:not(:disabled) {
+  background: var(--bg-color-button-secondary-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.global-button-tertiary {
+  background: var(--bg-color-button-tertiary);
+  color: var(--text-color-primary);
+  border: 1px solid var(--border-color-primary);
+}
+
+.global-button-tertiary:hover:not(:disabled) {
+  background: var(--bg-color-button-tertiary-hover);
+  transform: translateY(-1px);
+}
+
+.global-button-sm {
+  min-height: var(--size-button-sm);
+  padding: var(--spacing-xs) var(--spacing-md);
+}
+
+.global-button-lg {
+  min-height: var(--size-button-lg);
+  padding: var(--spacing-md) var(--spacing-xl);
+}
+
+/* ========================================
+   CARD COMPONENTS
+   ======================================== */
+
+.global-card-base {
+  background: var(--bg-color-card);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--border-color-primary);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  margin-bottom: var(--spacing-lg);
+  box-shadow: var(--shadow-md);
+  transition: all var(--transition-base);
+}
+
+.global-card-base:hover {
+  border-color: var(--border-color-secondary);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+.global-card-header {
+  padding: var(--spacing-lg);
+  border-bottom: 1px solid var(--separator-color);
+}
+
+.global-card-content {
+  padding: var(--spacing-lg);
+}
+
+.global-card-success {
+  border-left: 4px solid var(--status-color-success);
+}
+
+.global-card-error {
+  border-left: 4px solid var(--status-color-error);
+}
+
+.global-card-warning {
+  border-left: 4px solid var(--status-color-warning);
+}
+
+.global-card-info {
+  border-left: 4px solid var(--status-color-info);
+}
+
+/* ========================================
+   INPUT COMPONENTS
+   ======================================== */
+
+.global-input-base {
+  width: 100%;
+  padding: var(--spacing-md);
+  background: var(--bg-color-input);
+  border: 1px solid var(--border-color-input);
+  border-radius: var(--radius-input);
+  color: var(--text-color-primary);
+  font-family: inherit;
+  transition: all var(--transition-base);
+  min-height: var(--size-input-md);
+}
+
+.global-input-base:focus {
+  outline: none;
+  border-color: var(--border-color-input-focus);
+  box-shadow: var(--shadow-focus);
+}
+
+.global-input-base::placeholder {
+  color: var(--text-color-placeholder);
+}
+
+.global-input-base:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.global-input-error {
+  border-color: var(--border-color-error);
+}
+
+.global-input-error:focus {
+  box-shadow: var(--shadow-error);
+}
+
+.global-textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.global-input-sm {
+  min-height: var(--size-input-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+}
+
+.global-input-lg {
+  min-height: var(--size-input-lg);
+  padding: var(--spacing-md) var(--spacing-lg);
+}
+
+/* ========================================
+   BADGE COMPONENTS
+   ======================================== */
+
+.global-badge-base {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--spacing-xxs) var(--spacing-sm);
+  border-radius: var(--radius-badge);
+  white-space: nowrap;
+}
+
+.global-badge-success {
+  background: var(--status-color-success-light);
+  color: var(--status-color-success);
+  border: 1px solid var(--status-color-success-border);
+}
+
+.global-badge-error {
+  background: var(--status-color-error-light);
+  color: var(--status-color-error);
+  border: 1px solid var(--status-color-error-border);
+}
+
+.global-badge-warning {
+  background: var(--status-color-warning-light);
+  color: var(--status-color-warning);
+  border: 1px solid var(--status-color-warning-border);
+}
+
+.global-badge-info {
+  background: var(--status-color-info-light);
+  color: var(--status-color-info);
+}
+
+/* ========================================
+   STATUS INDICATOR COMPONENTS
+   ======================================== */
+
+.global-status-indicator {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-md);
+  border-radius: var(--radius-lg);
+  transition: all var(--transition-base);
+}
+
+.global-status-idle {
+  background: var(--bg-color-tertiary);
+  color: var(--text-color-secondary);
+}
+
+.global-status-success {
+  background: var(--status-color-success-light);
+  color: var(--status-color-success);
+  border: 1px solid var(--status-color-success-border);
+}
+
+.global-status-error {
+  background: var(--status-color-error-light);
+  color: var(--status-color-error);
+  border: 1px solid var(--status-color-error-border);
+}
+
+.global-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.global-status-dot-success {
+  background: var(--status-color-success);
+}
+
+.global-status-dot-warning {
+  background: var(--status-color-warning);
+}
+
+.global-status-dot-error {
+  background: var(--status-color-error);
+}
+
+/* ========================================
+   LOADING SPINNER COMPONENTS
+   ======================================== */
+
+.global-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--text-color-quaternary);
+  border-top: 2px solid var(--color-blue-600);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.global-spinner-lg {
+  width: 24px;
+  height: 24px;
+  border-width: 3px;
+}
+
+/* ========================================
+   HEADER COMPONENTS
+   ======================================== */
+
+.global-header {
+  background: var(--bg-color-blur);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border-color-primary);
+  position: sticky;
+  top: 0;
+  z-index: var(--z-index-sticky);
+}
+
+.global-header-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: var(--spacing-md) var(--spacing-lg);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* ========================================
+   FORM GROUP COMPONENTS
+   ======================================== */
+
+.global-form-group {
+  margin-bottom: var(--spacing-lg);
+}
+
+/* ========================================
+   GRID LAYOUTS
+   ======================================== */
+
+.global-grid-auto {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--spacing-lg);
+}
+
+.global-grid-status {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--spacing-md);
+}
+
+/* ========================================
+   CODE DISPLAY COMPONENTS
+   ======================================== */
+
+.global-code-block {
+  background: var(--bg-color-primary);
+  color: var(--text-color-primary);
+  padding: var(--spacing-md);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-family-mono);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  border: 1px solid var(--border-color-primary);
+  overflow-x: auto;
+}
+
+/* ========================================
+   MODAL COMPONENTS
+   ======================================== */
+
+.global-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--bg-color-overlay);
+  z-index: var(--z-index-modal-backdrop);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-lg);
+}
+
+.global-modal {
+  background: var(--bg-color-secondary);
+  border: 1px solid var(--border-color-primary);
+  border-radius: var(--radius-modal);
+  box-shadow: var(--shadow-xl);
+  max-width: 600px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  z-index: var(--z-index-modal);
+}
+
+.global-modal-header {
+  padding: var(--spacing-lg);
+  border-bottom: 1px solid var(--border-color-primary);
+}
+
+.global-modal-body {
+  padding: var(--spacing-lg);
+}
+
+.global-modal-footer {
+  padding: var(--spacing-lg);
+  border-top: 1px solid var(--border-color-primary);
+  display: flex;
+  gap: var(--spacing-md);
+  justify-content: flex-end;
+}
+
+/* ========================================
+   TOGGLE/ACCORDION COMPONENTS
+   ======================================== */
+
+.global-toggle-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: var(--spacing-md);
+  background: var(--bg-color-secondary);
+  border: 1px solid var(--border-color-primary);
+  border-radius: var(--radius-md);
+  color: var(--text-color-secondary);
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+
+.global-toggle-button:hover {
+  background: var(--bg-color-tertiary);
+}
+
+.global-toggle-icon {
+  transition: transform var(--transition-base);
+}
+
+.global-toggle-icon-rotated {
+  transform: rotate(180deg);
+}
+
+.global-toggle-content {
+  margin-top: var(--spacing-md);
+  padding: var(--spacing-md);
+  background: var(--bg-color-secondary);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color-primary);
+}
+
+/* ========================================
+   FOOTER COMPONENT
+   ======================================== */
+
+.global-footer {
+  background: var(--bg-color-secondary);
+  border-top: 1px solid var(--border-color-primary);
+  padding: var(--spacing-lg);
+  text-align: center;
+}
+
+/* ========================================
+   FOCUS STYLES
+   ======================================== */
+
+.global-button-base:focus-visible,
+.global-input-base:focus-visible,
+.global-toggle-button:focus-visible {
+  outline: 2px solid var(--border-color-focus);
+  outline-offset: 2px;
+}
+
+/* ========================================
+   RESPONSIVE UTILITIES
+   ======================================== */
+
+@media (max-width: 768px) {
+  .global-header-content {
+    padding: var(--spacing-sm);
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    text-align: left;
+  }
+
+  .global-grid-auto {
+    grid-template-columns: 1fr;
+  }
+
+  .global-grid-status {
+    grid-template-columns: 1fr;
+  }
+
+  .global-modal {
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .global-modal-footer {
+    flex-direction: column;
+  }
+
+  .global-button-base {
+    width: 100%;
+    justify-content: center;
+  }
+}

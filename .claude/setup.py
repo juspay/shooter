@@ -43,7 +43,7 @@ def update_shooter_notifier(api_key, device_token, api_url):
         # Replace placeholders
         content = content.replace('YOUR_API_KEY_HERE', api_key)
         content = content.replace('YOUR_DEVICE_TOKEN_HERE', device_token)
-        content = content.replace('https://shooter-rho.vercel.app/api/notify', api_url)
+        content = content.replace('https://shooter-rho.vercel.app/notify', api_url)
         
         with open(notifier_path, 'w') as f:
             f.write(content)
@@ -88,16 +88,16 @@ def main():
     
     # Get API URL preference
     print("1. Choose API endpoint:")
-    print("   1) Production: https://shooter-rho.vercel.app/api/notify")
-    print("   2) Local: http://localhost:5173/api/notify")
-    
+    print("   1) Production: https://shooter-rho.vercel.app/notify")
+    print("   2) Local: http://localhost:5173/notify")
+
     choice = get_user_input("Select option (1 or 2)", "1")
-    
+
     if choice == "2":
-        api_url = "http://localhost:5173/api/notify"
+        api_url = "http://localhost:5173/notify"
         print("📍 Using local development API")
     else:
-        api_url = "https://shooter-rho.vercel.app/api/notify"
+        api_url = "https://shooter-rho.vercel.app/notify"
         print("🌐 Using production API")
     
     # Get API key

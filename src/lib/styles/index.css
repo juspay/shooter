@@ -1,0 +1,169 @@
+/*
+  Shooter Design System - Main Entry Point
+  Single import aggregator for all CSS modules
+
+  Import this file ONLY in src/routes/+layout.svelte
+  DO NOT import individual CSS files elsewhere
+*/
+
+/* ========================================
+   FOUNDATION - Design Tokens
+   Must be imported first so other files can reference tokens
+   ======================================== */
+
+@import './tokens.css';
+
+/* ========================================
+   TYPOGRAPHY - Semantic Element Styles
+   Defines h1-h6, p, span, etc.
+   ======================================== */
+
+@import './typography.css';
+
+/* ========================================
+   UTILITIES - Helper Classes
+   Spacing, display, flexbox, etc.
+   ======================================== */
+
+@import './utilities.css';
+
+/* ========================================
+   ANIMATIONS - Keyframes and Animation Classes
+   Animations, transitions, hover effects
+   ======================================== */
+
+@import './animations.css';
+
+/* ========================================
+   COMPONENTS - Reusable Component Classes
+   Global- prefixed component patterns
+   ======================================== */
+
+@import './components.css';
+
+/* ========================================
+   GLOBAL RESETS & BASE STYLES
+   Applied after all modules
+   ======================================== */
+
+/* Box Sizing */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* Reset Margins and Padding */
+* {
+  margin: 0;
+  padding: 0;
+}
+
+/* HTML & Body */
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg-color-primary);
+  color: var(--text-color-primary);
+  min-height: 100vh;
+}
+
+/* Button Reset */
+button {
+  font-family: inherit;
+}
+
+/* Input, Textarea, Select Reset */
+input,
+textarea,
+select {
+  font-family: inherit;
+}
+
+/* Focus Styles */
+:focus {
+  outline: 2px solid var(--border-color-focus);
+  outline-offset: 2px;
+}
+
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--border-color-focus);
+  outline-offset: 2px;
+}
+
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-color-tertiary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-color-primary);
+  border-radius: var(--radius-sm);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-color-tertiary);
+}
+
+/* ========================================
+   APP LAYOUT STRUCTURE
+   Main application layout classes
+   ======================================== */
+
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.main {
+  flex: 1;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: var(--spacing-lg) var(--spacing-md);
+  width: 100%;
+}
+
+/* ========================================
+   RESPONSIVE ADJUSTMENTS
+   ======================================== */
+
+@media (max-width: 768px) {
+  .main {
+    padding: var(--spacing-sm) var(--spacing-md);
+  }
+}
+
+/* ========================================
+   HIGH CONTRAST MODE SUPPORT
+   ======================================== */
+
+@media (prefers-contrast: high) {
+  :root {
+    --border-color-primary: #ffffff;
+    --text-color-tertiary: #cccccc;
+  }
+}
+
+/* ========================================
+   DARK MODE SUPPORT (FUTURE)
+   Currently dark mode is default
+   ======================================== */
+
+/* Dark mode is applied by default through tokens.css */
+/* Light mode will be activated via [theme='light'] attribute */
+/* See tokens.css for theme switching implementation */

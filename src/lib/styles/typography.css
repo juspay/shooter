@@ -1,0 +1,202 @@
+/*
+  Shooter Typography System
+
+  CRITICAL PRINCIPLE:
+  Typography is ONLY defined for h1-h6, p, span, code, and a.
+  Components use these semantic elements and NEVER add font properties.
+
+  Font properties (size, weight, family, color, line-height) are FORBIDDEN
+  in all .svelte files. Use the appropriate semantic element instead.
+*/
+
+/* ========================================
+   BASE TYPOGRAPHY - BODY
+   ======================================== */
+
+body {
+  font-family: var(--font-family-system);
+  font-size: var(--font-size-sm);
+  line-height: 1.6;
+  color: var(--text-color-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ========================================
+   SEMANTIC ELEMENTS - COMPLETE DEFINITIONS
+   These are the ONLY text styles in the system.
+   Components use these elements, NOT custom font properties.
+   ======================================== */
+
+h1 {
+  color: var(--text-color-primary);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-xl);
+  margin-top: 0;
+  margin-bottom: 0;
+  line-height: 1.2;
+}
+
+h2 {
+  color: var(--text-color-secondary);
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  margin-top: 0;
+  margin-bottom: 0;
+  line-height: 1.2;
+}
+
+h3 {
+  color: var(--text-color-secondary);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  margin-top: 0;
+  margin-bottom: 0;
+  line-height: 1.5;
+}
+
+h4 {
+  color: var(--text-color-primary);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  margin-top: 0;
+  margin-bottom: 0;
+  line-height: 1.5;
+}
+
+h5 {
+  color: var(--text-color-secondary);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  margin: 0 0 8px 0;
+  line-height: 1.5;
+}
+
+h6 {
+  font-size: var(--font-size-xxs);
+  color: var(--text-color-secondary);
+  font-weight: var(--font-weight-medium);
+  margin-top: 0;
+  margin-bottom: 0;
+  line-height: 1.5;
+}
+
+p {
+  color: var(--text-color-secondary);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-regular);
+  margin-top: 0;
+  margin-bottom: 0;
+  line-height: 1.5;
+}
+
+span {
+  color: var(--text-color-tertiary);
+  font-size: var(--font-size-xxs);
+  font-weight: var(--font-weight-regular);
+}
+
+small {
+  display: block;
+  font-size: var(--font-size-xxs);
+  color: var(--text-color-tertiary);
+  margin-top: var(--spacing-xxs);
+}
+
+/* Code Elements */
+code,
+pre {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+  background: var(--bg-color-primary);
+  color: var(--text-color-primary);
+  padding: var(--spacing-xxs) var(--spacing-xs);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color-primary);
+}
+
+pre {
+  padding: var(--spacing-md);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-x: auto;
+}
+
+/* Links */
+a {
+  color: var(--color-blue-600);
+  text-decoration: none;
+  transition: color var(--transition-fast);
+}
+
+a:hover {
+  color: var(--text-color-secondary);
+}
+
+a:focus-visible {
+  outline: 2px solid var(--border-color-focus);
+  outline-offset: 2px;
+}
+
+/* Lists */
+ul, ol {
+  color: var(--text-color-secondary);
+  padding-left: var(--spacing-lg);
+}
+
+li {
+  margin-bottom: var(--spacing-sm);
+  font-size: var(--font-size-xs);
+}
+
+/* Labels (for form elements) */
+label {
+  display: block;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-color-primary);
+  margin-bottom: var(--spacing-xs);
+}
+
+/* ========================================
+   USAGE GUIDELINES
+   ======================================== */
+
+/*
+  SEMANTIC HIERARCHY:
+
+  h1 - Page title (one per page)
+  h2 - Major section headings
+  h3 - Subsections under h2
+  h4 - Subsections under h3
+  h5 - Subsections under h4
+  h6 - Lowest level headings
+
+  p - Body text, paragraphs
+  span - Small/secondary text, metadata, timestamps
+
+  EXAMPLES:
+
+  ✅ CORRECT - Semantic hierarchy:
+  <h1>Dashboard</h1>
+  <section>
+    <h2>Recent Notifications</h2>
+    <div class="card">
+      <h3>Build Completed</h3>
+      <p>Your deployment is live</p>
+      <span>2 hours ago</span>
+    </div>
+  </section>
+
+  ❌ WRONG - Skipping levels:
+  <h1>Dashboard</h1>
+  <h4>Recent Activity</h4> (Skipped h2, h3)
+
+  ❌ WRONG - Adding font properties:
+  <div class="title">...</div>
+  In CSS: .title { font-size: 18px; } (NEVER DO THIS)
+
+  ✅ CORRECT - Use semantic elements:
+  <h3>Title</h3> (Already styled!)
+*/

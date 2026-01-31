@@ -1,61 +1,49 @@
-<script>
+<script lang="ts">
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
+  import { browser } from '$app/environment';
+  import { invalidateAll } from '$app/navigation';
+  import type { PageData } from './$types';
+  import InteractiveNotificationSender from '$lib/components/InteractiveNotificationSender.svelte';
+  import InteractiveNotificationCard from '$lib/components/InteractiveNotificationCard.svelte';
+  import { config as configStore } from '$lib/stores/config';
 
-  let notifications = [];
+  export let data: PageData;
+
+  interface NotificationItem {
+    id: number | string;
+    title: string;
+    message: string;
+    timestamp: number;
+    type?: string;
+    status?: string;
+    data?: Record<string, unknown>;
+    success?: boolean;
+    sent?: number;
+    failed?: number;
+  }
+
+  interface ConfigData {
+    hasApiKey?: boolean;
+    hasApnsKeyId?: boolean;
+    hasApnsTeamId?: boolean;
+    hasApnsKey?: boolean;
+    hasDeviceToken?: boolean;
+    apiKey: string;
+    deviceToken?: string;
+    [key: string]: unknown;
+  }
+
+  let notifications: NotificationItem[] = [];
   let loading = false;
-  let config = null;
-  let systemStatus = 'unknown';
-  let lastUpdate = null;
+  let config: ConfigData | null = null;
+  let systemStatus: string = 'unknown';
+  let lastUpdate: number | null = null;
 
-  // Mock notification data - in real app this would come from API
-  let mockNotifications = [
-    {
-      id: 1,
-      title: '🔧 SHOOTER: Editing config.js',
-      message: '09:42:15 • Starting code edit in shooter',
-      timestamp: Date.now() - 1000 * 60 * 2, // 2 minutes ago
-      type: 'tool_start',
-      status: 'delivered',
-      data: { tool: 'Edit', file: 'config.js', project: 'shooter' }
-    },
-    {
-      id: 2,
-      title: '✅ SHOOTER: Edit Complete', 
-      message: '09:42:18 • config.js updated successfully',
-      timestamp: Date.now() - 1000 * 60 * 2 + 3000, // 2 minutes ago + 3 seconds
-      type: 'tool_complete',
-      status: 'delivered',
-      data: { tool: 'Edit', file: 'config.js', success: true }
-    },
-    {
-      id: 3,
-      title: '🚀 SHOOTER: New Feature',
-      message: '09:45:33 • Working on: Create notification system UI',
-      timestamp: Date.now() - 1000 * 60 * 5, // 5 minutes ago
-      type: 'user_prompt',
-      status: 'delivered',
-      data: { prompt_preview: 'Create notification system UI', category: 'feature' }
-    },
-    {
-      id: 4,
-      title: '⚡ SHOOTER: Running Command',
-      message: '09:46:12 • Executing: npm run build',
-      timestamp: Date.now() - 1000 * 30, // 30 seconds ago
-      type: 'tool_start',
-      status: 'delivered',
-      data: { tool: 'Bash', command: 'npm run build' }
-    },
-    {
-      id: 5,
-      title: '🎯 SHOOTER: Session Started',
-      message: '09:40:00 • SHOOTER session active in project',
-      timestamp: Date.now() - 1000 * 60 * 8, // 8 minutes ago
-      type: 'session_start',
-      status: 'delivered',
-      data: { project: 'shooter', cwd: '/Users/user/shooter' }
-    }
-  ];
+  // Initialize notifications from server data
+  $: if (data?.notifications) {
+    notifications = data.notifications.sort((a: NotificationItem, b: NotificationItem) => b.timestamp - a.timestamp);
+  }
 
   onMount(() => {
     loadConfiguration();
@@ -72,39 +60,58 @@
   });
 
   function loadConfiguration() {
+    if (!browser) {
+return;
+}
     try {
       const saved = localStorage.getItem('shooter_config');
       if (saved) {
         config = JSON.parse(saved);
+        // Update the config store as well
+        if (config) {
+          configStore.set(config);
+        }
       }
-    } catch (e) {
+    } catch (_e) {
       console.log('No configuration found');
     }
   }
 
-  function loadNotifications() {
-    // In real app, this would fetch from API
-    // For now, use mock data sorted by timestamp (newest first)
-    notifications = mockNotifications.sort((a, b) => b.timestamp - a.timestamp);
-    lastUpdate = new Date();
+  async function loadNotifications() {
+    // Load from server-side rendered data first
+    if (data?.notifications) {
+      notifications = data.notifications.sort((a: NotificationItem, b: NotificationItem) => b.timestamp - a.timestamp);
+      lastUpdate = Date.now();
+    }
+
+    // Refresh from server if in browser
+    if (browser) {
+      await invalidateAll();
+    }
   }
 
   async function checkSystemStatus() {
+    if (!browser) {
+return;
+}
     try {
-      const response = await fetch('/api/health');
+      const response = await fetch('/health');
       const data = await response.json();
-      
+
       if (response.ok && data.status === 'healthy') {
         systemStatus = 'healthy';
       } else {
         systemStatus = 'degraded';
       }
-    } catch (error) {
+    } catch (_error) {
       systemStatus = 'error';
     }
   }
 
   async function sendTestNotification() {
+    if (!browser) {
+return;
+}
     if (!config?.apiKey) {
       goto('/config');
       return;
@@ -113,7 +120,12 @@
     loading = true;
 
     try {
-      const testPayload = {
+      const testPayload: {
+        title: string;
+        message: string;
+        data: { source: string; timestamp: number };
+        deviceToken?: string;
+      } = {
         title: '🧪 SHOOTER: Manual Test',
         message: `Test notification sent at ${new Date().toLocaleTimeString()}`,
         data: { source: 'manual-test', timestamp: Date.now() }
@@ -123,7 +135,7 @@
         testPayload.deviceToken = config.deviceToken;
       }
 
-      const response = await fetch('/api/notify', {
+      const response = await fetch('/notify', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -143,7 +155,7 @@
           status: 'sent',
           data: testPayload.data
         };
-        
+
         notifications = [newNotification, ...notifications];
       }
     } catch (error) {
@@ -153,15 +165,15 @@
     loading = false;
   }
 
-  function formatTime(timestamp) {
+  function _formatTime(timestamp: number): string {
     const date = new Date(timestamp);
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   }
 
-  function formatRelativeTime(timestamp) {
+  function _formatRelativeTime(timestamp: number): string {
     const now = Date.now();
     const diff = now - timestamp;
-    
+
     if (diff < 1000 * 60) {
       return 'Just now';
     } else if (diff < 1000 * 60 * 60) {
@@ -175,8 +187,8 @@
     }
   }
 
-  function getNotificationIcon(type) {
-    const icons = {
+  function _getNotificationIcon(type: string): string {
+    const icons: Record<string, string> = {
       tool_start: '🛠️',
       tool_complete: '✅',
       user_prompt: '💭',
@@ -188,8 +200,8 @@
     return icons[type] || '📱';
   }
 
-  function getStatusColor(status) {
-    const colors = {
+  function _getStatusColor(status: string): string {
+    const colors: Record<string, string> = {
       delivered: 'var(--accent-green)',
       sent: 'var(--accent-blue)',
       pending: 'var(--accent-orange)',
@@ -205,16 +217,16 @@
 </svelte:head>
 
 <div class="app">
-  <header class="header">
-    <div class="header-content">
+  <header class="global-header">
+    <div class="global-header-content">
       <div class="logo">
-        <span class="logo-icon">🎯</span>
+        <img src="/favicon-32x32.png" alt="SHOOTER" class="logo-icon" />
         <div class="logo-text">
           <h1>SHOOTER</h1>
           <p>Live Notifications</p>
         </div>
       </div>
-      
+
       <div class="header-actions">
         <div class="status-indicator {systemStatus}">
           {#if systemStatus === 'healthy'}
@@ -231,7 +243,7 @@
             <span>Checking...</span>
           {/if}
         </div>
-        
+
         <button class="config-btn" on:click={() => goto('/config')}>
           <span>⚙️</span>
           <span>Config</span>
@@ -241,35 +253,42 @@
   </header>
 
   <main class="main">
-    <div class="notifications-header">
-      <div class="notifications-title">
-        <h2>📱 Live Notifications</h2>
-        <p>Real-time updates from your SHOOTER development sessions</p>
+    {#if config?.apiKey}
+      <div class="notifications-header">
+        <div class="notifications-title">
+          <h2>📱 Live Notifications</h2>
+          <p>Real-time updates from your SHOOTER development sessions</p>
+        </div>
+
+        <div class="notifications-actions">
+          <button
+            class="btn btn-primary"
+            on:click={sendTestNotification}
+            disabled={loading}
+          >
+            {#if loading}
+              <div class="btn-spinner"></div>
+              Sending...
+            {:else}
+              🧪 Send Test
+            {/if}
+          </button>
+
+          <button
+            class="btn btn-secondary"
+            on:click={loadNotifications}
+            disabled={loading}
+          >
+            🔄 Refresh
+          </button>
+        </div>
       </div>
-      
-      <div class="notifications-actions">
-        <button 
-          class="btn btn-primary"
-          on:click={sendTestNotification}
-          disabled={loading || !config?.apiKey}
-        >
-          {#if loading}
-            <div class="btn-spinner"></div>
-            Sending...
-          {:else}
-            🧪 Send Test
-          {/if}
-        </button>
-        
-        <button 
-          class="btn btn-secondary"
-          on:click={loadNotifications}
-          disabled={loading}
-        >
-          🔄 Refresh
-        </button>
-      </div>
-    </div>
+    {/if}
+
+    <!-- Interactive Notification Sender -->
+    {#if config?.apiKey}
+      <InteractiveNotificationSender />
+    {/if}
 
     {#if !config?.apiKey}
       <div class="empty-state">
@@ -297,62 +316,39 @@
     {:else}
       <div class="notifications-list">
         {#each notifications as notification (notification.id)}
-          <div class="notification-card">
-            <div class="notification-header">
-              <div class="notification-icon">
-                {getNotificationIcon(notification.type)}
-              </div>
-              <div class="notification-title">
-                <h4>{notification.title}</h4>
-                <div class="notification-meta">
-                  <span class="notification-time">{formatTime(notification.timestamp)}</span>
-                  <span class="notification-relative">{formatRelativeTime(notification.timestamp)}</span>
-                  <div 
-                    class="notification-status"
-                    style="color: {getStatusColor(notification.status)}"
-                  >
-                    {notification.status}
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            <div class="notification-body">
-              <p>{notification.message}</p>
-              
-              {#if notification.data}
-                <div class="notification-data">
-                  {#if notification.data.file}
-                    <span class="data-tag">📄 {notification.data.file}</span>
-                  {/if}
-                  {#if notification.data.tool}
-                    <span class="data-tag">🛠️ {notification.data.tool}</span>
-                  {/if}
-                  {#if notification.data.project}
-                    <span class="data-tag">📁 {notification.data.project}</span>
-                  {/if}
-                  {#if notification.data.category}
-                    <span class="data-tag category-{notification.data.category}">
-                      {notification.data.category}
-                    </span>
-                  {/if}
-                </div>
-              {/if}
-            </div>
-          </div>
+          <InteractiveNotificationCard {notification} />
         {/each}
       </div>
     {/if}
 
     {#if lastUpdate}
       <div class="last-update">
-        <span>Last updated: {lastUpdate.toLocaleTimeString()}</span>
+        <span>Last updated: {new Date(lastUpdate).toLocaleTimeString()}</span>
       </div>
     {/if}
   </main>
 </div>
 
 <style>
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+  }
+
+  .logo-icon {
+    width: 32px;
+    height: 32px;
+  }
+
+  .logo-text h1 {
+    margin: 0;
+  }
+
+  .logo-text p {
+    margin: 0;
+  }
+
   .header-actions {
     display: flex;
     align-items: center;
@@ -366,8 +362,7 @@
     padding: var(--spacing-xs) var(--spacing-sm);
     background: var(--bg-tertiary);
     border-radius: var(--radius-sm);
-    font-size: var(--font-size-xs);
-    color: var(--text-secondary);
+
   }
 
   .status-dot {
@@ -389,8 +384,7 @@
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
     padding: var(--spacing-sm) var(--spacing-md);
-    color: var(--text-primary);
-    font-size: var(--font-size-sm);
+
     cursor: pointer;
     transition: all 0.2s ease;
   }
@@ -404,20 +398,16 @@
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    margin-bottom: var(--spacing-xl);
-    gap: var(--spacing-lg);
+    margin-bottom: var(--spacing-lg);
+    gap: var(--spacing-md);
   }
 
   .notifications-title h2 {
     margin: 0;
-    font-size: var(--font-size-xl);
-    color: var(--text-primary);
   }
 
   .notifications-title p {
     margin: var(--spacing-xs) 0 0 0;
-    color: var(--text-secondary);
-    font-size: var(--font-size-sm);
   }
 
   .notifications-actions {
@@ -433,8 +423,7 @@
     gap: var(--spacing-xs);
     padding: var(--spacing-sm) var(--spacing-md);
     border-radius: var(--radius-md);
-    font-size: var(--font-size-sm);
-    font-weight: 500;
+
     cursor: pointer;
     transition: all 0.2s ease;
     border: none;
@@ -448,7 +437,6 @@
 
   .btn-primary {
     background: var(--accent-blue);
-    color: white;
   }
 
   .btn-primary:hover:not(:disabled) {
@@ -458,7 +446,6 @@
 
   .btn-secondary {
     background: var(--bg-tertiary);
-    color: var(--text-primary);
     border: 1px solid var(--border-color);
   }
 
@@ -478,26 +465,21 @@
 
   .empty-state {
     text-align: center;
-    padding: var(--spacing-xl) var(--spacing-lg);
-    margin: var(--spacing-xl) 0;
+    padding: var(--spacing-xxl) var(--spacing-md);
+    margin: 0;
   }
 
   .empty-icon {
-    font-size: 48px;
-    margin-bottom: var(--spacing-lg);
-    opacity: 0.5;
+    margin-bottom: var(--spacing-md);
+    opacity: 0.6;
   }
 
   .empty-state h3 {
-    margin: 0 0 var(--spacing-sm) 0;
-    color: var(--text-primary);
-    font-size: var(--font-size-lg);
+    margin: 0 0 var(--spacing-xs) 0;
   }
 
   .empty-state p {
-    margin: 0 0 var(--spacing-lg) 0;
-    color: var(--text-secondary);
-    font-size: var(--font-size-base);
+    margin: 0 0 var(--spacing-md) 0;
   }
 
   .notifications-list {
@@ -529,7 +511,7 @@
   }
 
   .notification-icon {
-    font-size: var(--font-size-xl);
+
     flex-shrink: 0;
   }
 
@@ -538,41 +520,11 @@
     min-width: 0;
   }
 
-  .notification-title h4 {
-    margin: 0 0 var(--spacing-xs) 0;
-    color: var(--text-primary);
-    font-size: var(--font-size-base);
-    font-weight: 500;
-  }
-
   .notification-meta {
     display: flex;
     align-items: center;
     gap: var(--spacing-sm);
-    font-size: var(--font-size-xs);
-  }
 
-  .notification-time {
-    color: var(--text-secondary);
-    font-weight: 500;
-  }
-
-  .notification-relative {
-    color: var(--text-tertiary);
-  }
-
-  .notification-status {
-    font-weight: 500;
-    text-transform: uppercase;
-    font-size: 10px;
-    letter-spacing: 0.5px;
-  }
-
-  .notification-body p {
-    margin: 0 0 var(--spacing-sm) 0;
-    color: var(--text-secondary);
-    font-size: var(--font-size-sm);
-    line-height: 1.4;
   }
 
   .notification-data {
@@ -584,39 +536,31 @@
   .data-tag {
     display: inline-flex;
     align-items: center;
-    padding: 2px var(--spacing-xs);
+    padding: var(--spacing-xxxs) var(--spacing-xs);
     background: var(--bg-tertiary);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-sm);
-    font-size: 10px;
-    color: var(--text-tertiary);
-    font-weight: 500;
   }
 
   .data-tag.category-debug { 
-    background: rgba(255, 69, 58, 0.1);
+    background: var(--status-color-error-subtle);
     border-color: var(--accent-red);
-    color: var(--accent-red);
   }
 
   .data-tag.category-feature { 
-    background: rgba(48, 209, 88, 0.1);
+    background: var(--status-color-success-subtle);
     border-color: var(--accent-green);
-    color: var(--accent-green);
   }
 
   .data-tag.category-testing { 
-    background: rgba(255, 159, 10, 0.1);
+    background: var(--status-color-warning-subtle);
     border-color: var(--accent-orange);
-    color: var(--accent-orange);
   }
 
   .last-update {
     text-align: center;
-    margin-top: var(--spacing-xl);
-    padding: var(--spacing-md);
-    color: var(--text-tertiary);
-    font-size: var(--font-size-xs);
+    margin-top: var(--spacing-lg);
+    padding: var(--spacing-sm) var(--spacing-md);
   }
 
   @keyframes spin {
@@ -624,19 +568,36 @@
   }
 
   @media (max-width: 768px) {
+    .logo {
+      gap: var(--spacing-sm);
+    }
+
     .notifications-header {
       flex-direction: column;
-      gap: var(--spacing-md);
+      gap: var(--spacing-sm);
     }
-    
+
     .notifications-actions {
       align-self: stretch;
     }
-    
+
     .btn {
       flex: 1;
     }
-    
+
+    .empty-state {
+      padding: var(--spacing-md) var(--spacing-sm);
+    }
+
+    .empty-icon {
+      margin-bottom: var(--spacing-sm);
+    }
+
+    .last-update {
+      margin-top: var(--spacing-md);
+      padding: var(--spacing-xs) var(--spacing-sm);
+    }
+
     .notification-meta {
       flex-direction: column;
       align-items: flex-start;

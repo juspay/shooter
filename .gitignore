@@ -170,3 +170,21 @@ bun.lockb
 
 # Claude Code local settings (personal configurations)
 .claude/settings.local.json
+
+# Temporary testing and migration artifacts
+exports/
+ui-testing-screenshots/
+*_ISSUES*.md
+*_MIGRATION*.md
+*_SOLUTIONS*.md
+*_GUIDE*.md
+*_REPORT*.md
+docs/*-inventory.md
+docs/*-audit*.md
+docs/*-migration*.md
+docs/*-cleanup*.md
+scripts/migrate-*.js
+scripts/check-*.sh
+scripts/fix-*.sh
+scripts/token-mapping.json
+comparison-output/

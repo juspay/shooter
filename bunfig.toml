@@ -1,0 +1,5 @@
+[install]
+# Use npm registry
+registry = "https://registry.npmjs.org/"
+# Increase timeout
+timeout = 60000
