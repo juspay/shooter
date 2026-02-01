@@ -57,4 +57,4 @@ echo "5. Redeploy the application"
 echo ""
 
 echo "🧪 Test after setup:"
-echo "./scripts/test-production.sh"
+echo "./tests/test-production.sh"
