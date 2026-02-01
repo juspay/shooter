@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+build/
+dist/
+.svelte-kit/
+
+# Vercel
+.vercel/
+
+# Package manager
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
+
+# iOS
+ios/
+
+# Generated files
+*.min.js
+*.min.css
+
+# Environment
+.env
+.env.*

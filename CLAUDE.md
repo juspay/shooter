@@ -9,12 +9,14 @@ This repository contains a **WORKING** bidirectional communication system betwee
 ## Project Structure
 
 ### Core Implementation ✅
+
 - `CLAUDE-CODE-INTEGRATION.md` - **WORKING** Shooter lifecycle hooks integration
 - `.claude/` - Shooter hook configuration and Python scripts
 - `src/` - SvelteKit API server (working locally, production needs env fix)
 - `ios/` - Swift iOS app (working, receiving notifications)
 
 ### Architecture Documentation
+
 - `PLAN-A.MD` - Basic SvelteKit + Vercel + APNs architecture (✅ IMPLEMENTED)
 - `PLAN-B.MD` - Comprehensive bidirectional communication system with detailed implementation guide
 - `DEBUGGING-JOURNEY.md` - Complete implementation history and lessons learned
@@ -34,25 +36,28 @@ This repository contains a **WORKING** bidirectional communication system betwee
 The system is designed to be built in four phases:
 
 1. **Phase 1**: Basic push notifications (one-way communication)
-2. **Phase 2**: Interactive notifications with simple responses  
+2. **Phase 2**: Interactive notifications with simple responses
 3. **Phase 3**: Full bidirectional communication with webhooks
 4. **Phase 4**: Reliability enhancements and state management
 
 ## Core Components
 
 ### SvelteKit Application
+
 - API routes: `/api/notify`, `/api/webhook`, `/api/health`
 - APNs integration with JWT authentication
 - Request validation and error handling
 - Optional admin interface for monitoring
 
 ### iOS Application
+
 - Push notification registration and handling
 - Interactive notification categories (confirmation, text input)
 - Response handling and server communication
 - Local notification history
 
 ### Shooter Integration ✅ **WORKING**
+
 - **Lifecycle Hooks**: Automatic detection of tool usage, user prompts, session events
 - **HTTP Client**: Python scripts send POST requests to SvelteKit API
 - **Context-Aware Notifications**: Smart categorization (debug, feature, testing, learning)
@@ -80,6 +85,7 @@ The system is designed to be built in four phases:
 ## Environment Setup
 
 When implementing, you'll need:
+
 - Apple Developer account with Push Notifications capability
 - APNs Auth Key (.p8 file) with Key ID and Team ID
 - Vercel account for deployment
@@ -88,6 +94,7 @@ When implementing, you'll need:
 ## Testing Strategy
 
 The plans include comprehensive testing approaches:
+
 - Unit tests for API endpoints
 - Integration tests for end-to-end flows
 - Performance testing with load scenarios

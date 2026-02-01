@@ -5,7 +5,7 @@
 This integration enables **automatic push notifications** to iOS devices when Claude Code performs various actions. Using Claude Code's lifecycle hooks system, SHOOTER sends real-time notifications for:
 
 - 🛠️ **Tool Execution**: File edits, commands, searches
-- 💬 **User Interactions**: New prompts and requests  
+- 💬 **User Interactions**: New prompts and requests
 - 🎯 **Session Management**: Start/stop notifications
 - ✅ **Completion Status**: Success/failure indicators
 
@@ -52,9 +52,11 @@ DEVICE_TOKEN = "YOUR_DEVICE_TOKEN"  # Replace with your iPhone device token
 ### 2. Get Required Credentials
 
 #### API Key
+
 From your existing SHOOTER setup, use the same API key configured in Vercel environment variables.
 
-#### Device Token  
+#### Device Token
+
 From your iOS app, extract the device token (64-character hex string) that's registered with APNs.
 
 ### 3. Test the Integration
@@ -67,6 +69,7 @@ python3 .claude/hooks/shooter_notifier.py --test
 ```
 
 Expected output:
+
 ```
 🧪 Testing SHOOTER notification...
 ✅ SHOOTER notification sent: 🧪 SHOOTER Test
@@ -75,6 +78,7 @@ Expected output:
 ### 4. Verify Hook Configuration
 
 Claude Code will automatically detect the `.claude/settings.json` file and activate hooks when:
+
 - This directory is the working directory
 - Claude Code session starts
 - Any configured lifecycle events occur
@@ -82,25 +86,31 @@ Claude Code will automatically detect the `.claude/settings.json` file and activ
 ## Hook Events & Notifications
 
 ### PreToolUse Hook (`notify_tool_start.py`)
+
 **Triggers**: Before Edit, Write, MultiEdit, Bash, Read tools execute
 
 **Notifications**:
-- 📝 "SHOOTER: Editing filename.ext" 
+
+- 📝 "SHOOTER: Editing filename.ext"
 - 📄 "SHOOTER: Writing filename.ext"
 - ⚡ "SHOOTER: Running Command"
 
-### PostToolUse Hook (`notify_tool_complete.py`) 
+### PostToolUse Hook (`notify_tool_complete.py`)
+
 **Triggers**: After Edit, Write, MultiEdit, Bash tools complete
 
 **Notifications**:
+
 - ✅ "SHOOTER: Edit Complete" / ❌ "SHOOTER: Edit Failed"
-- ✅ "SHOOTER: File Written" / ❌ "SHOOTER: Write Failed"  
+- ✅ "SHOOTER: File Written" / ❌ "SHOOTER: Write Failed"
 - ✅ "SHOOTER: Command Complete" / ❌ "SHOOTER: Command Failed"
 
 ### UserPromptSubmit Hook (`notify_session_activity.py`)
+
 **Triggers**: When user submits new prompts
 
 **Notifications** (context-aware):
+
 - 🐛 "SHOOTER: Debug Request" (for fix/error prompts)
 - 🚀 "SHOOTER: New Feature" (for create/add prompts)
 - 🧪 "SHOOTER: Testing" (for test/verify prompts)
@@ -108,15 +118,19 @@ Claude Code will automatically detect the `.claude/settings.json` file and activ
 - 💭 "SHOOTER: New Request" (general prompts)
 
 ### SessionStart Hook (`notify_session_start.py`)
+
 **Triggers**: When Claude Code session begins
 
 **Notifications**:
+
 - 🎯 "SHOOTER: Session Started"
 
-### Stop Hook (`notify_session_end.py`)  
+### Stop Hook (`notify_session_end.py`)
+
 **Triggers**: When Claude Code session ends
 
 **Notifications**:
+
 - 👋 "SHOOTER: Session Ended"
 
 ## Notification Payload Structure
@@ -130,7 +144,7 @@ Each notification includes contextual data:
   "deviceToken": "your-device-token",
   "data": {
     "event": "tool_start",
-    "tool": "Edit", 
+    "tool": "Edit",
     "project": "shooter",
     "timestamp": "14:30:25",
     "file": "/path/to/config.js"
@@ -151,8 +165,9 @@ SHOOTER_API_URL = "http://localhost:5173/api/notify"
 ### Debug Logging
 
 Hook scripts print status messages:
+
 - ✅ Success: "SHOOTER notification sent: [title]"
-- ❌ Failure: "HTTP Error 401: Unauthorized" 
+- ❌ Failure: "HTTP Error 401: Unauthorized"
 - ❌ Network: "URL Error: Connection refused"
 
 ### Test Individual Hooks
@@ -185,7 +200,7 @@ python3 .claude/hooks/notify_tool_start.py
    - Check if local server is running (for localhost)
    - Ensure network connectivity
 
-3. **"Module not found"**  
+3. **"Module not found"**
    - Verify Python 3 is available
    - Check file permissions are executable
    - Ensure shooter_notifier.py is in correct location
@@ -198,6 +213,7 @@ python3 .claude/hooks/notify_tool_start.py
 ### Debug Steps
 
 1. **Test API directly**:
+
    ```bash
    curl -X POST https://shooter-rho.vercel.app/api/notify \
      -H "Authorization: Bearer YOUR_API_KEY" \
@@ -206,6 +222,7 @@ python3 .claude/hooks/notify_tool_start.py
    ```
 
 2. **Test hook script**:
+
    ```bash
    python3 .claude/hooks/shooter_notifier.py --test
    ```
@@ -218,16 +235,19 @@ python3 .claude/hooks/notify_tool_start.py
 ## Integration Benefits
 
 ### Real-time Awareness
+
 - Know exactly when Claude Code starts working
-- Get notified about file changes immediately  
+- Get notified about file changes immediately
 - Monitor command execution status
 
 ### Context-rich Notifications
+
 - See which files are being edited
 - Understand what type of work is happening
 - Track progress on complex tasks
 
 ### Seamless Development Flow
+
 - No need to check Claude Code interface constantly
 - Get alerted to important events while mobile
 - Stay connected to development progress
@@ -235,12 +255,14 @@ python3 .claude/hooks/notify_tool_start.py
 ## Future Enhancements
 
 ### Planned Features
+
 1. **Interactive Notifications**: Response buttons for common actions
-2. **Smart Filtering**: User-configurable notification preferences  
+2. **Smart Filtering**: User-configurable notification preferences
 3. **Progress Tracking**: Multi-step task progress indicators
 4. **Error Recovery**: Automatic retry mechanisms for failed notifications
 
 ### Advanced Integrations
+
 1. **Webhook Responses**: iOS app responses sent back to Claude Code
 2. **State Synchronization**: Track notification history and responses
 3. **Team Notifications**: Multiple device support
@@ -249,12 +271,14 @@ python3 .claude/hooks/notify_tool_start.py
 ## Success Metrics
 
 ### Integration Health
+
 - ✅ Hook scripts execute without errors
-- ✅ API requests return 200/success responses  
+- ✅ API requests return 200/success responses
 - ✅ Notifications appear on iOS device within 5 seconds
 - ✅ Contextual information accurately reflects Claude Code activity
 
 ### User Experience
+
 - 📱 Immediate awareness of Claude Code activity
 - 🎯 Relevant, non-spam notification content
 - 🔄 Reliable delivery during development sessions
