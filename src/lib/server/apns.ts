@@ -1,5 +1,5 @@
 import { env } from '$env/dynamic/private';
-import apn from 'apn';
+import apn from '@parse/node-apn';
 
 import type { APNsError, APNsNotificationResult, NotificationPayload } from './types.js';
 
@@ -324,7 +324,7 @@ export class APNsService {
 
   shutdown(): void {
     if (this._provider) {
-      this._provider.shutdown();
+      void this._provider.shutdown();
     }
   }
 }

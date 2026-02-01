@@ -19,8 +19,15 @@
   async function checkSystemStatus(): Promise<void> {
     try {
       const response = await fetch('/api/health');
+      if (!response.ok) {
+        systemStatus = 'error';
+        return;
+      }
       const data = await response.json() as { status?: string };
-      systemStatus = response.ok && data.status === 'healthy' ? 'healthy' : 'degraded';
+      systemStatus =
+        data.status === 'healthy' || data.status === 'degraded' || data.status === 'error'
+          ? data.status
+          : 'unknown';
     } catch {
       systemStatus = 'error';
     }

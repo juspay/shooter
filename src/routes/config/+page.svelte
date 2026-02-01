@@ -47,7 +47,6 @@
       );
 
       const response = await fetch('/api/health');
-      await response.json();
 
       if (response.ok) {
         result = 'Configuration saved successfully';
