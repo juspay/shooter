@@ -1,6 +1,8 @@
 <script lang="ts">
   import { browser } from '$app/environment';
   import { goto } from '$app/navigation';
+  import { Alert, Button, Card, Icon, Input } from '$lib/components';
+  import { onMount } from 'svelte';
 
   interface Config {
     apiKey: string;
@@ -14,23 +16,14 @@
   let loading = $state(false);
   let statusType = $state<'' | 'error' | 'success' | 'warning'>('');
 
-  // Smart defaults for local development
-  $effect(() => {
-    if (browser && window.location.hostname === 'localhost') {
-      if (!apiKey) {apiKey = 'your-api-key-here';}
-      if (!deviceToken) {deviceToken = 'your-device-token-here';}
-    }
-  });
-
-  // Load saved configuration on mount
-  $effect(() => {
+  onMount(() => {
     if (browser) {
       try {
         const saved = localStorage.getItem('shooter_config');
         if (saved) {
           const config = JSON.parse(saved) as Config;
-          if (config.apiKey) {apiKey = config.apiKey;}
-          if (config.deviceToken) {deviceToken = config.deviceToken;}
+          if (config.apiKey) { apiKey = config.apiKey; }
+          if (config.deviceToken) { deviceToken = config.deviceToken; }
         }
       } catch {
         console.log('No saved configuration found');
@@ -44,7 +37,6 @@
     statusType = '';
 
     try {
-      // Save to localStorage for persistence
       localStorage.setItem(
         'shooter_config',
         JSON.stringify({
@@ -54,18 +46,16 @@
         } satisfies Config)
       );
 
-      // Test the configuration
       const response = await fetch('/api/health');
-      const _data = await response.json();
+      await response.json();
 
       if (response.ok) {
-        result = 'Configuration saved and tested successfully!';
+        result = 'Configuration saved successfully';
         statusType = 'success';
 
-        // Redirect to home after success
         setTimeout(() => {
           void goto('/');
-        }, 2000);
+        }, 1500);
       } else {
         result = 'Configuration saved but system health check failed';
         statusType = 'warning';
@@ -81,7 +71,7 @@
 
   async function testConfiguration(): Promise<void> {
     if (!apiKey.trim()) {
-      result = 'Error: API key is required for testing';
+      result = 'API key is required for testing';
       statusType = 'error';
       return;
     }
@@ -99,7 +89,7 @@
       } = {
         data: { source: 'config-test', timestamp: Date.now() },
         message: `Configuration test at ${new Date().toLocaleTimeString()}`,
-        title: 'SHOOTER Config Test',
+        title: 'Configuration Test',
       };
 
       if (deviceToken.trim()) {
@@ -118,7 +108,7 @@
       const data = await response.json();
 
       if (response.ok) {
-        result = 'Test notification sent successfully! Check your device.';
+        result = 'Test notification sent successfully';
         statusType = 'success';
       } else {
         result = `Test failed: ${data.error || 'Unknown error'}`;
@@ -126,414 +116,235 @@
       }
     } catch (error) {
       const err = error as Error;
-      result = `Network Error: ${err.message}`;
+      result = `Network error: ${err.message}`;
       statusType = 'error';
     }
 
     loading = false;
   }
+
+  function clearConfiguration(): void {
+    if (browser) {
+      localStorage.removeItem('shooter_config');
+      apiKey = '';
+      deviceToken = '';
+      result = 'Configuration cleared';
+      statusType = 'success';
+    }
+  }
 </script>
 
 <svelte:head>
-  <title>Configuration - SHOOTER</title>
-  <meta name="description" content="Configure SHOOTER notification system settings" />
+  <title>Settings - Shooter</title>
+  <meta name="description" content="Configure notification system settings" />
 </svelte:head>
 
-<div class="app">
-  <header class="header">
-    <div class="header-content">
-      <button class="back-btn" onclick={() => void goto('/')}>
-        <span class="back-icon">&larr;</span>
-        <span>Notifications</span>
-      </button>
-      <div class="header-title">
-        <h1>Configuration</h1>
-        <p>Setup your notification system</p>
-      </div>
+<main class="main">
+  <div class="settings-container">
+    <div class="page-header">
+      <h1 class="page-title">Settings</h1>
+      <p class="page-description">Configure your API credentials and notification preferences</p>
     </div>
-  </header>
 
-  <main class="main config-main">
-    <div class="config-section">
-      <div class="section-header">
-        <h2>API Configuration</h2>
-        <p>Configure your SHOOTER API credentials</p>
-      </div>
-
-      <div class="config-card">
-        <div class="input-group">
-          <label for="apiKey">API Key</label>
-          <input
+    <div class="settings-grid">
+      <section class="settings-section">
+        <Card title="API Configuration" description="Enter your authentication credentials">
+          <Input
             id="apiKey"
+            label="API Key"
             bind:value={apiKey}
             type="password"
             placeholder="Enter your API key"
-            class="input"
+            hint="Required for sending notifications"
           />
-          <small>Required for sending notifications to the SHOOTER system</small>
-        </div>
 
-        <div class="input-group">
-          <label for="deviceToken">Device Token</label>
-          <input
+          <Input
             id="deviceToken"
+            label="Device Token"
             bind:value={deviceToken}
             type="text"
-            placeholder="Your iOS device token"
-            class="input"
+            placeholder="64-character hex string"
+            hint="iOS device token from app registration"
+            mono={true}
           />
-          <small>64-character hex string from your iOS device registration</small>
+        </Card>
+
+        {#if result}
+          <Alert message={result} type={statusType || 'info'} />
+        {/if}
+
+        <div class="button-group">
+          <Button
+            variant="secondary"
+            onclick={testConfiguration}
+            disabled={loading || !apiKey.trim()}
+          >
+            {#if !loading}
+              <Icon name="play" size={14} />
+            {/if}
+            Test Connection
+          </Button>
+          <Button
+            variant="primary"
+            onclick={saveConfiguration}
+            disabled={loading || !apiKey.trim()}
+            {loading}
+          >
+            Save Changes
+          </Button>
         </div>
-      </div>
+      </section>
+
+      <aside class="settings-sidebar">
+        <Card title="Setup Guide">
+          <ol class="setup-steps">
+            <li class="step">
+              <span class="step-number">1</span>
+              <div class="step-content">
+                <h4>Get API Key</h4>
+                <p>Retrieve the API key from your environment variables</p>
+              </div>
+            </li>
+            <li class="step">
+              <span class="step-number">2</span>
+              <div class="step-content">
+                <h4>Find Device Token</h4>
+                <p>Get the 64-character token from iOS app logs</p>
+              </div>
+            </li>
+            <li class="step">
+              <span class="step-number">3</span>
+              <div class="step-content">
+                <h4>Test Connection</h4>
+                <p>Verify credentials work before saving</p>
+              </div>
+            </li>
+          </ol>
+        </Card>
+
+        <Card title="Danger Zone">
+          <p class="danger-description">
+            Clear all saved configuration data from this device.
+          </p>
+          <Button variant="danger" size="sm" onclick={clearConfiguration}>
+            Clear Configuration
+          </Button>
+        </Card>
+      </aside>
     </div>
-
-    <div class="config-section">
-      <div class="section-header">
-        <h2>Testing</h2>
-        <p>Test your configuration settings</p>
-      </div>
-
-      <div class="action-buttons">
-        <button
-          class="btn btn-primary"
-          onclick={testConfiguration}
-          disabled={loading || !apiKey.trim()}
-        >
-          {#if loading}
-            <div class="btn-spinner"></div>
-            Testing...
-          {:else}
-            Send Test Notification
-          {/if}
-        </button>
-
-        <button
-          class="btn btn-success"
-          onclick={saveConfiguration}
-          disabled={loading || !apiKey.trim()}
-        >
-          {#if loading}
-            <div class="btn-spinner"></div>
-            Saving...
-          {:else}
-            Save Configuration
-          {/if}
-        </button>
-      </div>
-    </div>
-
-    {#if result}
-      <div class="config-section">
-        <div class="result-card {statusType}">
-          <div class="result-content">
-            <p class="result-text">{result}</p>
-          </div>
-        </div>
-      </div>
-    {/if}
-
-    <div class="config-section">
-      <div class="section-header">
-        <h2>Setup Guide</h2>
-        <p>How to configure your system</p>
-      </div>
-
-      <div class="info-card">
-        <div class="setup-steps">
-          <div class="step">
-            <div class="step-number">1</div>
-            <div class="step-content">
-              <h4>Get Your API Key</h4>
-              <p>Use the API key from your SHOOTER system environment variables</p>
-            </div>
-          </div>
-
-          <div class="step">
-            <div class="step-number">2</div>
-            <div class="step-content">
-              <h4>Find Device Token</h4>
-              <p>Get your 64-character device token from the iOS app registration logs</p>
-            </div>
-          </div>
-
-          <div class="step">
-            <div class="step-number">3</div>
-            <div class="step-content">
-              <h4>Test & Save</h4>
-              <p>Send a test notification to verify everything works, then save your settings</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </main>
-</div>
+  </div>
+</main>
 
 <style>
-  .config-main {
-    max-width: 600px;
+  .settings-container {
+    max-width: 900px;
     margin: 0 auto;
-    padding: var(--spacing-lg);
   }
 
-  .back-btn {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-sm);
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    padding: var(--spacing-sm) var(--spacing-md);
+  .page-header {
+    margin-bottom: var(--space-8);
+  }
+
+  .page-title {
+    font-size: var(--text-2xl);
+    font-weight: 600;
+    letter-spacing: -0.03em;
     color: var(--text-primary);
-    font-size: var(--font-size-sm);
-    cursor: pointer;
-    transition: all 0.2s ease;
+    margin-bottom: var(--space-1);
   }
 
-  .back-btn:hover {
-    background: var(--bg-elevated);
-    transform: translateY(-1px);
-  }
-
-  .back-icon {
-    font-size: var(--font-size-lg);
-  }
-
-  .header-title {
-    text-align: center;
-    flex: 1;
-  }
-
-  .header-title h1 {
-    margin: 0;
-    font-size: var(--font-size-xl);
-    color: var(--text-primary);
-  }
-
-  .header-title p {
-    margin: var(--spacing-xs) 0 0 0;
+  .page-description {
+    font-size: var(--text-sm);
     color: var(--text-secondary);
-    font-size: var(--font-size-sm);
   }
 
-  .config-section {
-    margin-bottom: var(--spacing-xl);
+  .settings-grid {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    gap: var(--space-6);
+    align-items: start;
   }
 
-  .section-header {
-    margin-bottom: var(--spacing-lg);
-    text-align: center;
-  }
-
-  .section-header h2 {
-    margin: 0;
-    font-size: var(--font-size-xl);
-    color: var(--text-primary);
-  }
-
-  .section-header p {
-    margin: var(--spacing-xs) 0 0 0;
-    color: var(--text-secondary);
-    font-size: var(--font-size-sm);
-  }
-
-  .config-card {
-    background: var(--card-bg);
-    backdrop-filter: blur(10px);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-lg);
-    padding: var(--spacing-lg);
-    box-shadow: var(--shadow-md);
-  }
-
-  .input-group {
-    margin-bottom: var(--spacing-lg);
-  }
-
-  .input-group:last-child {
-    margin-bottom: 0;
-  }
-
-  .input-group label {
-    display: block;
-    margin-bottom: var(--spacing-sm);
-    color: var(--text-primary);
-    font-weight: 500;
-    font-size: var(--font-size-sm);
-  }
-
-  .input {
-    width: 100%;
-    padding: var(--spacing-md);
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    color: var(--text-primary);
-    font-size: var(--font-size-base);
-    transition: all 0.2s ease;
-  }
-
-  .input:focus {
-    outline: none;
-    border-color: var(--accent-blue);
-    box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
-  }
-
-  .input-group small {
-    display: block;
-    margin-top: var(--spacing-xs);
-    color: var(--text-tertiary);
-    font-size: var(--font-size-xs);
-  }
-
-  .action-buttons {
+  .settings-section {
     display: flex;
-    gap: var(--spacing-md);
-    justify-content: center;
-    flex-wrap: wrap;
+    flex-direction: column;
+    gap: var(--space-4);
   }
 
-  .btn {
+  .settings-sidebar {
     display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: var(--spacing-sm);
-    padding: var(--spacing-md) var(--spacing-lg);
-    border-radius: var(--radius-md);
-    font-size: var(--font-size-base);
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    border: none;
-    min-width: 140px;
+    flex-direction: column;
+    gap: var(--space-4);
   }
 
-  .btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .btn-primary {
-    background: var(--accent-blue);
-    color: white;
-  }
-
-  .btn-primary:hover:not(:disabled) {
-    background: var(--accent-blue-hover);
-    transform: translateY(-1px);
-  }
-
-  .btn-success {
-    background: var(--accent-green);
-    color: white;
-  }
-
-  .btn-success:hover:not(:disabled) {
-    background: #28a745;
-    transform: translateY(-1px);
-  }
-
-  .btn-spinner {
-    width: 16px;
-    height: 16px;
-    border: 2px solid transparent;
-    border-top: 2px solid currentColor;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-  }
-
-  .result-card {
-    background: var(--card-bg);
-    backdrop-filter: blur(10px);
-    border-radius: var(--radius-lg);
-    padding: var(--spacing-lg);
-    box-shadow: var(--shadow-md);
-  }
-
-  .result-card.success {
-    border: 1px solid var(--accent-green);
-    background: rgba(48, 209, 88, 0.1);
-  }
-
-  .result-card.error {
-    border: 1px solid var(--accent-red);
-    background: rgba(255, 69, 58, 0.1);
-  }
-
-  .result-card.warning {
-    border: 1px solid var(--accent-orange);
-    background: rgba(255, 159, 10, 0.1);
-  }
-
-  .result-text {
-    margin: 0;
-    color: var(--text-primary);
-    font-size: var(--font-size-base);
-  }
-
-  .info-card {
-    background: var(--card-bg);
-    backdrop-filter: blur(10px);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-lg);
-    padding: var(--spacing-lg);
-    box-shadow: var(--shadow-md);
+  .button-group {
+    display: flex;
+    gap: var(--space-3);
+    justify-content: flex-end;
   }
 
   .setup-steps {
+    list-style: none;
+    padding: 0;
+    margin: 0;
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-lg);
+    gap: var(--space-4);
   }
 
   .step {
     display: flex;
-    align-items: flex-start;
-    gap: var(--spacing-md);
+    gap: var(--space-3);
   }
 
   .step-number {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 32px;
-    height: 32px;
-    background: var(--accent-blue);
-    color: white;
-    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    background: var(--component-bg-active);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-xs);
     font-weight: 600;
-    font-size: var(--font-size-sm);
+    color: var(--text-secondary);
     flex-shrink: 0;
   }
 
   .step-content h4 {
-    margin: 0 0 var(--spacing-xs) 0;
+    font-size: var(--text-sm);
+    font-weight: 500;
     color: var(--text-primary);
-    font-size: var(--font-size-base);
+    margin-bottom: var(--space-1);
   }
 
   .step-content p {
-    margin: 0;
-    color: var(--text-secondary);
-    font-size: var(--font-size-sm);
+    font-size: var(--text-xs);
+    color: var(--text-tertiary);
+    line-height: var(--leading-relaxed);
   }
 
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
+  .danger-description {
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    margin-bottom: var(--space-4);
+    line-height: var(--leading-relaxed);
   }
 
   @media (max-width: 768px) {
-    .config-main {
-      padding: var(--spacing-md);
+    .settings-grid {
+      grid-template-columns: 1fr;
     }
 
-    .action-buttons {
+    .settings-sidebar {
+      order: -1;
+    }
+
+    .button-group {
       flex-direction: column;
     }
 
-    .btn {
+    .button-group :global(.btn) {
       width: 100%;
     }
   }
