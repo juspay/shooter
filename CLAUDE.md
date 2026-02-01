@@ -10,17 +10,18 @@ This repository contains a **WORKING** bidirectional communication system betwee
 
 ### Core Implementation ✅
 
-- `CLAUDE-CODE-INTEGRATION.md` - **WORKING** Shooter lifecycle hooks integration
+- `docs/CLAUDE-CODE-INTEGRATION.md` - **WORKING** Shooter lifecycle hooks integration
 - `.claude/` - Shooter hook configuration and Python scripts
 - `src/` - SvelteKit API server (working locally, production needs env fix)
 - `ios/` - Swift iOS app (working, receiving notifications)
 
-### Architecture Documentation
+### Architecture Documentation (in `plans/` and `docs/`)
 
-- `PLAN-A.MD` - Basic SvelteKit + Vercel + APNs architecture (✅ IMPLEMENTED)
-- `PLAN-B.MD` - Comprehensive bidirectional communication system with detailed implementation guide
-- `DEBUGGING-JOURNEY.md` - Complete implementation history and lessons learned
-- `NEXT-PHASES.md` - Roadmap for enhanced features and production readiness
+- `plans/PLAN-A.MD` - Basic SvelteKit + Vercel + APNs architecture (✅ IMPLEMENTED)
+- `plans/PLAN-B.MD` - Comprehensive bidirectional communication system with detailed implementation guide
+- `plans/NEXT-PHASES.md` - Roadmap for enhanced features and production readiness
+- `docs/POC-IMPLEMENTATION-GUIDE.md` - POC implementation details
+- `docs/POC-ACHIEVEMENT-SUMMARY.md` - POC achievements summary
 
 ## Key Technologies
 
@@ -77,8 +78,8 @@ The system is designed to be built in four phases:
 
 ✅ **IMPLEMENTED AND WORKING** - Shooter notification system is live and comprehensive:
 
-1. Follow PLAN-A.MD for basic implementation
-2. Use PLAN-B.MD for comprehensive system architecture
+1. Follow `plans/PLAN-A.MD` for basic implementation
+2. Use `plans/PLAN-B.MD` for comprehensive system architecture
 3. Implement in phases as outlined in the plans
 4. Test components individually before integration
 

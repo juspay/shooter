@@ -133,7 +133,7 @@ export default tseslint.config(
       '*.min.js',
       'package-lock.json',
       'pnpm-lock.yaml',
-      'test-utils.js',
+      'tests/',
     ],
   }
 );

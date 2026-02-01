@@ -166,7 +166,14 @@ vite.config.ts.timestamp-*
 
 # Bun
 .bun
+bun.lock
 bun.lockb
+
+# npm (using pnpm instead)
+package-lock.json
+
+# Yarn
+yarn.lock
 
 # Claude Code local settings (personal configurations)
 .claude/settings.local.json
