@@ -1,6 +1,10 @@
 // APNs service using proven library instead of manual implementation
 import apn from '@parse/node-apn';
 import { env } from '$env/dynamic/private';
+import net from 'net';
+
+// Fix for Node.js 18+ Happy Eyeballs algorithm - default 250ms timeout is too short for APNs
+net.setDefaultAutoSelectFamilyAttemptTimeout(5000);
 
 export class LibraryAPNsService {
     constructor() {
