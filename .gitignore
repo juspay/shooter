@@ -177,3 +177,4 @@ yarn.lock
 
 # Claude Code local settings (personal configurations)
 .claude/settings.local.json
+.playwright-mcp/
