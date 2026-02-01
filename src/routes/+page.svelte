@@ -1,122 +1,156 @@
-<script>
+<script lang="ts">
   import { goto } from '$app/navigation';
-  import { onMount } from 'svelte';
 
-  let notifications = [];
-  let loading = false;
-  let config = null;
-  let systemStatus = 'unknown';
-  let lastUpdate = null;
+  interface NotificationData {
+    [key: string]: unknown;
+    category?: string;
+    command?: string;
+    cwd?: string;
+    file?: string;
+    project?: string;
+    prompt_preview?: string;
+    source?: string;
+    success?: boolean;
+    timestamp?: number;
+    tool?: string;
+  }
+
+  interface Notification {
+    data: NotificationData;
+    id: number;
+    message: string;
+    status: string;
+    timestamp: number;
+    title: string;
+    type: string;
+  }
+
+  interface Config {
+    apiKey?: string;
+    deviceToken?: string;
+    lastUpdated?: number;
+  }
+
+  let notifications = $state<Notification[]>([]);
+  let loading = $state(false);
+  let config = $state<Config | null>(null);
+  let systemStatus = $state<'degraded' | 'error' | 'healthy' | 'unknown'>('unknown');
+  let lastUpdate = $state<Date | null>(null);
 
   // Mock notification data - in real app this would come from API
-  let mockNotifications = [
+  const mockNotifications: Notification[] = [
     {
+      data: { file: 'config.js', project: 'shooter', tool: 'Edit' },
       id: 1,
-      title: '🔧 SHOOTER: Editing config.js',
       message: '09:42:15 • Starting code edit in shooter',
+      status: 'delivered',
       timestamp: Date.now() - 1000 * 60 * 2, // 2 minutes ago
+      title: '🔧 SHOOTER: Editing config.js',
       type: 'tool_start',
-      status: 'delivered',
-      data: { tool: 'Edit', file: 'config.js', project: 'shooter' }
     },
     {
+      data: { file: 'config.js', success: true, tool: 'Edit' },
       id: 2,
-      title: '✅ SHOOTER: Edit Complete', 
       message: '09:42:18 • config.js updated successfully',
+      status: 'delivered',
       timestamp: Date.now() - 1000 * 60 * 2 + 3000, // 2 minutes ago + 3 seconds
+      title: '✅ SHOOTER: Edit Complete',
       type: 'tool_complete',
-      status: 'delivered',
-      data: { tool: 'Edit', file: 'config.js', success: true }
     },
     {
+      data: { category: 'feature', prompt_preview: 'Create notification system UI' },
       id: 3,
-      title: '🚀 SHOOTER: New Feature',
       message: '09:45:33 • Working on: Create notification system UI',
+      status: 'delivered',
       timestamp: Date.now() - 1000 * 60 * 5, // 5 minutes ago
+      title: '🚀 SHOOTER: New Feature',
       type: 'user_prompt',
-      status: 'delivered',
-      data: { prompt_preview: 'Create notification system UI', category: 'feature' }
     },
     {
+      data: { command: 'npm run build', tool: 'Bash' },
       id: 4,
-      title: '⚡ SHOOTER: Running Command',
       message: '09:46:12 • Executing: npm run build',
-      timestamp: Date.now() - 1000 * 30, // 30 seconds ago
-      type: 'tool_start',
       status: 'delivered',
-      data: { tool: 'Bash', command: 'npm run build' }
+      timestamp: Date.now() - 1000 * 30, // 30 seconds ago
+      title: '⚡ SHOOTER: Running Command',
+      type: 'tool_start',
     },
     {
+      data: { cwd: '/Users/user/shooter', project: 'shooter' },
       id: 5,
-      title: '🎯 SHOOTER: Session Started',
       message: '09:40:00 • SHOOTER session active in project',
-      timestamp: Date.now() - 1000 * 60 * 8, // 8 minutes ago
-      type: 'session_start',
       status: 'delivered',
-      data: { project: 'shooter', cwd: '/Users/user/shooter' }
-    }
+      timestamp: Date.now() - 1000 * 60 * 8, // 8 minutes ago
+      title: '🎯 SHOOTER: Session Started',
+      type: 'session_start',
+    },
   ];
 
-  onMount(() => {
+  $effect(() => {
     loadConfiguration();
     loadNotifications();
-    checkSystemStatus();
-    
+    void checkSystemStatus();
+
     // Auto-refresh every 10 seconds
     const interval = setInterval(() => {
       loadNotifications();
-      checkSystemStatus();
+      void checkSystemStatus();
     }, 10000);
 
-    return () => clearInterval(interval);
+    return () => { clearInterval(interval); };
   });
 
-  function loadConfiguration() {
+  function loadConfiguration(): void {
     try {
       const saved = localStorage.getItem('shooter_config');
       if (saved) {
-        config = JSON.parse(saved);
+        config = JSON.parse(saved) as Config;
       }
-    } catch (e) {
+    } catch {
       console.log('No configuration found');
     }
   }
 
-  function loadNotifications() {
+  function loadNotifications(): void {
     // In real app, this would fetch from API
     // For now, use mock data sorted by timestamp (newest first)
-    notifications = mockNotifications.sort((a, b) => b.timestamp - a.timestamp);
+    notifications = [...mockNotifications].sort((a, b) => b.timestamp - a.timestamp);
     lastUpdate = new Date();
   }
 
-  async function checkSystemStatus() {
+  async function checkSystemStatus(): Promise<void> {
     try {
       const response = await fetch('/api/health');
       const data = await response.json();
-      
+
       if (response.ok && data.status === 'healthy') {
         systemStatus = 'healthy';
       } else {
         systemStatus = 'degraded';
       }
-    } catch (error) {
+    } catch {
       systemStatus = 'error';
     }
   }
 
-  async function sendTestNotification() {
+  async function sendTestNotification(): Promise<void> {
     if (!config?.apiKey) {
-      goto('/config');
+      void goto('/config');
       return;
     }
 
     loading = true;
 
     try {
-      const testPayload = {
-        title: '🧪 SHOOTER: Manual Test',
+      const testPayload: {
+        data: NotificationData;
+        deviceToken?: string;
+        message: string;
+        title: string;
+      } = {
+        data: { source: 'manual-test', timestamp: Date.now() },
         message: `Test notification sent at ${new Date().toLocaleTimeString()}`,
-        data: { source: 'manual-test', timestamp: Date.now() }
+        title: '🧪 SHOOTER: Manual Test',
       };
 
       if (config.deviceToken) {
@@ -124,26 +158,26 @@
       }
 
       const response = await fetch('/api/notify', {
-        method: 'POST',
+        body: JSON.stringify(testPayload),
         headers: {
+          Authorization: `Bearer ${config.apiKey}`,
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${config.apiKey}`
         },
-        body: JSON.stringify(testPayload)
+        method: 'POST',
       });
 
       if (response.ok) {
         // Add the test notification to the list
-        const newNotification = {
+        const newNotification: Notification = {
+          data: testPayload.data,
           id: Date.now(),
-          title: testPayload.title,
           message: testPayload.message,
-          timestamp: Date.now(),
-          type: 'manual_test',
           status: 'sent',
-          data: testPayload.data
+          timestamp: Date.now(),
+          title: testPayload.title,
+          type: 'manual_test',
         };
-        
+
         notifications = [newNotification, ...notifications];
       }
     } catch (error) {
@@ -153,15 +187,15 @@
     loading = false;
   }
 
-  function formatTime(timestamp) {
+  function formatTime(timestamp: number): string {
     const date = new Date(timestamp);
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   }
 
-  function formatRelativeTime(timestamp) {
+  function formatRelativeTime(timestamp: number): string {
     const now = Date.now();
     const diff = now - timestamp;
-    
+
     if (diff < 1000 * 60) {
       return 'Just now';
     } else if (diff < 1000 * 60 * 60) {
@@ -175,25 +209,25 @@
     }
   }
 
-  function getNotificationIcon(type) {
-    const icons = {
-      tool_start: '🛠️',
-      tool_complete: '✅',
-      user_prompt: '💭',
-      session_start: '🎯',
-      session_end: '👋',
+  function getNotificationIcon(type: string): string {
+    const icons: Record<string, string> = {
+      error: '❌',
       manual_test: '🧪',
-      error: '❌'
+      session_end: '👋',
+      session_start: '🎯',
+      tool_complete: '✅',
+      tool_start: '🛠️',
+      user_prompt: '💭',
     };
     return icons[type] || '📱';
   }
 
-  function getStatusColor(status) {
-    const colors = {
+  function getStatusColor(status: string): string {
+    const colors: Record<string, string> = {
       delivered: 'var(--accent-green)',
-      sent: 'var(--accent-blue)',
+      failed: 'var(--accent-red)',
       pending: 'var(--accent-orange)',
-      failed: 'var(--accent-red)'
+      sent: 'var(--accent-blue)',
     };
     return colors[status] || 'var(--text-tertiary)';
   }
@@ -214,7 +248,7 @@
           <p>Live Notifications</p>
         </div>
       </div>
-      
+
       <div class="header-actions">
         <div class="status-indicator {systemStatus}">
           {#if systemStatus === 'healthy'}
@@ -231,8 +265,8 @@
             <span>Checking...</span>
           {/if}
         </div>
-        
-        <button class="config-btn" on:click={() => goto('/config')}>
+
+        <button class="config-btn" onclick={() => void goto('/config')}>
           <span>⚙️</span>
           <span>Config</span>
         </button>
@@ -246,11 +280,11 @@
         <h2>📱 Live Notifications</h2>
         <p>Real-time updates from your SHOOTER development sessions</p>
       </div>
-      
+
       <div class="notifications-actions">
-        <button 
+        <button
           class="btn btn-primary"
-          on:click={sendTestNotification}
+          onclick={sendTestNotification}
           disabled={loading || !config?.apiKey}
         >
           {#if loading}
@@ -260,12 +294,8 @@
             🧪 Send Test
           {/if}
         </button>
-        
-        <button 
-          class="btn btn-secondary"
-          on:click={loadNotifications}
-          disabled={loading}
-        >
+
+        <button class="btn btn-secondary" onclick={loadNotifications} disabled={loading}>
           🔄 Refresh
         </button>
       </div>
@@ -276,16 +306,14 @@
         <div class="empty-icon">⚙️</div>
         <h3>Configuration Required</h3>
         <p>Set up your API credentials to start receiving notifications</p>
-        <button class="btn btn-primary" on:click={() => goto('/config')}>
-          Configure Now
-        </button>
+        <button class="btn btn-primary" onclick={() => void goto('/config')}> Configure Now </button>
       </div>
     {:else if notifications.length === 0}
       <div class="empty-state">
         <div class="empty-icon">📱</div>
         <h3>No Notifications Yet</h3>
         <p>Notifications from SHOOTER will appear here when development events occur</p>
-        <button class="btn btn-secondary" on:click={sendTestNotification} disabled={loading}>
+        <button class="btn btn-secondary" onclick={sendTestNotification} disabled={loading}>
           {#if loading}
             <div class="btn-spinner"></div>
             Sending...
@@ -306,8 +334,10 @@
                 <h4>{notification.title}</h4>
                 <div class="notification-meta">
                   <span class="notification-time">{formatTime(notification.timestamp)}</span>
-                  <span class="notification-relative">{formatRelativeTime(notification.timestamp)}</span>
-                  <div 
+                  <span class="notification-relative"
+                    >{formatRelativeTime(notification.timestamp)}</span
+                  >
+                  <div
                     class="notification-status"
                     style="color: {getStatusColor(notification.status)}"
                   >
@@ -316,10 +346,10 @@
                 </div>
               </div>
             </div>
-            
+
             <div class="notification-body">
               <p>{notification.message}</p>
-              
+
               {#if notification.data}
                 <div class="notification-data">
                   {#if notification.data.file}
@@ -377,9 +407,15 @@
     background: var(--text-quaternary);
   }
 
-  .status-dot.success { background: var(--accent-green); }
-  .status-dot.warning { background: var(--accent-orange); }
-  .status-dot.error { background: var(--accent-red); }
+  .status-dot.success {
+    background: var(--accent-green);
+  }
+  .status-dot.warning {
+    background: var(--accent-orange);
+  }
+  .status-dot.error {
+    background: var(--accent-red);
+  }
 
   .config-btn {
     display: flex;
@@ -593,19 +629,19 @@
     font-weight: 500;
   }
 
-  .data-tag.category-debug { 
+  .data-tag.category-debug {
     background: rgba(255, 69, 58, 0.1);
     border-color: var(--accent-red);
     color: var(--accent-red);
   }
 
-  .data-tag.category-feature { 
+  .data-tag.category-feature {
     background: rgba(48, 209, 88, 0.1);
     border-color: var(--accent-green);
     color: var(--accent-green);
   }
 
-  .data-tag.category-testing { 
+  .data-tag.category-testing {
     background: rgba(255, 159, 10, 0.1);
     border-color: var(--accent-orange);
     color: var(--accent-orange);
@@ -620,7 +656,9 @@
   }
 
   @keyframes spin {
-    to { transform: rotate(360deg); }
+    to {
+      transform: rotate(360deg);
+    }
   }
 
   @media (max-width: 768px) {
@@ -628,15 +666,15 @@
       flex-direction: column;
       gap: var(--spacing-md);
     }
-    
+
     .notifications-actions {
       align-self: stretch;
     }
-    
+
     .btn {
       flex: 1;
     }
-    
+
     .notification-meta {
       flex-direction: column;
       align-items: flex-start;

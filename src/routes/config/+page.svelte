@@ -1,55 +1,85 @@
-<script>
+<script lang="ts">
+  import { browser } from '$app/environment';
   import { goto } from '$app/navigation';
-  let apiKey = '';
-  let deviceToken = '';
-  let result = '';
-  let loading = false;
-  let statusType = '';
 
-  // Smart defaults for local development
-  if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
-    apiKey = 'your-api-key-here';
-    deviceToken = 'your-device-token-here';
+  interface Config {
+    apiKey: string;
+    deviceToken: string;
+    lastUpdated: number;
   }
 
-  async function saveConfiguration() {
+  let apiKey = $state('');
+  let deviceToken = $state('');
+  let result = $state('');
+  let loading = $state(false);
+  let statusType = $state<'' | 'error' | 'success' | 'warning'>('');
+
+  // Smart defaults for local development
+  $effect(() => {
+    if (browser && window.location.hostname === 'localhost') {
+      if (!apiKey) {apiKey = 'your-api-key-here';}
+      if (!deviceToken) {deviceToken = 'your-device-token-here';}
+    }
+  });
+
+  // Load saved configuration on mount
+  $effect(() => {
+    if (browser) {
+      try {
+        const saved = localStorage.getItem('shooter_config');
+        if (saved) {
+          const config = JSON.parse(saved) as Config;
+          if (config.apiKey) {apiKey = config.apiKey;}
+          if (config.deviceToken) {deviceToken = config.deviceToken;}
+        }
+      } catch {
+        console.log('No saved configuration found');
+      }
+    }
+  });
+
+  async function saveConfiguration(): Promise<void> {
     loading = true;
     result = '';
     statusType = '';
 
     try {
       // Save to localStorage for persistence
-      localStorage.setItem('shooter_config', JSON.stringify({
-        apiKey: apiKey.trim(),
-        deviceToken: deviceToken.trim(),
-        lastUpdated: Date.now()
-      }));
+      localStorage.setItem(
+        'shooter_config',
+        JSON.stringify({
+          apiKey: apiKey.trim(),
+          deviceToken: deviceToken.trim(),
+          lastUpdated: Date.now(),
+        } satisfies Config)
+      );
 
       // Test the configuration
       const response = await fetch('/api/health');
-      const data = await response.json();
-      
+      const _data = await response.json();
+
       if (response.ok) {
-        result = '✅ Configuration saved and tested successfully!';
+        result = 'Configuration saved and tested successfully!';
         statusType = 'success';
-        
+
         // Redirect to home after success
         setTimeout(() => {
-          goto('/');
+          void goto('/');
         }, 2000);
       } else {
-        result = '⚠️ Configuration saved but system health check failed';
+        result = 'Configuration saved but system health check failed';
         statusType = 'warning';
       }
     } catch (error) {
-      result = `❌ Configuration failed: ${error.message}`;
+      const err = error as Error;
+      result = `Configuration failed: ${err.message}`;
       statusType = 'error';
     }
 
     loading = false;
   }
 
-  async function testConfiguration() {
+  async function testConfiguration(): Promise<void> {
     if (!apiKey.trim()) {
       result = 'Error: API key is required for testing';
       statusType = 'error';
@@ -61,10 +91,15 @@
     statusType = '';
 
     try {
-      const testPayload = {
-        title: '🔧 SHOOTER Config Test',
+      const testPayload: {
+        data: Record<string, unknown>;
+        deviceToken?: string;
+        message: string;
+        title: string;
+      } = {
+        data: { source: 'config-test', timestamp: Date.now() },
         message: `Configuration test at ${new Date().toLocaleTimeString()}`,
-        data: { source: 'config-test', timestamp: Date.now() }
+        title: 'SHOOTER Config Test',
       };
 
       if (deviceToken.trim()) {
@@ -72,45 +107,31 @@
       }
 
       const response = await fetch('/api/notify', {
-        method: 'POST',
+        body: JSON.stringify(testPayload),
         headers: {
+          Authorization: `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`
         },
-        body: JSON.stringify(testPayload)
+        method: 'POST',
       });
 
       const data = await response.json();
-      
+
       if (response.ok) {
-        result = '✅ Test notification sent successfully! Check your device.';
+        result = 'Test notification sent successfully! Check your device.';
         statusType = 'success';
       } else {
-        result = `❌ Test failed: ${data.error || 'Unknown error'}`;
+        result = `Test failed: ${data.error || 'Unknown error'}`;
         statusType = 'error';
       }
     } catch (error) {
-      result = `❌ Network Error: ${error.message}`;
+      const err = error as Error;
+      result = `Network Error: ${err.message}`;
       statusType = 'error';
     }
 
     loading = false;
   }
-
-  // Load saved configuration on mount
-  import { onMount } from 'svelte';
-  onMount(() => {
-    try {
-      const saved = localStorage.getItem('shooter_config');
-      if (saved) {
-        const config = JSON.parse(saved);
-        if (config.apiKey) apiKey = config.apiKey;
-        if (config.deviceToken) deviceToken = config.deviceToken;
-      }
-    } catch (e) {
-      console.log('No saved configuration found');
-    }
-  });
 </script>
 
 <svelte:head>
@@ -121,12 +142,12 @@
 <div class="app">
   <header class="header">
     <div class="header-content">
-      <button class="back-btn" on:click={() => goto('/')}>
-        <span class="back-icon">←</span>
+      <button class="back-btn" onclick={() => void goto('/')}>
+        <span class="back-icon">&larr;</span>
         <span>Notifications</span>
       </button>
       <div class="header-title">
-        <h1>⚙️ Configuration</h1>
+        <h1>Configuration</h1>
         <p>Setup your notification system</p>
       </div>
     </div>
@@ -135,28 +156,28 @@
   <main class="main config-main">
     <div class="config-section">
       <div class="section-header">
-        <h2>🔐 API Configuration</h2>
+        <h2>API Configuration</h2>
         <p>Configure your SHOOTER API credentials</p>
       </div>
 
       <div class="config-card">
         <div class="input-group">
           <label for="apiKey">API Key</label>
-          <input 
+          <input
             id="apiKey"
-            bind:value={apiKey} 
-            type="password" 
+            bind:value={apiKey}
+            type="password"
             placeholder="Enter your API key"
             class="input"
           />
           <small>Required for sending notifications to the SHOOTER system</small>
         </div>
-        
+
         <div class="input-group">
           <label for="deviceToken">Device Token</label>
-          <input 
+          <input
             id="deviceToken"
-            bind:value={deviceToken} 
+            bind:value={deviceToken}
             type="text"
             placeholder="Your iOS device token"
             class="input"
@@ -168,34 +189,34 @@
 
     <div class="config-section">
       <div class="section-header">
-        <h2>🧪 Testing</h2>
+        <h2>Testing</h2>
         <p>Test your configuration settings</p>
       </div>
 
       <div class="action-buttons">
-        <button 
+        <button
           class="btn btn-primary"
-          on:click={testConfiguration} 
+          onclick={testConfiguration}
           disabled={loading || !apiKey.trim()}
         >
           {#if loading}
             <div class="btn-spinner"></div>
             Testing...
           {:else}
-            📱 Send Test Notification
+            Send Test Notification
           {/if}
         </button>
-        
-        <button 
+
+        <button
           class="btn btn-success"
-          on:click={saveConfiguration} 
+          onclick={saveConfiguration}
           disabled={loading || !apiKey.trim()}
         >
           {#if loading}
             <div class="btn-spinner"></div>
             Saving...
           {:else}
-            💾 Save Configuration
+            Save Configuration
           {/if}
         </button>
       </div>
@@ -213,7 +234,7 @@
 
     <div class="config-section">
       <div class="section-header">
-        <h2>ℹ️ Setup Guide</h2>
+        <h2>Setup Guide</h2>
         <p>How to configure your system</p>
       </div>
 
@@ -226,7 +247,7 @@
               <p>Use the API key from your SHOOTER system environment variables</p>
             </div>
           </div>
-          
+
           <div class="step">
             <div class="step-number">2</div>
             <div class="step-content">
@@ -234,7 +255,7 @@
               <p>Get your 64-character device token from the iOS app registration logs</p>
             </div>
           </div>
-          
+
           <div class="step">
             <div class="step-number">3</div>
             <div class="step-content">
@@ -498,18 +519,20 @@
   }
 
   @keyframes spin {
-    to { transform: rotate(360deg); }
+    to {
+      transform: rotate(360deg);
+    }
   }
 
   @media (max-width: 768px) {
     .config-main {
       padding: var(--spacing-md);
     }
-    
+
     .action-buttons {
       flex-direction: column;
     }
-    
+
     .btn {
       width: 100%;
     }

@@ -5,38 +5,38 @@
   --bg-secondary: #1c1c1e;
   --bg-tertiary: #2c2c2e;
   --bg-elevated: #3a3a3c;
-  
+
   --text-primary: #ffffff;
   --text-secondary: #ebebf5;
   --text-tertiary: #ebebf599;
   --text-quaternary: #ebebf54d;
-  
+
   --accent-blue: #007aff;
   --accent-blue-hover: #0056cc;
   --accent-green: #30d158;
   --accent-red: #ff453a;
   --accent-orange: #ff9f0a;
-  
+
   --border-color: #38383a;
   --separator-color: #38383a;
-  
+
   /* Blur and Effects */
   --blur-bg: rgba(28, 28, 30, 0.85);
   --card-bg: rgba(58, 58, 60, 0.6);
-  
+
   /* Spacing */
   --spacing-xs: 4px;
   --spacing-sm: 8px;
   --spacing-md: 16px;
   --spacing-lg: 24px;
   --spacing-xl: 32px;
-  
+
   /* Border Radius */
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;
   --radius-xl: 20px;
-  
+
   /* Typography */
   --font-size-xs: 12px;
   --font-size-sm: 14px;
@@ -44,7 +44,7 @@
   --font-size-lg: 18px;
   --font-size-xl: 24px;
   --font-size-xxl: 32px;
-  
+
   /* Shadows */
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.12);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.15);
@@ -147,7 +147,8 @@ body {
 }
 
 /* Loading Spinner */
-.loading-spinner, .btn-spinner {
+.loading-spinner,
+.btn-spinner {
   width: 16px;
   height: 16px;
   border: 2px solid var(--text-quaternary);
@@ -157,8 +158,12 @@ body {
 }
 
 @keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 /* Main Content */
@@ -186,7 +191,8 @@ body {
   border-bottom: 1px solid var(--separator-color);
 }
 
-.card-header h2, .card-header h3 {
+.card-header h2,
+.card-header h3 {
   font-size: var(--font-size-lg);
   font-weight: 600;
   margin: 0 0 var(--spacing-xs) 0;
@@ -377,7 +383,8 @@ body {
   color: var(--text-primary);
   padding: var(--spacing-md);
   border-radius: var(--radius-sm);
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+  font-family:
+    'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
   font-size: var(--font-size-sm);
   line-height: 1.5;
   white-space: pre-wrap;
@@ -473,23 +480,23 @@ body {
     gap: var(--spacing-md);
     text-align: center;
   }
-  
+
   .main {
     padding: var(--spacing-lg) var(--spacing-md);
   }
-  
+
   .action-buttons {
     flex-direction: column;
   }
-  
+
   .btn {
     justify-content: center;
   }
-  
+
   .info-cards {
     grid-template-columns: 1fr;
   }
-  
+
   .status-grid {
     grid-template-columns: 1fr;
   }
@@ -500,7 +507,7 @@ body {
     flex-direction: column;
     gap: var(--spacing-sm);
   }
-  
+
   .logo-text {
     text-align: center;
   }

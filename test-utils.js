@@ -1,7 +1,7 @@
 /**
  * Simple utility functions for testing SHOOTER notification system
  * Created as part of automatic notification verification test
- * 
+ *
  * This file demonstrates the automatic notification system working
  * when Claude Code sessions complete naturally.
  */
@@ -12,9 +12,9 @@
  * @returns {string} Random test message
  */
 function generateTestMessage(prefix = 'Test') {
-    const randomId = Math.random().toString(36).substring(2, 8);
-    const timestamp = new Date().toLocaleTimeString();
-    return `${prefix} message ${randomId} at ${timestamp}`;
+  const randomId = Math.random().toString(36).substring(2, 8);
+  const timestamp = new Date().toLocaleTimeString();
+  return `${prefix} message ${randomId} at ${timestamp}`;
 }
 
 /**
@@ -24,7 +24,7 @@ function generateTestMessage(prefix = 'Test') {
  * @returns {number} Sum of a and b
  */
 function add(a, b) {
-    return a + b;
+  return a + b;
 }
 
 export { generateTestMessage, add };
