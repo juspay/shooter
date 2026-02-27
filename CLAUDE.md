@@ -25,7 +25,7 @@ This repository contains a **WORKING** bidirectional communication system betwee
 
 - `docs/GUIDANCE.md` - **READ THIS FIRST** - Complete development guide
 - `docs/CLAUDE-CODE-INTEGRATION.md` - **WORKING** Shooter lifecycle hooks integration
-- `.claude/` - Shooter hook configuration and Python scripts
+- `.claude/` - Shooter hook configuration and unified Node.js notifier (`notifier.cjs`)
 - `src/lib/modules/` - Organized modular code (client + server)
   - `server/apn/` - Apple Push Notification service implementations
   - `server/cli/` - CLI command execution utilities
@@ -36,7 +36,7 @@ This repository contains a **WORKING** bidirectional communication system betwee
   - `jwt.yaml` - JWT authentication types
   - `apn.yaml` - APNs notification types
   - `cli.yaml` - CLI module types
-- `ios/` - Swift iOS app (working, receiving notifications)
+- `ios/` - Swift iOS app (working, receiving notifications + interactive permission responses)
 
 ### Architecture Documentation (in `plans/` and `docs/`)
 
@@ -69,10 +69,10 @@ The system is designed to be built in four phases:
 
 ### SvelteKit Application
 
-- API routes: `/api/notify`, `/api/webhook`, `/api/health`
-- APNs integration with JWT authentication
+- API routes: `/api/notify`, `/api/response`, `/api/webhook`, `/api/health`
+- APNs integration with JWT authentication (sandbox/production via `APNS_PRODUCTION` env var)
+- In-memory pending request store for bidirectional permission flow
 - Request validation and error handling
-- Optional admin interface for monitoring
 
 ### iOS Application
 
@@ -84,11 +84,11 @@ The system is designed to be built in four phases:
 ### Shooter Integration ✅ **WORKING**
 
 - **Lifecycle Hooks**: Automatic detection of tool usage, user prompts, session events
-- **HTTP Client**: Python scripts send POST requests to SvelteKit API
+- **Unified Notifier**: Single `notifier.cjs` (Node.js) handles all hook events with async polling for bidirectional permissions
 - **Context-Aware Notifications**: Smart categorization (debug, feature, testing, learning)
-- **Real-time Events**: File edits, commands, session start/stop notifications
-- **Configuration**: `.claude/settings.json` + Python hooks in `.claude/hooks/`
-- **Setup**: Interactive configuration script (`python3 .claude/setup.py`)
+- **Bidirectional Permissions**: PermissionRequest hook blocks, sends interactive iOS notification, polls for Allow/Deny response
+- **Configuration**: `.claude/settings.json` + `notifier.cjs` in `.claude/hooks/`
+- **Environment Variables**: `SHOOTER_USE_LOCAL`, `SHOOTER_LOCAL_PORT`, `SHOOTER_API_URL`, `SHOOTER_PERMISSION_TIMEOUT`
 
 ## Security Requirements
 
@@ -109,12 +109,20 @@ The system is designed to be built in four phases:
 
 ## Environment Setup
 
-When implementing, you'll need:
+Required environment variables (set in `.env` for local dev):
+
+- `API_KEY` - Bearer token for hook → server auth
+- `APNS_KEY` - APNs private key (.p8 contents)
+- `APNS_KEY_ID` - APNs key ID
+- `APNS_TEAM_ID` - Apple Team ID
+- `APNS_BUNDLE_ID` - iOS app bundle identifier
+- `APNS_PRODUCTION` - Set to `true` for TestFlight/App Store builds (default: sandbox)
+- `DEVICE_TOKEN` - Target iOS device token
+
+You'll also need:
 
 - Apple Developer account with Push Notifications capability
-- APNs Auth Key (.p8 file) with Key ID and Team ID
 - Vercel account for deployment
-- Device tokens from iOS app for testing
 
 ## Testing Strategy
 

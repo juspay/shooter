@@ -1,5 +1,6 @@
 import { env } from '$env/dynamic/private';
 import { LibraryAPNsService } from '$lib/modules/server/apn/library-apns';
+import { createPendingRequest } from '$lib/modules/server/apn/pending-requests';
 import { json } from '@sveltejs/kit';
 
 import type { RequestHandler } from './$types';
@@ -22,9 +23,19 @@ interface NotificationRequest {
   data?: NotificationData;
   message: string;
   title: string;
+  waitForResponse?: boolean;
 }
 
-// 🎯 NOTIFICATION DEDUPLICATION CACHE
+// Singleton APNs client - reuses HTTP/2 connection across requests
+let apnsSingleton: LibraryAPNsService | null = null;
+function getAPNsClient(): LibraryAPNsService {
+  if (!apnsSingleton) {
+    apnsSingleton = new LibraryAPNsService();
+  }
+  return apnsSingleton;
+}
+
+// NOTIFICATION DEDUPLICATION CACHE
 const notificationCache = new Map<string, number>();
 const DEDUP_WINDOW = 10000; // 10 seconds deduplication window
 
@@ -131,10 +142,8 @@ function isDuplicateNotification(title: string, message: string, data?: Notifica
 
 export const POST: RequestHandler = async ({ request }) => {
   try {
-    // Use proven library instead of manual implementation
-    console.log('=== INITIALIZING LIBRARY APNS SERVICE ===');
-    const apnsClient = new LibraryAPNsService();
-    console.log('Library APNs service initialized successfully');
+    // Use singleton APNs client to reuse HTTP/2 connection
+    const apnsClient = getAPNsClient();
 
     // Validate API key
     const authHeader = request.headers.get('authorization');
@@ -146,74 +155,30 @@ export const POST: RequestHandler = async ({ request }) => {
     const apiKey = authHeader.substring(7);
     const expectedKey = env.API_KEY?.trim();
 
-    if (!expectedKey) {
-      return json({ error: 'Server configuration error' }, { status: 500 });
-    }
-
     if (apiKey !== expectedKey) {
-      console.log('API key validation failed');
-      return json(
-        {
-          error: 'Invalid API key',
-        },
-        { status: 401 }
-      );
+      return json({ error: 'Invalid API key' }, { status: 401 });
     }
-
-    console.log('API key validation passed');
 
     // Parse request body
-    console.log('Parsing request body...');
     const body = (await request.json()) as NotificationRequest;
-    console.log('Request body:', JSON.stringify(body, null, 2));
-
-    const { data, message, title } = body;
-    console.log('Extracted values:');
-    console.log('- title:', title);
-    console.log('- message:', message);
-    console.log('- data:', data);
+    const { data, message, title, waitForResponse } = body;
 
     if (!title || !message) {
-      console.log('Missing title or message');
       return json({ error: 'Title and message are required' }, { status: 400 });
     }
 
-    // 🎯 SMART NOTIFICATION FILTERING
+    // Smart notification filtering
     const requestId = Math.random().toString(36).substring(2, 15);
-    const timestamp = new Date().toISOString();
-
-    console.log(`\n=== 📱 NOTIFICATION REQUEST [${requestId}] @ ${timestamp} ===`);
-    console.log(`📍 Project: ${data?.project || 'unknown'}`);
-    console.log(`🔧 Tool: ${data?.tool || 'unknown'}`);
-    console.log(`📂 Files: ${data?.files || 'none'}`);
-    console.log(`💬 Title: ${JSON.stringify(title)}`);
-    console.log(`📝 Message: ${JSON.stringify(message)}`);
-    console.log(`🏷️ Source: ${data?.source || 'unknown'}`);
-    console.log(`📊 Category: ${data?.category || 'unknown'}`);
-    console.log(`🌐 User-Agent: ${request.headers.get('user-agent') || 'unknown'}`);
-    console.log(`🔑 Auth: ${request.headers.get('authorization') ? 'Bearer ***' : 'none'}`);
-
     const shouldSendNotification = intelligentNotificationFilter(title, message, data);
 
     if (!shouldSendNotification.send) {
-      console.log(`\n🚫 DECISION: FILTERED OUT`);
-      console.log(`📋 Reason: ${shouldSendNotification.reason}`);
-      console.log(
-        `🔍 Filter Analysis: ${JSON.stringify({ message, source: data?.source, title }, null, 2)}`
-      );
-      console.log(`=== END REQUEST [${requestId}] - BLOCKED ===\n`);
-
       return json({
-        filteringAnalysis: { message, requestId, source: data?.source, title },
         message: 'Notification filtered (not sent)',
         reason: shouldSendNotification.reason,
         success: true,
         timestamp: new Date().toISOString(),
       });
     }
-
-    console.log(`\n✅ DECISION: APPROVED FOR SENDING`);
-    console.log(`📋 Reason: ${shouldSendNotification.reason}`);
 
     // Check APNs configuration
     if (!apnsClient.isConfigured()) {
@@ -228,10 +193,6 @@ export const POST: RequestHandler = async ({ request }) => {
 
     // Get device token
     const deviceToken = env.DEVICE_TOKEN?.trim();
-    console.log(
-      'Device token from env:',
-      deviceToken ? `${deviceToken.substring(0, 8)}... (${deviceToken.length} chars)` : 'NOT SET'
-    );
 
     if (!deviceToken) {
       return json(
@@ -243,72 +204,33 @@ export const POST: RequestHandler = async ({ request }) => {
       );
     }
 
+    // If this is a bidirectional permission request, store it for polling
+    if (waitForResponse && data?.requestId) {
+      createPendingRequest(data.requestId as string, {
+        sessionId: (data.sessionId as string) || '',
+        toolInput: (data.toolInput as Record<string, unknown>) || {},
+        toolName: (data.toolName as string) || '',
+      });
+    }
+
     // Send notification
     const payload = {
       badge: 1,
       body: message,
+      category: waitForResponse ? 'CLAUDE_PERMISSION' : undefined,
       data: {
         ...data,
         source: 'modern-apns-api',
         timestamp: new Date().toISOString(),
+        waitForResponse: waitForResponse || false,
       },
       message: null,
       sound: 'default' as const,
       title,
     };
 
-    // Debug payload structure
-    console.log('=== PAYLOAD DEBUG ===');
-    console.log('Raw data from request:', data);
-    console.log('Data type:', typeof data);
-    console.log('Data is array:', Array.isArray(data));
-    console.log('Data keys:', data ? Object.keys(data) : 'none');
-    console.log('Final payload:');
-    console.log('- title:', typeof title, title);
-    console.log('- body:', typeof message, message);
-    console.log('- data:', typeof payload.data, payload.data);
-
-    // Test JSON serialization of payload
     try {
-      const payloadJson = JSON.stringify(payload);
-      console.log('✅ Payload JSON serialization test passed');
-      console.log('Payload JSON length:', payloadJson.length);
-      console.log('Payload JSON preview:', `${payloadJson.substring(0, 100)}...`);
-    } catch (jsonError) {
-      console.error('❌ Payload JSON serialization failed:', jsonError);
-      console.error('This might be the source of the JSON parsing error');
-    }
-
-    console.log('About to send notification:');
-    console.log('- Device token:', deviceToken ? `${deviceToken.substring(0, 8)}...` : 'undefined');
-    console.log('- Payload:', JSON.stringify(payload, null, 2));
-    console.log('- APNs client configured:', apnsClient.isConfigured());
-
-    console.log('=== BEFORE CALLING SENDNOTIFICATION ===');
-    console.log('- payload value:', payload);
-    console.log('- payload type:', typeof payload);
-    console.log('- payload stringify:', JSON.stringify(payload));
-
-    try {
-      console.log(`\n🚀 SENDING TO APNs...`);
-      console.log(`📱 Device Token: ${deviceToken.substring(0, 8)}...`);
-      console.log(`📦 Payload Size: ${JSON.stringify(payload).length} bytes`);
-
       const result = await apnsClient.sendNotification(deviceToken, payload);
-
-      console.log(`\n✅ APNs DELIVERY SUCCESS!`);
-      console.log(`📊 Result: ${JSON.stringify(result, null, 2)}`);
-      console.log(`📱 Devices Sent: ${result.sent || 0}`);
-      console.log(`❌ Devices Failed: ${result.failed || 0}`);
-      if (result.details && result.details.length > 0) {
-        console.log(`🔍 APNs Details:`);
-        result.details.forEach((detail, index) => {
-          console.log(`  ${index + 1}. Device: ${detail.device?.substring(0, 8)}...`);
-          console.log(`     APNs ID: ${detail['apns-unique-id']}`);
-          console.log(`     Status: ${detail.status || 'success'}`);
-        });
-      }
-      console.log(`=== END REQUEST [${requestId}] - DELIVERED ===\n`);
 
       return json({
         message: 'Notification sent successfully',
@@ -319,10 +241,7 @@ export const POST: RequestHandler = async ({ request }) => {
       });
     } catch (notificationError) {
       const err = notificationError as Error;
-      console.error(`\n💥 APNs DELIVERY FAILED!`);
-      console.error(`📋 Error: ${err.message}`);
-      console.error(`🔍 Details: ${err.stack}`);
-      console.error(`=== END REQUEST [${requestId}] - FAILED ===\n`);
+      console.error(`[notify] APNs delivery failed: ${err.message}`);
 
       return json(
         {
