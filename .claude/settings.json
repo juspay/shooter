@@ -1,6 +1,6 @@
 {
   "permissions": {
-    "allow": ["Bash(*)", "Edit(*)", "Write(*)", "Read(*)"]
+    "allow": ["Bash", "Edit", "Write", "Read"]
   },
   "hooks": {
     "PreToolUse": [
@@ -9,7 +9,29 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/smart_completion_notifier.cjs PreToolUse"
+            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=5175 node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notifier.cjs PreToolUse"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=5175 node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notifier.cjs PostToolUse"
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=5175 node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notifier.cjs PostToolUseFailure"
           }
         ]
       }
@@ -20,7 +42,29 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/smart_completion_notifier.cjs Stop"
+            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=5175 node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notifier.cjs Stop"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=5175 node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notifier.cjs SessionStart"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=5175 node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notifier.cjs SessionEnd"
           }
         ]
       }
@@ -31,7 +75,85 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/smart_completion_notifier.cjs Notification"
+            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=5175 node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notifier.cjs Notification"
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=5175 node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notifier.cjs PermissionRequest",
+            "timeout": 180
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=5175 node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notifier.cjs SubagentStart"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=5175 node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notifier.cjs SubagentStop"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=5175 node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notifier.cjs UserPromptSubmit"
+          }
+        ]
+      }
+    ],
+    "TeammateIdle": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=5175 node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notifier.cjs TeammateIdle"
+          }
+        ]
+      }
+    ],
+    "TaskCompleted": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=5175 node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notifier.cjs TaskCompleted"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=5175 node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notifier.cjs PreCompact"
           }
         ]
       }

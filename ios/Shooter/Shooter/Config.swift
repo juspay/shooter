@@ -2,7 +2,7 @@ import Foundation
 
 struct AppConfig {
     // Server Configuration
-    static let defaultServerURL = "https://shooter-dtufsplzq-sachin-sharmas-projects-7dbbe7a8.vercel.app"
+    static let defaultServerURL = "http://localhost:5175"
     static let apiVersion = "v1"
     
     // Endpoints
@@ -11,6 +11,7 @@ struct AppConfig {
         static let health = "/api/health"
         static let register = "/api/register"
         static let webhook = "/api/webhook"
+        static let response = "/api/response"
     }
     
     // App Information
@@ -23,8 +24,19 @@ struct AppConfig {
     
     // Notification Configuration
     struct Notifications {
-        static let categories: [String] = ["SHOOTER", "BUILD_STATUS", "DEPLOYMENT"]
+        static let categories: [String] = ["SHOOTER", "BUILD_STATUS", "DEPLOYMENT", "CLAUDE_PERMISSION"]
         static let soundName = "default"
+
+        // Interactive notification action identifiers
+        struct Actions {
+            static let allow = "ALLOW_ACTION"
+            static let deny = "DENY_ACTION"
+        }
+
+        // Interactive notification category identifiers
+        struct Categories {
+            static let permission = "CLAUDE_PERMISSION"
+        }
     }
     
     // Development/Debug settings

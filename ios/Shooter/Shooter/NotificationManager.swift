@@ -16,6 +16,7 @@ class NotificationManager: NSObject, ObservableObject {
     override init() {
         super.init()
         UNUserNotificationCenter.current().delegate = self
+        setupNotificationCategories()
         checkAuthorizationStatus()
         loadStoredNotifications()
         loadConfiguration()
@@ -26,10 +27,35 @@ class NotificationManager: NSObject, ObservableObject {
             DispatchQueue.main.async {
                 self.isAuthorized = granted
                 if granted {
+                    self.setupNotificationCategories()
                     self.registerForRemoteNotifications()
                 }
             }
         }
+    }
+
+    private func setupNotificationCategories() {
+        let allowAction = UNNotificationAction(
+            identifier: AppConfig.Notifications.Actions.allow,
+            title: "Allow",
+            options: [.authenticationRequired]
+        )
+
+        let denyAction = UNNotificationAction(
+            identifier: AppConfig.Notifications.Actions.deny,
+            title: "Deny",
+            options: [.destructive]
+        )
+
+        let permissionCategory = UNNotificationCategory(
+            identifier: AppConfig.Notifications.Categories.permission,
+            actions: [allowAction, denyAction],
+            intentIdentifiers: [],
+            options: []
+        )
+
+        UNUserNotificationCenter.current().setNotificationCategories([permissionCategory])
+        print("Registered notification categories: CLAUDE_PERMISSION (Allow/Deny)")
     }
     
     private func checkAuthorizationStatus() {
@@ -116,6 +142,32 @@ class NotificationManager: NSObject, ObservableObject {
 extension NotificationManager: UNUserNotificationCenterDelegate {
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
         let userInfo = response.notification.request.content.userInfo
+        let actionIdentifier = response.actionIdentifier
+        let categoryIdentifier = response.notification.request.content.categoryIdentifier
+
+        // Handle interactive permission responses (Allow/Deny from notification)
+        if categoryIdentifier == AppConfig.Notifications.Categories.permission {
+            let requestId = userInfo["requestId"] as? String
+            var decision: String? = nil
+
+            switch actionIdentifier {
+            case AppConfig.Notifications.Actions.allow:
+                decision = "allow"
+            case AppConfig.Notifications.Actions.deny:
+                decision = "deny"
+            case UNNotificationDismissActionIdentifier:
+                // Dismissed — hook will timeout and fall through to local dialog
+                break
+            default:
+                // Tapped notification body (opened app) — no decision
+                break
+            }
+
+            if let decision = decision, let requestId = requestId {
+                sendPermissionResponse(requestId: requestId, decision: decision)
+            }
+        }
+
         handleNotification(userInfo: userInfo)
         completionHandler()
     }
@@ -303,6 +355,42 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         }
     }
     
+    // MARK: - Permission Response
+
+    private func sendPermissionResponse(requestId: String, decision: String) {
+        guard let url = URL(string: "\(serverUrl)\(AppConfig.Endpoints.response)") else {
+            print("Invalid server URL for permission response")
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+
+        let body: [String: Any] = [
+            "requestId": requestId,
+            "decision": decision
+        ]
+
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        } catch {
+            print("Failed to encode permission response: \(error)")
+            return
+        }
+
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                print("Failed to send permission response: \(error)")
+                return
+            }
+            if let httpResponse = response as? HTTPURLResponse {
+                print("Permission response sent (\(decision)): HTTP \(httpResponse.statusCode)")
+            }
+        }.resume()
+    }
+
     // MARK: - Persistence
     
     private func loadStoredNotifications() {
