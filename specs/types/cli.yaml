@@ -1,0 +1,88 @@
+# CLI Module Type Definitions
+# Non-top file - referenced from index.yaml
+# Contains all types related to CLI command execution and results
+
+CLI:
+  Options:
+    type: object
+    description: Configuration options for CLI command execution
+    required:
+      - verbose
+      - dryRun
+    properties:
+      verbose:
+        type: boolean
+        description: Enable verbose output logging
+      dryRun:
+        type: boolean
+        description: Simulate execution without making changes
+      timeout:
+        type: number
+        description: Command timeout in milliseconds
+
+  Command:
+    type: object
+    description: Represents a CLI command to be executed
+    required:
+      - name
+      - args
+      - options
+    properties:
+      name:
+        type: string
+        description: The command name or executable
+      args:
+        type: array
+        description: Command arguments
+        items:
+          type: string
+      options:
+        $ref: '#/CLI/Options'
+        description: Execution options for the command
+
+  Result:
+    type: object
+    description: Result of a CLI command execution
+    required:
+      - success
+      - exitCode
+    properties:
+      success:
+        type: boolean
+        description: Whether the command executed successfully
+      output:
+        type: string
+        description: Standard output from the command
+      error:
+        type: string
+        description: Standard error or error message
+      exitCode:
+        type: number
+        description: Process exit code (0 = success)
+
+  RunnerConfig:
+    type: object
+    description: Configuration for spawning a CLI process with PTY
+    required:
+      - command
+    properties:
+      command:
+        type: string
+        description: The command to execute
+      args:
+        type: array
+        description: Command arguments
+        items:
+          type: string
+      cwd:
+        type: string
+        description: Working directory for the process
+      cols:
+        type: number
+        description: Terminal width in columns (default 80)
+      rows:
+        type: number
+        description: Terminal height in rows (default 30)
+      useLoginShell:
+        type: boolean
+        description: Whether to use login shell for proper environment (default true)

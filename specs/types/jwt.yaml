@@ -1,0 +1,36 @@
+# JWT Type Definitions
+# Non-top file - referenced from index.yml
+# Contains all JWT-related types for Apple Push Notification authentication
+
+JWT:
+  Header:
+    type: object
+    description: JWT header for APNs authentication token
+    required:
+      - alg
+      - kid
+    properties:
+      alg:
+        type: string
+        description: Algorithm used for signing (ES256 for APNs)
+      kid:
+        type: string
+        description: Key ID from Apple Developer account
+
+  Payload:
+    type: object
+    description: JWT payload containing token claims
+    required:
+      - iat
+      - iss
+    properties:
+      iss:
+        type: string
+        description: Issuer - your Apple Team ID
+      iat:
+        type: number
+        description: Issued at time (Unix timestamp)
+      exp:
+        type: number
+        nullable: true
+        description: Expiration time (Unix timestamp, optional)

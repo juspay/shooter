@@ -7,6 +7,9 @@ const config = {
     adapter: adapter({
       runtime: 'nodejs20.x',
     }),
+    alias: {
+      $generated: './src/generated',
+    },
   },
   preprocess: vitePreprocess(),
 };

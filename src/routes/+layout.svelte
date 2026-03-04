@@ -1,7 +1,7 @@
 <script lang="ts">
   import '../app.css';
   import { page } from '$app/stores';
-  import { StatusBadge } from '$lib/components';
+  import { StatusBadge } from '$lib/modules/client/common';
   import { onMount, type Snippet } from 'svelte';
 
   const { children }: { children: Snippet } = $props();
@@ -13,7 +13,9 @@
     const interval = setInterval(() => {
       void checkSystemStatus();
     }, 30000);
-    return (): void => { clearInterval(interval); };
+    return (): void => {
+      clearInterval(interval);
+    };
   });
 
   async function checkSystemStatus(): Promise<void> {
@@ -23,7 +25,7 @@
         systemStatus = 'error';
         return;
       }
-      const data = await response.json() as { status?: string };
+      const data = (await response.json()) as { status?: string };
       systemStatus =
         data.status === 'healthy' || data.status === 'degraded' || data.status === 'error'
           ? data.status
@@ -43,18 +45,8 @@
       </a>
 
       <nav class="nav">
-        <a
-          href="/"
-          class="nav-link"
-          class:active={$page.url.pathname === '/'}
-        >
-          Notifications
-        </a>
-        <a
-          href="/config"
-          class="nav-link"
-          class:active={$page.url.pathname === '/config'}
-        >
+        <a href="/" class="nav-link" class:active={$page.url.pathname === '/'}> Notifications </a>
+        <a href="/config" class="nav-link" class:active={$page.url.pathname === '/config'}>
           Settings
         </a>
         <div class="nav-divider"></div>

@@ -1,5 +1,5 @@
 import { env } from '$env/dynamic/private';
-import { LibraryAPNsService } from '$lib/server/library-apns.js';
+import { LibraryAPNsService } from '$lib/modules/server/apn/library-apns';
 import { json } from '@sveltejs/kit';
 
 import type { RequestHandler } from './$types';
@@ -136,38 +136,24 @@ export const POST: RequestHandler = async ({ request }) => {
     const apnsClient = new LibraryAPNsService();
     console.log('Library APNs service initialized successfully');
 
-    // Debug logging
-    console.log('=== NOTIFY API DEBUG ===');
-    console.log('API_KEY from env:', env.API_KEY ? 'SET' : 'NOT SET');
-    console.log('API_KEY length:', env.API_KEY ? env.API_KEY.length : 0);
-    console.log('API_KEY value:', env.API_KEY);
-    console.log('Device token updated:', new Date().toISOString());
-
     // Validate API key
     const authHeader = request.headers.get('authorization');
-    console.log('Auth header:', authHeader);
 
     if (!authHeader?.startsWith('Bearer ')) {
-      console.log('Missing or invalid auth header');
       return json({ error: 'Missing or invalid authorization header' }, { status: 401 });
     }
 
     const apiKey = authHeader.substring(7);
-    const expectedKey = (env.API_KEY || 'test-key').trim();
+    const expectedKey = env.API_KEY?.trim();
 
-    console.log('Received API key:', apiKey);
-    console.log('Expected API key:', expectedKey);
-    console.log('Keys match:', apiKey === expectedKey);
+    if (!expectedKey) {
+      return json({ error: 'Server configuration error' }, { status: 500 });
+    }
 
     if (apiKey !== expectedKey) {
       console.log('API key validation failed');
       return json(
         {
-          debug: {
-            expected: expectedKey,
-            match: apiKey === expectedKey,
-            received: apiKey,
-          },
           error: 'Invalid API key',
         },
         { status: 401 }
@@ -266,6 +252,7 @@ export const POST: RequestHandler = async ({ request }) => {
         source: 'modern-apns-api',
         timestamp: new Date().toISOString(),
       },
+      message: null,
       sound: 'default' as const,
       title,
     };
@@ -286,7 +273,7 @@ export const POST: RequestHandler = async ({ request }) => {
       const payloadJson = JSON.stringify(payload);
       console.log('✅ Payload JSON serialization test passed');
       console.log('Payload JSON length:', payloadJson.length);
-      console.log('Payload JSON preview:', `${payloadJson.substring(0, 100)  }...`);
+      console.log('Payload JSON preview:', `${payloadJson.substring(0, 100)}...`);
     } catch (jsonError) {
       console.error('❌ Payload JSON serialization failed:', jsonError);
       console.error('This might be the source of the JSON parsing error');
@@ -298,7 +285,6 @@ export const POST: RequestHandler = async ({ request }) => {
     console.log('- APNs client configured:', apnsClient.isConfigured());
 
     console.log('=== BEFORE CALLING SENDNOTIFICATION ===');
-    console.log('- deviceToken value:', deviceToken);
     console.log('- payload value:', payload);
     console.log('- payload type:', typeof payload);
     console.log('- payload stringify:', JSON.stringify(payload));

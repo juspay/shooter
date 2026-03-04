@@ -2,6 +2,19 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 📖 Required Reading
+
+**BEFORE making ANY changes, read these documents:**
+
+1. **`docs/GUIDANCE.md`** - Complete development guide including:
+   - Project organization and directory structure
+   - Type system (type-crafter workflow)
+   - Code location guidelines (where to write what)
+   - Development workflow and best practices
+   - Import patterns and conventions
+
+2. **`CLAUDE.md`** (this file) - High-level project overview and context
+
 ## Project Overview
 
 This repository contains a **WORKING** bidirectional communication system between Shooter and iOS applications using push notifications. The system enables Shooter to automatically send real-time notifications to iOS devices when coding events occur, with plans for interactive responses.
@@ -10,9 +23,19 @@ This repository contains a **WORKING** bidirectional communication system betwee
 
 ### Core Implementation ✅
 
+- `docs/GUIDANCE.md` - **READ THIS FIRST** - Complete development guide
 - `docs/CLAUDE-CODE-INTEGRATION.md` - **WORKING** Shooter lifecycle hooks integration
 - `.claude/` - Shooter hook configuration and Python scripts
-- `src/` - SvelteKit API server (working locally, production needs env fix)
+- `src/lib/modules/` - Organized modular code (client + server)
+  - `server/apn/` - Apple Push Notification service implementations
+  - `server/cli/` - CLI command execution utilities
+  - `client/common/` - Reusable UI components
+- `src/lib/types/` - Auto-generated TypeScript types (DO NOT EDIT)
+- `specs/types/` - Type-crafter YAML specifications (EDIT HERE for types)
+  - `index.yaml` - Main spec file (top file with references)
+  - `jwt.yaml` - JWT authentication types
+  - `apn.yaml` - APNs notification types
+  - `cli.yaml` - CLI module types
 - `ios/` - Swift iOS app (working, receiving notifications)
 
 ### Architecture Documentation (in `plans/` and `docs/`)
@@ -22,6 +45,7 @@ This repository contains a **WORKING** bidirectional communication system betwee
 - `plans/NEXT-PHASES.md` - Roadmap for enhanced features and production readiness
 - `docs/POC-IMPLEMENTATION-GUIDE.md` - POC implementation details
 - `docs/POC-ACHIEVEMENT-SUMMARY.md` - POC achievements summary
+- `docs/GUIDANCE.md` - Development guidance (code organization, type system, best practices)
 
 ## Key Technologies
 

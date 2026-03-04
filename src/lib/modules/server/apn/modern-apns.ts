@@ -1,19 +1,13 @@
+import type { ErrorData as APNsErrorData, Header as JWTHeader, Payload as JWTPayload } from '$generated/types';
+
 import { env } from '$env/dynamic/private';
-import http2, {
-  type ClientHttp2Session,
-  type ClientHttp2Stream,
-  type IncomingHttpHeaders,
-} from 'http2';
-// Modern APNs implementation using native Node.js HTTP/2
+import http2, { type ClientHttp2Session, type ClientHttp2Stream, type IncomingHttpHeaders } from 'http2';
 import jwt from 'jsonwebtoken';
 
 import type {
-  APNsErrorData,
-  APNsNotificationResult,
-  JWTHeader,
-  JWTPayload,
+  NotificationResult as APNsNotificationResult,
   NotificationPayload,
-} from './types.js';
+} from './types';
 
 interface APNsPayload {
   [key: string]: unknown;
@@ -36,6 +30,8 @@ export class ModernAPNsService {
   private isProduction = false;
   private keyId: string | undefined;
   private teamId: string | undefined;
+  private tokenCache: null | string = null;
+  private tokenExpiry = 0;
 
   constructor() {
     console.log('=== MODERN APNS SERVICE INITIALIZATION ===');
@@ -159,58 +155,60 @@ export class ModernAPNsService {
           console.log('📥 APNs Response Status:', status);
           console.log('- Response Headers:', headers);
 
-          if (status === 200) {
-            console.log('🎉 SUCCESS: Notification sent successfully!');
-            resolve({
-              failed: 0,
-              headers: headers as Record<string, string>,
-              sent: 1,
-              status,
-              success: true,
-            });
-          } else {
-            console.log('❌ FAILED: APNs rejected the notification');
+          req.on('data', (chunk: Buffer) => {
+            responseData += chunk;
+          });
 
-            // Wait for response data to get the error details
-            setTimeout(() => {
-              let errorData: APNsErrorData | null | string = null;
+          req.once('end', () => {
+            if (responseData) {
+              console.log('📄 Response Data:', responseData);
+            }
+            client.close();
+
+            if (status === 200) {
+              console.log('🎉 SUCCESS: Notification sent successfully!');
+              resolve({
+                apnsId: null,
+                details: null,
+                error: null,
+                errorData: null,
+                errors: null,
+                failed: 0,
+                headers: headers as Record<string, unknown>,
+                response: null,
+                responseBody: null,
+                sent: 1,
+                status,
+                statusCode: status,
+                success: true,
+              });
+            } else {
+              console.log('❌ FAILED: APNs rejected the notification');
+              let errorData: APNsErrorData | null = null;
               if (responseData) {
                 try {
                   errorData = JSON.parse(responseData);
                 } catch {
-                  errorData = responseData;
+                  errorData = null;
                 }
               }
-
               resolve({
+                apnsId: null,
+                details: null,
                 error: `APNs returned status ${status}`,
-                errorData: typeof errorData === 'object' ? (errorData!) : undefined,
+                errorData,
+                errors: null,
                 failed: 1,
-                headers: headers as Record<string, string>,
+                headers: headers as Record<string, unknown>,
+                response: null,
                 responseBody: responseData,
                 sent: 0,
                 status,
+                statusCode: status,
                 success: false,
               });
-            }, 100);
-          }
-        });
-
-        req.on('data', (chunk: Buffer) => {
-          responseData += chunk;
-        });
-
-        req.on('end', () => {
-          if (responseData) {
-            console.log('📄 Response Data:', responseData);
-            try {
-              const errorData = JSON.parse(responseData);
-              console.log('📄 Parsed Error:', errorData);
-            } catch {
-              console.log('📄 Raw Response:', responseData);
             }
-          }
-          client.close();
+          });
         });
 
         req.on('error', (error: Error) => {
@@ -229,7 +227,13 @@ export class ModernAPNsService {
   }
 
   private generateJWT(): string {
-    console.log('🔑 Generating JWT token...');
+    const now = Math.floor(Date.now() / 1000);
+    // Return cached token if it's valid for at least 5 more minutes
+    if (this.tokenCache && this.tokenExpiry > now + 300) {
+      console.log('Using cached JWT token');
+      return this.tokenCache;
+    }
+    console.log('Generating new JWT token...');
 
     try {
       const header: JWTHeader = {
@@ -237,7 +241,6 @@ export class ModernAPNsService {
         kid: this.keyId!,
       };
 
-      const now = Math.floor(Date.now() / 1000);
       const payload: JWTPayload = {
         exp: now + 3600, // Expires in 1 hour (max 1 hour for APNs)
         iat: now,
@@ -255,7 +258,6 @@ export class ModernAPNsService {
 
       console.log('✅ JWT token generated successfully');
       console.log('- Token length:', token.length);
-      console.log('- Token preview:', `${token.substring(0, 50)  }...`);
 
       // Debug the JWT structure
       const parts = token.split('.');
@@ -272,6 +274,8 @@ export class ModernAPNsService {
         }
       }
 
+      this.tokenCache = token;
+      this.tokenExpiry = now + 3600;
       return token;
     } catch (error) {
       const err = error as Error;

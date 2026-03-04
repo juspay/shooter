@@ -134,6 +134,9 @@ export default tseslint.config(
       'package-lock.json',
       'pnpm-lock.yaml',
       'tests/',
+      'scripts/',
+      'test/',
+      'vite.config.js.timestamp-*',
     ],
   }
 );

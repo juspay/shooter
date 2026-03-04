@@ -1,0 +1,19 @@
+info:
+  version: '1.0.0'
+  title: 'Shooter - iOS Push Notification Types'
+  description: |
+    Complete type definitions for the Shooter iOS push notification system.
+    This includes Apple Push Notification Service (APNs) types and JWT authentication types.
+
+groupedTypes:
+  # JWT authentication types for APNs token generation
+  JWT:
+    $ref: './specs/types/jwt.yaml#/JWT'
+
+  # Apple Push Notification Service types
+  APN:
+    $ref: './specs/types/apn.yaml#/APN'
+
+  # CLI module types for command execution
+  CLI:
+    $ref: './specs/types/cli.yaml#/CLI'

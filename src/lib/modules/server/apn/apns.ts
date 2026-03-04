@@ -1,7 +1,12 @@
+import type { Error as APNsError } from '$generated/types';
+
 import { env } from '$env/dynamic/private';
 import apn from '@parse/node-apn';
 
-import type { APNsError, APNsNotificationResult, NotificationPayload } from './types.js';
+import type {
+  NotificationResult as APNsNotificationResult,
+  NotificationPayload,
+} from './types';
 
 export class APNsService {
   get configError(): null | string {
@@ -181,13 +186,13 @@ export class APNsService {
           }
         : 'SHOOTER Notification';
 
-    notification.badge = (payload?.badge) || 1;
-    notification.sound = (payload?.sound) || 'default';
-    notification.payload = (payload?.data) || {};
+    notification.badge = payload?.badge ?? 1;
+    notification.sound = payload?.sound ?? 'default';
+    notification.payload = payload?.data ?? {};
 
     // Quick debug info (reduced verbosity)
     const alertData = notification.aps
-      ? (notification.aps as { alert?: { body?: string; title?: string; } }).alert
+      ? (notification.aps as { alert?: { body?: string; title?: string } }).alert
       : null;
     console.log('📱 SHOOTER Notification prepared:');
     console.log('- Title:', alertData ? alertData.title : 'No title');
@@ -241,14 +246,23 @@ export class APNsService {
 
       const errors: APNsError[] = result.failed.map((f) => ({
         device: f.device,
-        response: f.response,
-        status: typeof f.status === 'number' ? f.status : undefined,
+        response: f.response ? { reason: f.response.reason || null } : null,
+        status: typeof f.status === 'number' ? f.status : null,
       }));
 
       return {
+        apnsId: null,
+        details: null,
+        error: null,
+        errorData: null,
         errors,
         failed: result.failed.length,
+        headers: null,
+        response: null,
+        responseBody: null,
         sent: result.sent.length,
+        status: null,
+        statusCode: null,
         success: result.sent.length > 0,
       };
     } catch (error) {
