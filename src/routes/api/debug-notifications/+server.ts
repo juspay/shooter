@@ -1,5 +1,5 @@
 import { env } from '$env/dynamic/private';
-import { APNsService } from '$lib/server/apns.js';
+import { APNsService } from '$lib/modules/server/apn/apns';
 import { json } from '@sveltejs/kit';
 
 import type { RequestHandler } from './$types';
@@ -56,7 +56,17 @@ interface ErrorResponse {
   timestamp: string;
 }
 
-export const GET: RequestHandler = () => {
+export const GET: RequestHandler = ({ request }) => {
+  const authHeader = request.headers.get('authorization');
+  if (!authHeader?.startsWith('Bearer ')) {
+    return json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  const apiKey = authHeader.substring(7);
+  const expectedKey = (env.API_KEY || '').trim();
+  if (!expectedKey || apiKey !== expectedKey) {
+    return json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
     console.log('=== COMPREHENSIVE NOTIFICATION DEBUG ===');
 

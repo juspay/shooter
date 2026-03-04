@@ -1,19 +1,13 @@
+import type { ErrorData as APNsErrorData, Header as JWTHeader, Payload as JWTPayload } from '$generated/types';
+
 import { env } from '$env/dynamic/private';
-import http2, {
-  type ClientHttp2Session,
-  type ClientHttp2Stream,
-  type IncomingHttpHeaders,
-} from 'http2';
-// Direct HTTP/2 APNs implementation with proven JWT library
+import http2, { type ClientHttp2Session, type ClientHttp2Stream, type IncomingHttpHeaders } from 'http2';
 import jwt from 'jsonwebtoken';
 
 import type {
-  APNsErrorData,
-  APNsNotificationResult,
-  JWTHeader,
-  JWTPayload,
+  NotificationResult as APNsNotificationResult,
   NotificationPayload,
-} from './types.js';
+} from './types';
 
 interface APNsPayload {
   [key: string]: unknown;
@@ -190,16 +184,23 @@ class DirectAPNsClient {
             console.log('🎉 SUCCESS: Notification sent via direct HTTP/2!');
             console.log('- APNs ID:', apnsId);
             resolve({
-              apnsId,
+              apnsId: apnsId || null,
+              details: null,
+              error: null,
+              errorData: null,
+              errors: null,
               failed: 0,
+              headers: null,
               response: {
-                apnsId,
+                apnsId: apnsId || null,
                 data: parsedData,
-                headers: responseHeaders as Record<string, string>,
+                headers: responseHeaders as Record<string, unknown>,
                 statusCode,
                 success: true,
               },
+              responseBody: null,
               sent: 1,
+              status: null,
               statusCode,
               success: true,
             });
@@ -208,15 +209,23 @@ class DirectAPNsClient {
             console.log('- Status:', statusCode);
             console.log('- Error:', parsedData);
             resolve({
-              error: parsedData || undefined,
+              apnsId: null,
+              details: null,
+              error: parsedData || null,
+              errorData: parsedData,
+              errors: null,
               failed: 1,
+              headers: null,
               response: {
+                apnsId: null,
                 data: parsedData,
-                headers: responseHeaders as Record<string, string>,
+                headers: responseHeaders as Record<string, unknown>,
                 statusCode,
                 success: false,
               },
+              responseBody: null,
               sent: 0,
+              status: null,
               statusCode,
               success: false,
             });
@@ -287,7 +296,7 @@ class DirectAPNsClient {
         kid: this.keyId!,
       };
 
-      const payload: JWTPayload = {
+      const payload: Partial<JWTPayload> = {
         iat: now,
         iss: this.teamId!,
       };

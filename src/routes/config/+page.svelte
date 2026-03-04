@@ -1,7 +1,7 @@
 <script lang="ts">
   import { browser } from '$app/environment';
   import { goto } from '$app/navigation';
-  import { Alert, Button, Card, Icon, Input } from '$lib/components';
+  import { Alert, Button, Card, Icon, Input } from '$lib/modules/client/common';
   import { onMount } from 'svelte';
 
   interface Config {
@@ -22,8 +22,12 @@
         const saved = localStorage.getItem('shooter_config');
         if (saved) {
           const config = JSON.parse(saved) as Config;
-          if (config.apiKey) { apiKey = config.apiKey; }
-          if (config.deviceToken) { deviceToken = config.deviceToken; }
+          if (config.apiKey) {
+            apiKey = config.apiKey;
+          }
+          if (config.deviceToken) {
+            deviceToken = config.deviceToken;
+          }
         }
       } catch {
         console.log('No saved configuration found');
@@ -222,9 +226,7 @@
         </Card>
 
         <Card title="Danger Zone">
-          <p class="danger-description">
-            Clear all saved configuration data from this device.
-          </p>
+          <p class="danger-description">Clear all saved configuration data from this device.</p>
           <Button variant="danger" size="sm" onclick={clearConfiguration}>
             Clear Configuration
           </Button>

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
-  import { Button, EmptyState, Icon, Tag } from '$lib/components';
+  import { Button, EmptyState, Icon, Tag } from '$lib/modules/client/common';
   import { onMount } from 'svelte';
 
   interface NotificationData {
@@ -236,7 +236,11 @@
           <Icon name="refresh" size={14} />
           Refresh
         </Button>
-        <Button variant="primary" onclick={sendTestNotification} disabled={loading || !config?.apiKey}>
+        <Button
+          variant="primary"
+          onclick={sendTestNotification}
+          disabled={loading || !config?.apiKey}
+        >
           {#if loading}
             Sending...
           {:else}
@@ -253,9 +257,7 @@
       title="Configuration Required"
       description="Set up your API credentials to start receiving notifications"
     >
-      <Button variant="primary" onclick={navigateToConfig}>
-        Configure Settings
-      </Button>
+      <Button variant="primary" onclick={navigateToConfig}>Configure Settings</Button>
     </EmptyState>
   {:else if notifications.length === 0}
     <EmptyState
@@ -294,14 +296,17 @@
                     <Tag icon="folder">{notification.data.project}</Tag>
                   {/if}
                   {#if notification.data.category}
-                    <Tag variant={getCategoryClass(notification.data.category)}>{notification.data.category}</Tag>
+                    <Tag variant={getCategoryClass(notification.data.category)}
+                      >{notification.data.category}</Tag
+                    >
                   {/if}
                 </div>
               {/if}
             </div>
             <div class="notification-meta">
               <span class="notification-time">{formatTime(notification.timestamp)}</span>
-              <span class="notification-relative">{formatRelativeTime(notification.timestamp)}</span>
+              <span class="notification-relative">{formatRelativeTime(notification.timestamp)}</span
+              >
               <Tag variant={getStatusClass(notification.status)}>{notification.status}</Tag>
             </div>
           </div>

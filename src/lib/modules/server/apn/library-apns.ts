@@ -3,11 +3,11 @@ import { env } from '$env/dynamic/private';
 import apn from '@parse/node-apn';
 
 import type {
-  APNsLibraryResult,
-  APNsNotificationResult,
-  APNsSentDetail,
+  LibraryFailedItem as APNsLibraryFailedItem,
+  LibraryResult as APNsLibraryResult,
+  NotificationResult as APNsNotificationResult,
   NotificationPayload,
-} from './types.js';
+} from './types';
 
 export class LibraryAPNsService {
   private bundleId: string | undefined;
@@ -95,12 +95,12 @@ export class LibraryAPNsService {
 
       // Set basic properties
       notification.alert = {
-        body: payload.body || payload.message || '',
+        body: payload.body ?? payload.message ?? '',
         title: payload.title,
       };
 
-      notification.badge = payload.badge || 1;
-      notification.sound = payload.sound || 'default';
+      notification.badge = payload.badge ?? 1;
+      notification.sound = payload.sound ?? 'default';
       notification.topic = this.bundleId!;
 
       // Add custom data if provided
@@ -126,17 +126,25 @@ export class LibraryAPNsService {
 
       if (result.failed && result.failed.length > 0) {
         console.log('❌ Failed notifications:');
-        result.failed.forEach((failed, index) => {
+        result.failed.forEach((failed: APNsLibraryFailedItem, index: number) => {
           console.log(`  ${index + 1}. Device: ${failed.device}`);
           console.log(`     Status: ${failed.status}`);
           console.log(`     Response: ${JSON.stringify(failed.response)}`);
         });
 
         return {
-          details: result.failed as unknown as APNsSentDetail[],
+          apnsId: null,
+          details: null,
           error: result.failed[0]?.response?.reason || 'Unknown error',
+          errorData: null,
+          errors: null,
           failed: result.failed?.length || 0,
+          headers: null,
+          response: null,
+          responseBody: null,
           sent: result.sent?.length || 0,
+          status: null,
+          statusCode: null,
           success: false,
         };
       }
@@ -146,19 +154,36 @@ export class LibraryAPNsService {
         console.log('- Sent devices:', result.sent.length);
 
         return {
-          details: result.sent,
+          apnsId: null,
+          details: null,
+          error: null,
+          errorData: null,
+          errors: null,
           failed: 0,
+          headers: null,
+          response: null,
+          responseBody: null,
           sent: result.sent.length,
+          status: null,
+          statusCode: null,
           success: true,
         };
       }
 
       console.log('⚠️ Unexpected result format:', result);
       return {
-        details: [result as unknown as Record<string, unknown>],
+        apnsId: null,
+        details: null,
         error: 'Unexpected result format',
+        errorData: null,
+        errors: null,
         failed: 1,
+        headers: null,
+        response: null,
+        responseBody: null,
         sent: 0,
+        status: null,
+        statusCode: null,
         success: false,
       };
     } catch (error) {

@@ -1,0 +1,232 @@
+# Apple Push Notification Service (APNs) Type Definitions
+# Non-top file - referenced from index.yaml
+# Contains all types related to APNs notifications, responses, and error handling
+
+APN:
+  NotificationPayload:
+    type: object
+    description: Payload structure for push notifications sent to iOS devices
+    required:
+      - title
+    properties:
+      title:
+        type: string
+        description: Main notification title displayed to user
+      body:
+        type: string
+        nullable: true
+        description: Notification body text
+      message:
+        type: string
+        nullable: true
+        description: Alternative message field
+      badge:
+        type: number
+        nullable: true
+        description: Number to display on app icon badge
+      sound:
+        type: string
+        nullable: true
+        description: Sound file to play when notification arrives
+      data:
+        type: object
+        nullable: true
+        description: Custom data payload for app to process
+        additionalProperties: true
+
+  ProviderOptions:
+    type: object
+    description: Configuration for APNs provider connection
+    required:
+      - production
+      - token
+    properties:
+      production:
+        type: boolean
+        description: Whether to use production or sandbox APNs server
+      token:
+        type: object
+        description: JWT token configuration for APNs authentication
+        required:
+          - key
+          - keyId
+          - teamId
+        properties:
+          key:
+            type: string
+            description: Private key content from .p8 file
+          keyId:
+            type: string
+            description: Key ID from Apple Developer account
+          teamId:
+            type: string
+            description: Team ID from Apple Developer account
+
+  ErrorData:
+    type: object
+    description: Error details returned from APNs server
+    properties:
+      reason:
+        type: string
+        nullable: true
+        description: Specific error reason code from APNs
+
+  ErrorResponse:
+    type: object
+    description: Full error response from APNs
+    properties:
+      reason:
+        type: string
+        nullable: true
+        description: Specific error reason code from APNs
+
+  Error:
+    type: object
+    description: Individual notification error for a specific device
+    required:
+      - device
+    properties:
+      device:
+        type: string
+        description: Device token that failed to receive notification
+      response:
+        $ref: './specs/types/apn.yaml#/APN/ErrorResponse'
+        description: Error response from APNs
+      status:
+        type: number
+        description: HTTP status code from APNs
+
+  RawResponse:
+    type: object
+    description: Raw HTTP response from APNs server
+    required:
+      - statusCode
+      - headers
+      - success
+    properties:
+      statusCode:
+        type: number
+        description: HTTP status code from APNs
+      headers:
+        type: object
+        description: HTTP response headers from APNs
+        additionalProperties: true
+      data:
+        $ref: './specs/types/apn.yaml#/APN/ErrorData'
+        description: Response body data (nullable - null on success)
+      success:
+        type: boolean
+        description: Whether the notification was successfully sent
+      apnsId:
+        type: string
+        description: Unique identifier for this notification from APNs
+
+  SentDetail:
+    type: object
+    description: Details about a successfully sent notification
+    properties:
+      device:
+        type: string
+        description: Device token that received the notification
+      status:
+        type: string
+        description: Delivery status
+      apns-unique-id:
+        type: string
+        description: Unique APNs identifier for the notification
+
+  NotificationResult:
+    type: object
+    description: Comprehensive result of notification send operation
+    required:
+      - success
+      - sent
+      - failed
+    properties:
+      success:
+        type: boolean
+        description: Overall success status of the operation
+      sent:
+        type: number
+        description: Number of notifications successfully sent
+      failed:
+        type: number
+        description: Number of notifications that failed to send
+      apnsId:
+        type: string
+        description: Unique APNs identifier
+      status:
+        type: number
+        description: HTTP status code
+      statusCode:
+        type: number
+        description: Alternative HTTP status code field
+      headers:
+        type: object
+        description: Response headers from APNs
+        properties: {}
+      responseBody:
+        type: string
+        description: Raw response body from APNs
+      response:
+        $ref: './specs/types/apn.yaml#/APN/RawResponse'
+        description: Parsed raw response object
+      error:
+        oneOf:
+          - type: string
+          - $ref: './specs/types/apn.yaml#/APN/ErrorData'
+        description: Error message or error data object
+      errorData:
+        $ref: './specs/types/apn.yaml#/APN/ErrorData'
+        description: Structured error data
+      errors:
+        type: array
+        description: Array of errors for multiple notifications
+        items:
+          $ref: './specs/types/apn.yaml#/APN/Error'
+      details:
+        type: array
+        description: Array of detailed send results
+        items:
+          $ref: './specs/types/apn.yaml#/APN/SentDetail'
+
+  LibrarySentItem:
+    type: object
+    description: Individual sent notification item from apn library
+    required:
+      - device
+    properties:
+      device:
+        type: string
+        description: Device token that received notification
+
+  LibraryFailedItem:
+    type: object
+    description: Individual failed notification item from apn library
+    required:
+      - device
+    properties:
+      device:
+        type: string
+        description: Device token that failed
+      response:
+        $ref: './specs/types/apn.yaml#/APN/ErrorResponse'
+        description: Error response from APNs
+      status:
+        type: number
+        description: HTTP status code
+
+  LibraryResult:
+    type: object
+    description: Result format returned by apn library
+    properties:
+      sent:
+        type: array
+        description: Array of successfully sent notifications
+        items:
+          $ref: './specs/types/apn.yaml#/APN/LibrarySentItem'
+      failed:
+        type: array
+        description: Array of failed notification attempts
+        items:
+          $ref: './specs/types/apn.yaml#/APN/LibraryFailedItem'
