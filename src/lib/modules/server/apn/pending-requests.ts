@@ -3,7 +3,7 @@
 
 export interface PendingRequest {
 	createdAt: number;
-	decidedAt: number | null;
+	decidedAt: null | number;
 	decision: 'allow' | 'deny' | null;
 	sessionId: string;
 	toolInput: Record<string, unknown>;
@@ -13,6 +13,15 @@ export interface PendingRequest {
 const MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes
 
 const pendingRequests = new Map<string, PendingRequest>();
+
+export function cleanup(maxAgeMs: number = MAX_AGE_MS): void {
+	const now = Date.now();
+	for (const [id, entry] of pendingRequests.entries()) {
+		if (now - entry.createdAt > maxAgeMs) {
+			pendingRequests.delete(id);
+		}
+	}
+}
 
 export function createPendingRequest(
 	requestId: string,
@@ -29,22 +38,13 @@ export function createPendingRequest(
 	});
 }
 
-export function setDecision(
-	requestId: string,
-	decision: 'allow' | 'deny'
-): boolean {
-	const entry = pendingRequests.get(requestId);
-	if (!entry) return false;
-	entry.decision = decision;
-	entry.decidedAt = Date.now();
-	return true;
-}
-
 export function getDecision(
 	requestId: string
 ): { decision?: string; status: 'decided' | 'not_found' | 'pending' } {
 	const entry = pendingRequests.get(requestId);
-	if (!entry) return { status: 'not_found' };
+	if (!entry) {
+		return { status: 'not_found' };
+	}
 	if (entry.decision) {
 		// Clean up after reading a decided response
 		pendingRequests.delete(requestId);
@@ -53,11 +53,15 @@ export function getDecision(
 	return { status: 'pending' };
 }
 
-export function cleanup(maxAgeMs: number = MAX_AGE_MS): void {
-	const now = Date.now();
-	for (const [id, entry] of pendingRequests.entries()) {
-		if (now - entry.createdAt > maxAgeMs) {
-			pendingRequests.delete(id);
-		}
+export function setDecision(
+	requestId: string,
+	decision: 'allow' | 'deny'
+): boolean {
+	const entry = pendingRequests.get(requestId);
+	if (!entry) {
+		return false;
 	}
+	entry.decision = decision;
+	entry.decidedAt = Date.now();
+	return true;
 }
