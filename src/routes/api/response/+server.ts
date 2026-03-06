@@ -6,7 +6,9 @@ import type { RequestHandler } from './$types';
 
 function validateAuth(request: Request): boolean {
 	const authHeader = request.headers.get('authorization');
-	if (!authHeader?.startsWith('Bearer ')) return false;
+	if (!authHeader?.startsWith('Bearer ')) {
+		return false;
+	}
 	const apiKey = authHeader.substring(7);
 	const expectedKey = (env.API_KEY || 'test-key').trim();
 	return apiKey === expectedKey;
@@ -49,7 +51,7 @@ export const POST: RequestHandler = async ({ request }) => {
 };
 
 // GET /api/response?requestId=xxx — notifier.cjs polls for a decision
-export const GET: RequestHandler = async ({ request, url }) => {
+export const GET: RequestHandler = ({ request, url }) => {
 	if (!validateAuth(request)) {
 		return json({ error: 'Invalid API key' }, { status: 401 });
 	}

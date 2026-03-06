@@ -3,9 +3,7 @@ import { env } from '$env/dynamic/private';
 import apn from '@parse/node-apn';
 
 import type {
-  LibraryFailedItem as APNsLibraryFailedItem,
   LibraryResult as APNsLibraryResult,
-  NotificationResult as APNsNotificationResult,
   NotificationPayload,
 } from './types';
 
