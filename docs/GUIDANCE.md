@@ -47,8 +47,7 @@ shooter/
 │       ├── api/               # API endpoints
 │       │   ├── notify/        # POST /api/notify
 │       │   ├── webhook/       # POST /api/webhook (future)
-│       │   ├── debug-apns/    # Debug endpoint
-│       │   └── debug-notifications/
+│       │   └── debug/         # Debug endpoint (authenticated)
 │       ├── config/            # Configuration UI page
 │       ├── +page.svelte       # Home page
 │       └── +layout.svelte     # Root layout
@@ -208,16 +207,15 @@ import { Button, Card, Input } from '$lib/modules/client/common';
 
 ```text
 src/lib/modules/server/apn/
-├── apns.ts           # Main APNs service (using @parse/node-apn)
-├── direct-apns.ts    # Direct HTTP/2 implementation
-├── library-apns.ts   # Library-based implementation
-└── modern-apns.ts    # Modern HTTP/2 implementation
+├── library-apns.ts   # APNs service (using @parse/node-apn)
+├── pending-requests.ts # In-memory bidirectional permission store
+└── types.ts          # Shared notification types
 ```
 
 **Import pattern**:
 
 ```typescript
-import { APNsService } from '$lib/modules/server/apn/apns';
+import { LibraryAPNsService } from '$lib/modules/server/apn/library-apns';
 ```
 
 #### 2b. **CLI Utilities** → `src/lib/modules/server/cli/`
@@ -568,15 +566,15 @@ When creating a new file, ask:
 
 ### Import Path Patterns
 
-| What                | Import From                    |
-| ------------------- | ------------------------------ |
-| Types               | `$lib/types`                   |
-| UI Components       | `$lib/modules/client/common`   |
-| APNs Services       | `$lib/modules/server/apn/apns` |
-| CLI Utilities       | `$lib/modules/server/cli`      |
-| Server Utils        | `$lib/modules/server/{module}` |
-| SvelteKit Types     | `./$types`                     |
-| SvelteKit Utilities | `@sveltejs/kit`                |
+| What                | Import From                            |
+| ------------------- | -------------------------------------- |
+| Types               | `$lib/types`                           |
+| UI Components       | `$lib/modules/client/common`           |
+| APNs Services       | `$lib/modules/server/apn/library-apns` |
+| CLI Utilities       | `$lib/modules/server/cli`              |
+| Server Utils        | `$lib/modules/server/{module}`         |
+| SvelteKit Types     | `./$types`                             |
+| SvelteKit Utilities | `@sveltejs/kit`                        |
 
 ---
 

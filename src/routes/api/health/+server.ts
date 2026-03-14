@@ -39,15 +39,15 @@ export const GET: RequestHandler = () => {
       hasDeviceToken: !!env.DEVICE_TOKEN,
     },
     configuration: {
-      apnsKeyId: env.APNS_KEY_ID ? `${env.APNS_KEY_ID.substring(0, 4)  }...` : null,
+      apnsKeyId: env.APNS_KEY_ID ? `${env.APNS_KEY_ID.substring(0, 4)}...` : null,
       bundleId: env.APNS_BUNDLE_ID || null,
       deviceTokenLength: env.DEVICE_TOKEN ? env.DEVICE_TOKEN.length : 0,
-      production: env.NODE_ENV === 'production',
+      production: env.APNS_PRODUCTION === 'true',
     },
     environment: env.NODE_ENV || 'development',
     status: 'healthy',
     timestamp: new Date().toISOString(),
-    version: '1.0.7-dedup',
+    version: '1.1.0',
   };
 
   // Determine overall health status

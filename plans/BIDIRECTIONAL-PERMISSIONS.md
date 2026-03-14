@@ -6,7 +6,7 @@ When Claude Code needs permission to run a tool (e.g., `Bash: rm -rf /tmp/build`
 
 ## Architecture
 
-```
+```text
 Claude Code (blocked, waiting)
   │
   ▼
@@ -35,7 +35,7 @@ notifier.cjs reads stdin JSON: { tool_name, tool_input, session_id, ... }
   │       ▼
   │    Server stores decision in pending request Map
   │
-  ├──► Meanwhile: notifier.cjs polls GET /api/response/:requestId every 2s
+  ├──► Meanwhile: notifier.cjs polls GET /api/response?requestId=... every 2s
   │       │
   │       ▼
   │    Poll returns { decision: "allow" }
@@ -59,25 +59,31 @@ Claude Code unblocks, tool executes
 Handles both storing responses (from iOS) and polling (from notifier.cjs).
 
 **In-memory pending requests store** (module-level Map):
-```
-pendingRequests: Map<requestId, {
-  createdAt: number,
-  decision: 'allow' | 'deny' | null,   // null = still waiting
-  decidedAt: number | null,
-  toolName: string,
-  toolInput: object,
-  sessionId: string,
-}>
+
+```typescript
+pendingRequests: Map<
+  requestId,
+  {
+    createdAt: number;
+    decision: 'allow' | 'deny' | null; // null = still waiting
+    decidedAt: number | null;
+    toolName: string;
+    toolInput: object;
+    sessionId: string;
+  }
+>;
 ```
 
 **`POST /api/response`** — Called by iOS app when user taps Allow/Deny:
+
 - Auth: Bearer token (same API_KEY as /api/notify)
 - Body: `{ requestId: string, decision: "allow" | "deny" }`
 - Validates requestId exists in Map
 - Stores decision + decidedAt timestamp
 - Returns 200 `{ success: true }`
 
-**`GET /api/response/:requestId`** — Called by notifier.cjs polling loop:
+**`GET /api/response?requestId=...`** — Called by notifier.cjs polling loop:
+
 - Auth: Bearer token
 - If requestId not found → 404
 - If decision is null → 200 `{ status: "pending" }`
@@ -98,8 +104,9 @@ When the incoming request has `waitForResponse: true` in the body:
 4. Include `requestId` in the custom data payload so iOS can reference it in the response
 
 The APNs notification object needs:
+
 ```typescript
-notification.category = 'CLAUDE_PERMISSION';  // triggers iOS action buttons
+notification.category = 'CLAUDE_PERMISSION'; // triggers iOS action buttons
 notification.payload = {
   ...existingPayload,
   requestId: requestId,
@@ -107,7 +114,7 @@ notification.payload = {
 };
 ```
 
-#### 1c. New file: `src/lib/server/pending-requests.ts`
+#### 1c. New file: `src/lib/modules/server/apn/pending-requests.ts`
 
 Shared module for the pending requests Map so both `/api/notify` and `/api/response` can access it.
 
@@ -124,10 +131,16 @@ interface PendingRequest {
 // Module-level singleton Map
 const pendingRequests = new Map<string, PendingRequest>();
 
-export function createPendingRequest(requestId: string, data: Omit<PendingRequest, 'createdAt' | 'decision' | 'decidedAt'>): void
-export function setDecision(requestId: string, decision: 'allow' | 'deny'): boolean
-export function getDecision(requestId: string): { status: 'pending' | 'decided' | 'not_found', decision?: string }
-export function cleanup(maxAgeMs?: number): void  // default 5 minutes
+export function createPendingRequest(
+  requestId: string,
+  data: Omit<PendingRequest, 'createdAt' | 'decision' | 'decidedAt'>
+): void;
+export function setDecision(requestId: string, decision: 'allow' | 'deny'): boolean;
+export function getDecision(requestId: string): {
+  status: 'pending' | 'decided' | 'not_found';
+  decision?: string;
+};
+export function cleanup(maxAgeMs?: number): void; // default 5 minutes
 ```
 
 ---
@@ -138,7 +151,7 @@ export function cleanup(maxAgeMs?: number): void  // default 5 minutes
 
 This replaces the fire-and-forget `sendNotification()` call for permission events specifically.
 
-```
+```text
 1. POST to /api/notify with:
    - title, message, category: 'permission'
    - data.requestId, data.waitForResponse: true
@@ -156,6 +169,7 @@ Implementation: Promise-based with `setInterval` for polling and `setTimeout` fo
 #### 2b. Modify: `handlePermission(event)` → make async and blocking
 
 Current (fire-and-forget):
+
 ```javascript
 function handlePermission(event) {
   const { title, body } = buildPermissionNotification(event);
@@ -164,13 +178,19 @@ function handlePermission(event) {
 ```
 
 New (blocking with response):
+
 ```javascript
 async function handlePermission(event) {
   const { title, body } = buildPermissionNotification(event);
   const requestId = generateRequestId();
 
   const result = await sendNotificationAndPoll(
-    title, body, 'permission', event.source, requestId, event.data
+    title,
+    body,
+    'permission',
+    event.source,
+    requestId,
+    event.data
   );
 
   if (result && result.decision) {
@@ -180,7 +200,7 @@ async function handlePermission(event) {
         hookEventName: 'PermissionRequest',
         permissionDecision: result.decision,
         permissionDecisionReason: `User ${result.decision === 'allow' ? 'approved' : 'denied'} via iPhone notification`,
-      }
+      },
     };
     process.stdout.write(JSON.stringify(hookResponse));
   }
@@ -191,11 +211,12 @@ async function handlePermission(event) {
 #### 2c. Modify: `processEvent(event)` → make async
 
 Change from sync switch to async:
+
 ```javascript
 async function processEvent(event) {
   switch (event.eventType) {
     case 'permission':
-      await handlePermission(event);  // only this one needs await
+      await handlePermission(event); // only this one needs await
       break;
     // ... rest stay sync (no await needed)
   }
@@ -205,11 +226,12 @@ async function processEvent(event) {
 #### 2d. Modify: `claudeCodeMain()` → properly await processEvent
 
 Already async, just needs to await `processEvent`:
+
 ```javascript
 async function claudeCodeMain() {
   // ... existing stdin reading ...
   const event = adaptClaudeCodeEvent(cliArg, stdinData);
-  await processEvent(event);  // was just processEvent(event)
+  await processEvent(event); // was just processEvent(event)
 }
 ```
 
@@ -223,15 +245,16 @@ const POLL_INTERVAL = 2000; // 2 seconds between polls
 #### 2f. Modify: `adaptClaudeCodeEvent` for PermissionRequest
 
 Pass through `session_id` from stdin data so the server can track it:
+
 ```javascript
 if (cliArg === 'PermissionRequest') {
-    data.tool = stdinData?.tool_name || process.env.CLAUDE_TOOL_NAME || 'Unknown';
-    data.toolInput = stdinData?.tool_input || {};
-    data.command = data.toolInput.command || '';
-    data.filePath = data.toolInput.file_path || '';
-    data.description = data.toolInput.description || '';
-    data.sessionId = stdinData?.session_id || '';  // NEW
-    return createCommonEvent('claude-code', 'permission', data);
+  data.tool = stdinData?.tool_name || process.env.CLAUDE_TOOL_NAME || 'Unknown';
+  data.toolInput = stdinData?.tool_input || {};
+  data.command = data.toolInput.command || '';
+  data.filePath = data.toolInput.file_path || '';
+  data.description = data.toolInput.description || '';
+  data.sessionId = stdinData?.session_id || ''; // NEW
+  return createCommonEvent('claude-code', 'permission', data);
 }
 ```
 
@@ -317,7 +340,11 @@ func userNotificationCenter(
 ```swift
 func sendPermissionResponse(requestId: String, decision: String) {
     let serverUrl = UserDefaults.standard.string(forKey: "serverUrl") ?? AppConfig.defaultServerURL
-    let apiKey = UserDefaults.standard.string(forKey: "apiKey") ?? "shooter2024"
+    // Read API key from UserDefaults (saved via ConfigurationView); fail gracefully if absent
+    guard let apiKey = UserDefaults.standard.string(forKey: "apiKey"), !apiKey.isEmpty else {
+        print("Permission response FAILED: no API key configured")
+        return
+    }
 
     guard let url = URL(string: "\(serverUrl)/api/response") else { return }
 
@@ -337,7 +364,11 @@ func sendPermissionResponse(requestId: String, decision: String) {
             print("Failed to send permission response: \(error)")
         }
         if let httpResponse = response as? HTTPURLResponse {
-            print("Permission response sent: \(httpResponse.statusCode)")
+            if (200...299).contains(httpResponse.statusCode) {
+                print("Permission response sent (\(decision)): HTTP \(httpResponse.statusCode)")
+            } else {
+                print("Permission response FAILED (\(decision)): HTTP \(httpResponse.statusCode)")
+            }
         }
     }.resume()
 }
@@ -349,7 +380,6 @@ func sendPermissionResponse(requestId: String, decision: String) {
 struct Endpoints {
     static let notify = "/api/notify"
     static let health = "/api/health"
-    static let register = "/api/register"
     static let webhook = "/api/webhook"
     static let response = "/api/response"  // NEW
 }
@@ -382,7 +412,7 @@ Add timeout to PermissionRequest hook so Claude Code doesn't kill the process du
 
 ## Implementation Order
 
-1. **`src/lib/server/pending-requests.ts`** — Shared pending requests store (no dependencies)
+1. **`src/lib/modules/server/apn/pending-requests.ts`** — Shared pending requests store (no dependencies)
 2. **`src/routes/api/response/+server.ts`** — POST + GET response endpoint (depends on #1)
 3. **`src/routes/api/notify/+server.ts`** — Add category to APNs payload when waitForResponse (depends on #1)
 4. **`notifier.cjs`** — Make PermissionRequest blocking with polling (depends on #2, #3)
@@ -393,27 +423,31 @@ Add timeout to PermissionRequest hook so Claude Code doesn't kill the process du
 ## Testing Plan
 
 **Step 1: Server endpoints** (curl)
+
 - POST /api/response with a test requestId + decision → verify 200
 - GET /api/response?requestId=xxx → verify pending/decided status
 - POST /api/notify with waitForResponse:true → verify APNs payload includes category
 
 **Step 2: notifier.cjs polling** (manual CLI)
+
 - Run notifier with PermissionRequest, then POST a decision via curl while it polls → verify stdout output
 
 **Step 3: End-to-end without iOS**
+
 - Trigger a real PermissionRequest hook, POST the decision via curl → verify Claude Code unblocks
 
 **Step 4: iOS**
+
 - Build and run iOS app → verify interactive notification buttons appear
 - Tap Allow → verify response reaches server → verify Claude Code unblocks
 
 ## Timeout Behavior / Edge Cases
 
-| Scenario | Behavior |
-|---|---|
-| User taps Allow within 120s | Hook outputs `allow`, Claude Code proceeds |
-| User taps Deny within 120s | Hook outputs `deny`, Claude Code skips tool |
-| User dismisses notification | No response posted, hook times out (120s), outputs nothing → falls through to local terminal permission dialog |
-| User doesn't see notification | Same as dismiss — timeout → local dialog |
-| Server is down | sendNotificationAndPoll fails immediately, outputs nothing → local dialog |
-| Multiple permissions in-flight | Each has unique requestId, polled independently |
+| Scenario                       | Behavior                                                                                                       |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| User taps Allow within 120s    | Hook outputs `allow`, Claude Code proceeds                                                                     |
+| User taps Deny within 120s     | Hook outputs `deny`, Claude Code skips tool                                                                    |
+| User dismisses notification    | No response posted, hook times out (120s), outputs nothing → falls through to local terminal permission dialog |
+| User doesn't see notification  | Same as dismiss — timeout → local dialog                                                                       |
+| Server is down                 | sendNotificationAndPoll fails immediately, outputs nothing → local dialog                                      |
+| Multiple permissions in-flight | Each has unique requestId, polled independently                                                                |

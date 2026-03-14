@@ -59,7 +59,9 @@
   --text-tertiary: var(--ds-gray-800);
 
   /* Typography */
-  --font-sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+  --font-sans:
+    'Geist', -apple-system, 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu',
+    'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
   --font-mono: 'Geist Mono', 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', monospace;
 
   /* Font Sizes - Geist Typography Scale */
@@ -208,7 +210,9 @@ body {
   background: transparent;
   border: none;
   cursor: pointer;
-  transition: color var(--transition-fast), background var(--transition-fast);
+  transition:
+    color var(--transition-fast),
+    background var(--transition-fast);
 }
 
 .nav-link:hover {
@@ -321,7 +325,9 @@ body {
 }
 
 .input:hover {
-  box-shadow: var(--ds-gray-alpha-400) 0px 0px 0px 1px, rgba(255, 255, 255, 0.06) 0px 0px 0px 4px;
+  box-shadow:
+    var(--ds-gray-alpha-400) 0px 0px 0px 1px,
+    rgba(255, 255, 255, 0.06) 0px 0px 0px 4px;
 }
 
 .input:focus {

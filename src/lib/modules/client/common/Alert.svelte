@@ -10,9 +10,7 @@
   const { class: className = '', message, type = 'info' }: Props = $props();
 
   const iconName = $derived(
-    type === 'success' ? 'check-circle' :
-    type === 'error' ? 'x-circle' :
-    'alert-triangle'
+    type === 'success' ? 'check-circle' : type === 'error' ? 'x-circle' : 'alert-triangle'
   );
 </script>
 

@@ -6,7 +6,17 @@
   interface Props {
     children?: Snippet;
     description: string;
-    icon: 'bell' | 'settings';
+    icon:
+      | 'alert-triangle'
+      | 'bell'
+      | 'check-circle'
+      | 'file'
+      | 'folder'
+      | 'play'
+      | 'refresh'
+      | 'settings'
+      | 'tool'
+      | 'x-circle';
     title: string;
   }
 

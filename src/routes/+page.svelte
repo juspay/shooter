@@ -1,4 +1,6 @@
 <script lang="ts">
+  import type { ShooterConfig } from '$lib/types/config';
+
   import { goto } from '$app/navigation';
   import { Button, EmptyState, Icon, Tag } from '$lib/modules/client/common';
   import { onMount } from 'svelte';
@@ -27,15 +29,9 @@
     type: string;
   }
 
-  interface Config {
-    apiKey?: string;
-    deviceToken?: string;
-    lastUpdated?: number;
-  }
-
   let notifications = $state<Notification[]>([]);
   let loading = $state(false);
-  let config = $state<Config | null>(null);
+  let config = $state<null | ShooterConfig>(null);
   let lastUpdate = $state<Date | null>(null);
 
   const mockNotifications: Notification[] = [
@@ -91,11 +87,23 @@
     loadNotifications();
   });
 
+  function isShooterConfig(value: unknown): value is ShooterConfig {
+    return (
+      typeof value === 'object' && value !== null && 'apiKey' in value && 'deviceToken' in value
+    );
+  }
+
   function loadConfiguration(): void {
     try {
       const saved = localStorage.getItem('shooter_config');
       if (saved) {
-        config = JSON.parse(saved) as Config;
+        const parsed: unknown = JSON.parse(saved);
+        if (isShooterConfig(parsed)) {
+          config = parsed;
+        } else {
+          localStorage.removeItem('shooter_config');
+          config = null;
+        }
       }
     } catch {
       console.log('No configuration found');
@@ -195,8 +203,10 @@
     return labels[type] || 'Event';
   }
 
-  function getStatusClass(status: string): string {
-    const classes: Record<string, string> = {
+  type TagVariant = '' | 'error' | 'info' | 'success' | 'warning';
+
+  function getStatusClass(status: string): TagVariant {
+    const classes: Record<string, TagVariant> = {
       delivered: 'success',
       failed: 'error',
       pending: 'warning',
@@ -205,8 +215,8 @@
     return classes[status] || '';
   }
 
-  function getCategoryClass(category: string): string {
-    const classes: Record<string, string> = {
+  function getCategoryClass(category: string): TagVariant {
+    const classes: Record<string, TagVariant> = {
       debug: 'error',
       feature: 'success',
       testing: 'warning',

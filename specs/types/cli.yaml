@@ -37,7 +37,7 @@ CLI:
         items:
           type: string
       options:
-        $ref: '#/CLI/Options'
+        $ref: './specs/types/cli.yaml#/CLI/Options'
         description: Execution options for the command
 
   Result:

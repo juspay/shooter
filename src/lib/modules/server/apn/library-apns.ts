@@ -2,10 +2,7 @@ import { env } from '$env/dynamic/private';
 // APNs service using proven library instead of manual implementation
 import apn from '@parse/node-apn';
 
-import type {
-  LibraryResult as APNsLibraryResult,
-  NotificationPayload,
-} from './types';
+import type { LibraryResult as APNsLibraryResult, NotificationPayload } from './types';
 
 export class LibraryAPNsService {
   private bundleId: string | undefined;
@@ -22,7 +19,9 @@ export class LibraryAPNsService {
     this.privateKey = env.APNS_KEY;
 
     if (!this.keyId || !this.teamId || !this.bundleId || !this.privateKey) {
-      console.error('[apns] Missing required configuration (APNS_KEY_ID, APNS_TEAM_ID, APNS_BUNDLE_ID, or APNS_KEY)');
+      console.error(
+        '[apns] Missing required configuration (APNS_KEY_ID, APNS_TEAM_ID, APNS_BUNDLE_ID, or APNS_KEY)'
+      );
       this.configured = false;
       return;
     }
@@ -55,7 +54,13 @@ export class LibraryAPNsService {
   async sendNotification(
     deviceToken: string,
     payload: NotificationPayload
-  ): Promise<APNsNotificationResult> {
+  ): Promise<{
+    details?: unknown[];
+    error?: string;
+    failed: number;
+    sent: number;
+    success: boolean;
+  }> {
     if (!this.configured || !this.provider) {
       throw new Error('APNs service not configured properly');
     }

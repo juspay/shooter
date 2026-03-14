@@ -140,3 +140,21 @@ The plans include comprehensive testing approaches:
 - iOS app requires Xcode and device/simulator
 - Cloudflare Tunnel for webhook delivery (Phase 3+)
 - Environment variables managed through Vercel dashboard
+
+## Known Limitations
+
+### In-Memory Pending Requests Store
+
+The bidirectional permission flow uses an in-memory `Map` in `pending-requests.ts`. This works for single-instance deployments but will break if multiple Vercel serverless instances handle the notify and response endpoints. For multi-instance production use, replace with a shared store (e.g., Upstash Redis).
+
+### Hook Completion Timer
+
+The 45-second completion timer in `notifier.cjs` only works for OpenCode (persistent plugin). For Claude Code, each hook invocation is a separate process, so timers cannot fire across invocations. The code is guarded with `IS_CLAUDE_CODE` checks to skip this path.
+
+### Hook Timeout Mismatch
+
+The `PermissionRequest` hook has a 180-second timeout in `.claude/settings.json`, but the notifier's internal `PERMISSION_TIMEOUT` defaults to 120 seconds. The 60-second buffer ensures the notifier resolves before Claude Code kills the process.
+
+### APNs Environment
+
+The iOS app entitlements declare `aps-environment = production`. The server's `APNS_PRODUCTION` env var controls which APNs gateway is used (default: sandbox). For TestFlight/App Store builds, set `APNS_PRODUCTION=true` in the server environment.

@@ -6,16 +6,13 @@
   interface Props {
     children: Snippet;
     icon?: 'file' | 'folder' | 'tool';
-    variant?: string;
+    variant?: '' | 'error' | 'info' | 'success' | 'warning';
   }
 
   const { children, icon, variant = '' }: Props = $props();
-
-  const validVariants = ['', 'error', 'info', 'success', 'warning'];
-  const variantClass = $derived(validVariants.includes(variant) ? variant : '');
 </script>
 
-<span class="tag {variantClass}">
+<span class="tag {variant}">
   {#if icon}
     <Icon name={icon} size={10} />
   {/if}

@@ -7,19 +7,27 @@
 
   function getStatusLabel(s: string): string {
     switch (s) {
-      case 'degraded': return 'Degraded';
-      case 'error': return 'Offline';
-      case 'healthy': return 'Online';
-      default: return 'Checking';
+      case 'degraded':
+        return 'Degraded';
+      case 'error':
+        return 'Offline';
+      case 'healthy':
+        return 'Online';
+      default:
+        return 'Checking';
     }
   }
 
   function getStatusClass(s: string): string {
     switch (s) {
-      case 'degraded': return 'degraded';
-      case 'error': return 'offline';
-      case 'healthy': return 'online';
-      default: return '';
+      case 'degraded':
+        return 'degraded';
+      case 'error':
+        return 'offline';
+      case 'healthy':
+        return 'online';
+      default:
+        return '';
     }
   }
 </script>
