@@ -11,7 +11,7 @@ class NotificationManager: NSObject, ObservableObject {
     @Published var lastUpdate: Date?
     
     private var serverUrl: String = AppConfig.defaultServerURL
-    private var apiKey: String = "shooter2024"
+    private var apiKey: String = ""
     
     override init() {
         super.init()
@@ -81,41 +81,6 @@ class NotificationManager: NSObject, ObservableObject {
             self.deviceToken = token
             print("Device Token: \(token)")
         }
-    }
-    
-    func registerWithServer(serverUrl: String) {
-        guard let token = deviceToken,
-              let url = URL(string: "\(serverUrl)\(AppConfig.Endpoints.register)") else {
-            print("Invalid server URL or missing device token")
-            return
-        }
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
-        let body = [
-            "deviceToken": token,
-            "platform": "ios"
-        ]
-        
-        do {
-            request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        } catch {
-            print("Failed to encode request body: \(error)")
-            return
-        }
-        
-        URLSession.shared.dataTask(with: request) { data, response, error in
-            if let error = error {
-                print("Failed to register with server: \(error)")
-                return
-            }
-            
-            if let httpResponse = response as? HTTPURLResponse {
-                print("Registration response status: \(httpResponse.statusCode)")
-            }
-        }.resume()
     }
     
     func sendTestNotification() {
@@ -252,11 +217,8 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
     // MARK: - New Methods for Enhanced UI
     
     func autoSetupForDevelopment() {
-        // Auto-register with server if we have permission and device token
+        // Check server connection if we have permission and device token
         if isAuthorized, deviceToken != nil {
-            registerWithServer(serverUrl: serverUrl)
-            
-            // Call async method properly
             Task {
                 await checkServerConnection()
             }
@@ -282,11 +244,6 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         // Save to UserDefaults
         UserDefaults.standard.set(serverUrl, forKey: "serverUrl")
         UserDefaults.standard.set(apiKey, forKey: "apiKey")
-        
-        // Re-register with new server
-        if isAuthorized, deviceToken != nil {
-            registerWithServer(serverUrl: serverUrl)
-        }
     }
     
     func sendTestNotificationThroughServer(serverUrl: String, apiKey: String, completion: @escaping (Bool, String) -> Void) {
@@ -386,7 +343,11 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
                 return
             }
             if let httpResponse = response as? HTTPURLResponse {
-                print("Permission response sent (\(decision)): HTTP \(httpResponse.statusCode)")
+                if (200...299).contains(httpResponse.statusCode) {
+                    print("Permission response sent (\(decision)): HTTP \(httpResponse.statusCode)")
+                } else {
+                    print("Permission response FAILED (\(decision)): HTTP \(httpResponse.statusCode)")
+                }
             }
         }.resume()
     }

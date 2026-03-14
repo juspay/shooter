@@ -243,11 +243,16 @@ struct ConfigurationView: View {
     // MARK: - Actions
     private func loadConfiguration() {
         // Load saved configuration or set smart defaults
-        if serverUrl.isEmpty {
+        if let savedServerUrl = UserDefaults.standard.string(forKey: "serverUrl"),
+           !savedServerUrl.isEmpty {
+            serverUrl = savedServerUrl
+        } else if serverUrl.isEmpty {
             serverUrl = AppConfig.defaultServerURL
         }
-        if apiKey.isEmpty {
-            apiKey = "shooter2024" // Smart default for local development
+
+        if let savedApiKey = UserDefaults.standard.string(forKey: "apiKey"),
+           !savedApiKey.isEmpty {
+            apiKey = savedApiKey
         }
     }
     

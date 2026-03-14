@@ -24,16 +24,17 @@ const path = require('path');
 // ============================================
 
 // Detect runtime environment
-const IS_OPENCODE = typeof process.env.OPENCODE_VERSION !== 'undefined' ||
-                    (require.main !== module) ||
-                    process.argv[1]?.includes('opencode');
+const IS_OPENCODE =
+  typeof process.env.OPENCODE_VERSION !== 'undefined' ||
+  require.main !== module ||
+  process.argv[1]?.includes('opencode');
 const IS_CLAUDE_CODE = !IS_OPENCODE && require.main === module;
 const RUNTIME = IS_OPENCODE ? 'opencode' : 'claude-code';
 
 // Environment configuration
 const USE_LOCAL = process.env.SHOOTER_USE_LOCAL === 'true';
 const LOCAL_PORT = process.env.SHOOTER_LOCAL_PORT || '5173';
-const REMOTE_BASE_URL = process.env.SHOOTER_API_URL || 'https://shooter-dtufsplzq-sachin-sharmas-projects-7dbbe7a8.vercel.app';
+const REMOTE_BASE_URL = process.env.SHOOTER_API_URL || '';
 const LOCAL_BASE_URL = `http://localhost:${LOCAL_PORT}`;
 const BASE_URL = USE_LOCAL ? LOCAL_BASE_URL : REMOTE_BASE_URL;
 const API_URL = `${BASE_URL}/api/notify`;
@@ -41,10 +42,10 @@ const API_URL = `${BASE_URL}/api/notify`;
 // Authentication
 const API_KEY = process.env.SHOOTER_API_KEY;
 const DEVICE_TOKEN = process.env.SHOOTER_DEVICE_TOKEN || null;
-const AUTH_KEY = API_KEY || 'shooter2024';
+const AUTH_KEY = API_KEY || '';
 
 // Validate required environment variables ONLY for Claude Code CLI mode
-if (IS_CLAUDE_CODE && !API_KEY && !USE_LOCAL) {
+if (IS_CLAUDE_CODE && !API_KEY) {
   console.error('SHOOTER_API_KEY environment variable is required');
   process.exit(1);
 }
@@ -132,7 +133,7 @@ function readStdin() {
  */
 function createCommonEvent(source, eventType, data = {}) {
   return {
-    source,          // 'claude-code' | 'opencode'
+    source, // 'claude-code' | 'opencode'
     eventType,
     timestamp: new Date().toISOString(),
     projectName: getProjectName(),
@@ -176,9 +177,11 @@ function adaptClaudeCodeEvent(cliArg, stdinData) {
 
     switch (notificationType) {
       case 'permission_prompt':
-        // Permission prompt notification - agent waiting for permission approval
+        // Permission prompt notification - agent waiting for permission approval.
+        // Use 'permission_notification' (not 'permission') to avoid triggering
+        // the blocking bidirectional poll flow in handlePermission().
         data.tool = ''; // Not available in notification event, just message
-        return createCommonEvent('claude-code', 'permission', data);
+        return createCommonEvent('claude-code', 'permission_notification', data);
 
       case 'elicitation_dialog':
         // Agent is presenting a question/dialog to the user
@@ -424,6 +427,12 @@ async function processEvent(event) {
       await handlePermission(event);
       break;
 
+    case 'permission_notification':
+      // Fire-and-forget: a Notification event with permission_prompt type.
+      // Does NOT block or poll — just informs the user that a permission dialog is open.
+      handlePermissionNotification(event);
+      break;
+
     case 'question':
       handleQuestion(event);
       break;
@@ -556,7 +565,14 @@ async function handlePermission(event) {
     const requestId = Math.random().toString(36).substring(2, 15);
     debugLog(`Starting bidirectional permission flow (requestId: ${requestId})`);
 
-    const result = await sendNotificationAndPoll(title, body, 'permission', event.source, requestId, d);
+    const result = await sendNotificationAndPoll(
+      title,
+      body,
+      'permission',
+      event.source,
+      requestId,
+      d
+    );
 
     if (result && result.decision) {
       const hookResponse = {
@@ -564,7 +580,7 @@ async function handlePermission(event) {
           hookEventName: 'PermissionRequest',
           permissionDecision: result.decision,
           permissionDecisionReason: `User ${result.decision === 'allow' ? 'approved' : 'denied'} via iPhone notification`,
-        }
+        },
       };
       // Write decision to stdout for Claude Code to read
       process.stdout.write(JSON.stringify(hookResponse));
@@ -577,6 +593,21 @@ async function handlePermission(event) {
   }
 
   // For OpenCode or non-blocking: fire-and-forget as before
+  sendNotification(title, body, 'permission', event.source);
+}
+
+/**
+ * Handle permission_notification events (Notification hook with permission_prompt type).
+ *
+ * Unlike handlePermission(), this does NOT block or poll for a response.
+ * It just sends a fire-and-forget notification to inform the user that
+ * Claude Code's local permission dialog is open.
+ */
+function handlePermissionNotification(event) {
+  const d = event.data;
+  debugLog(`Permission notification event (non-blocking): message=${d.message}`);
+
+  const { title, body } = buildPermissionNotification(event);
   sendNotification(title, body, 'permission', event.source);
 }
 
@@ -778,7 +809,7 @@ function buildQuestionNotification(event) {
   if (questions.length > 0) {
     const q = questions[0]; // Use first question
     const header = q.header || q.question || '';
-    const options = (q.options || []).map(o => o.label).filter(Boolean);
+    const options = (q.options || []).map((o) => o.label).filter(Boolean);
 
     const notifTitle = header ? `Question: ${header}` : 'Question';
     let body = q.question || header || '';
@@ -798,9 +829,7 @@ function buildQuestionNotification(event) {
   }
 
   // Case 2: Claude Code notification with message text
-  const notifTitle = (title && title !== 'Permission needed')
-    ? title
-    : 'Question';
+  const notifTitle = title && title !== 'Permission needed' ? title : 'Question';
 
   if (message) {
     return {
@@ -821,6 +850,10 @@ function buildQuestionNotification(event) {
 // ============================================
 
 function scheduleCompletionTimer(projectName) {
+  if (IS_CLAUDE_CODE) {
+    // Completion timer cannot work in Claude Code (each hook is a separate process)
+    return;
+  }
   debugLog(`Scheduling completion check for ${projectName}`);
   cancelCompletionTimer(projectName);
 
@@ -843,6 +876,9 @@ function cancelCompletionTimer(projectName) {
 }
 
 function checkCompletion(projectName, source) {
+  if (IS_CLAUDE_CODE) {
+    return;
+  }
   const state = getSessionState();
   const now = Date.now();
 
@@ -861,12 +897,7 @@ function checkCompletion(projectName, source) {
 
     const message = createCompletionMessage(state, projectName);
 
-    sendNotification(
-      `${projectName} Complete`,
-      message,
-      'completion',
-      source
-    );
+    sendNotification(`${projectName} Complete`, message, 'completion', source);
 
     state.pendingCompletion = false;
     saveSessionState(state);
@@ -948,17 +979,17 @@ function sendNotificationAndPoll(title, body, category, source, requestId, event
     };
 
     // Step 1: Send the notification
-    const protocol = USE_LOCAL ? http : https;
+    const protocol = API_URL.startsWith('https') ? https : http;
     const req = protocol.request(API_URL, options, (res) => {
       let responseData = '';
       res.on('data', (chunk) => (responseData += chunk));
       res.on('end', () => {
         if (IS_CLAUDE_CODE) {
-          console.log(`\n=== BIDIRECTIONAL NOTIFICATION SENT [${requestId}] ===`);
-          console.log(`Title: ${finalTitle}`);
-          console.log(`Message: ${body}`);
-          console.log(`Status: ${res.statusCode}`);
-          console.log(`=== NOW POLLING FOR RESPONSE ===\n`);
+          console.error(`\n=== BIDIRECTIONAL NOTIFICATION SENT [${requestId}] ===`);
+          console.error(`Title: ${finalTitle}`);
+          console.error(`Message: ${body}`);
+          console.error(`Status: ${res.statusCode}`);
+          console.error(`=== NOW POLLING FOR RESPONSE ===\n`);
         }
 
         if (res.statusCode !== 200) {
@@ -977,6 +1008,10 @@ function sendNotificationAndPoll(title, body, category, source, requestId, event
       resolve(null);
     });
 
+    req.setTimeout(10000, () => {
+      req.destroy(new Error('Request timeout'));
+    });
+
     req.write(payload);
     req.end();
   });
@@ -993,11 +1028,15 @@ function startPolling(requestId, resolve) {
     if (!resolved) {
       resolved = true;
       clearInterval(pollTimer);
-      debugLog(`Permission polling timed out after ${PERMISSION_TIMEOUT / 1000}s - falling through to local dialog`);
+      debugLog(
+        `Permission polling timed out after ${PERMISSION_TIMEOUT / 1000}s - falling through to local dialog`
+      );
       if (IS_CLAUDE_CODE) {
-        console.log(`\n=== PERMISSION TIMEOUT [${requestId}] ===`);
-        console.log(`No response after ${PERMISSION_TIMEOUT / 1000}s - falling through to local dialog`);
-        console.log(`=== END ===\n`);
+        console.error(`\n=== PERMISSION TIMEOUT [${requestId}] ===`);
+        console.error(
+          `No response after ${PERMISSION_TIMEOUT / 1000}s - falling through to local dialog`
+        );
+        console.error(`=== END ===\n`);
       }
       resolve(null);
     }
@@ -1020,7 +1059,7 @@ function startPolling(requestId, resolve) {
       },
     };
 
-    const protocol = USE_LOCAL ? http : https;
+    const protocol = RESPONSE_URL.startsWith('https') ? https : http;
     const pollReq = protocol.request(pollUrl, pollOptions, (res) => {
       let data = '';
       res.on('data', (chunk) => (data += chunk));
@@ -1036,10 +1075,10 @@ function startPolling(requestId, resolve) {
 
             debugLog(`Decision received: ${result.decision} (after ${elapsed}s)`);
             if (IS_CLAUDE_CODE) {
-              console.log(`\n=== DECISION RECEIVED [${requestId}] ===`);
-              console.log(`Decision: ${result.decision}`);
-              console.log(`Elapsed: ${elapsed}s`);
-              console.log(`=== END ===\n`);
+              console.error(`\n=== DECISION RECEIVED [${requestId}] ===`);
+              console.error(`Decision: ${result.decision}`);
+              console.error(`Elapsed: ${elapsed}s`);
+              console.error(`=== END ===\n`);
             }
 
             resolve({ decision: result.decision });
@@ -1054,6 +1093,10 @@ function startPolling(requestId, resolve) {
     pollReq.on('error', (error) => {
       debugLog(`Poll request error: ${error.message}`);
       // Don't resolve on poll error — keep trying until timeout
+    });
+
+    pollReq.setTimeout(10000, () => {
+      pollReq.destroy(new Error('Request timeout'));
     });
 
     pollReq.end();
@@ -1099,21 +1142,21 @@ function sendNotification(title, body, category = 'completion', source = RUNTIME
     },
   };
 
-  const protocol = USE_LOCAL ? http : https;
+  const protocol = API_URL.startsWith('https') ? https : http;
   const req = protocol.request(API_URL, options, (res) => {
     let responseData = '';
     res.on('data', (chunk) => (responseData += chunk));
     res.on('end', () => {
       if (IS_CLAUDE_CODE) {
-        console.log(`\n=== NOTIFICATION SENT [${requestId}] @ ${timestamp} ===`);
-        console.log(`Project: ${getProjectName()}`);
-        console.log(`Category: ${category}`);
-        console.log(`Title: ${finalTitle}`);
-        console.log(`Message: ${body}`);
-        console.log(`API URL: ${API_URL} (${USE_LOCAL ? 'LOCAL' : 'REMOTE'})`);
-        console.log(`Status Code: ${res.statusCode}`);
-        console.log(`Response: ${responseData}`);
-        console.log(`=== END NOTIFICATION ===\n`);
+        console.error(`\n=== NOTIFICATION SENT [${requestId}] @ ${timestamp} ===`);
+        console.error(`Project: ${getProjectName()}`);
+        console.error(`Category: ${category}`);
+        console.error(`Title: ${finalTitle}`);
+        console.error(`Message: ${body}`);
+        console.error(`API URL: ${API_URL} (${USE_LOCAL ? 'LOCAL' : 'REMOTE'})`);
+        console.error(`Status Code: ${res.statusCode}`);
+        console.error(`Response: ${responseData}`);
+        console.error(`=== END NOTIFICATION ===\n`);
       }
 
       if (res.statusCode !== 200) {
@@ -1131,6 +1174,10 @@ function sendNotification(title, body, category = 'completion', source = RUNTIME
     }
   });
 
+  req.setTimeout(10000, () => {
+    req.destroy(new Error('Request timeout'));
+  });
+
   req.write(payload);
   req.end();
 }
@@ -1140,7 +1187,7 @@ function sendNotification(title, body, category = 'completion', source = RUNTIME
 // ============================================
 
 function debugLog(msg) {
-  if (IS_CLAUDE_CODE && !DEBUG_ENABLED) return;
+  if (!DEBUG_ENABLED) return;
 
   try {
     const timestamp = new Date().toISOString();
@@ -1160,6 +1207,14 @@ function debugLog(msg) {
 // ============================================
 
 async function claudeCodeMain() {
+  // Validate required environment variables (only in Claude Code CLI mode)
+  if (!USE_LOCAL && !REMOTE_BASE_URL) {
+    console.error(
+      'SHOOTER_API_URL environment variable is required when SHOOTER_USE_LOCAL is not true'
+    );
+    process.exit(1);
+  }
+
   const cliArg = process.argv[2] || 'Unknown';
 
   debugLog(`Shooter Notifier CLI invoked: ${cliArg}`);
@@ -1277,16 +1332,16 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports.ShooterNotifier = OpenCodePlugin;
 }
 
-// Handle process cleanup (Claude Code CLI)
-process.on('SIGINT', () => {
-  process.exit(0);
-});
-
-process.on('SIGTERM', () => {
-  process.exit(0);
-});
-
 // Run main() when called directly from CLI (Claude Code)
 if (IS_CLAUDE_CODE) {
+  // Handle process cleanup (Claude Code CLI only)
+  process.on('SIGINT', () => {
+    process.exit(0);
+  });
+
+  process.on('SIGTERM', () => {
+    process.exit(0);
+  });
+
   claudeCodeMain();
 }

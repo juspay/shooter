@@ -9,7 +9,6 @@ struct AppConfig {
     struct Endpoints {
         static let notify = "/api/notify"
         static let health = "/api/health"
-        static let register = "/api/register"
         static let webhook = "/api/webhook"
         static let response = "/api/response"
     }

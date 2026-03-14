@@ -169,6 +169,8 @@ export const POST: RequestHandler = async ({ request }) => {
 
     // Smart notification filtering
     const requestId = Math.random().toString(36).substring(2, 15);
+    const dataRequestId = typeof data?.requestId === 'string' ? data.requestId : undefined;
+    const canonicalRequestId = dataRequestId || requestId;
     const shouldSendNotification = intelligentNotificationFilter(title, message, data);
 
     if (!shouldSendNotification.send) {
@@ -204,15 +206,6 @@ export const POST: RequestHandler = async ({ request }) => {
       );
     }
 
-    // If this is a bidirectional permission request, store it for polling
-    if (waitForResponse && data?.requestId) {
-      createPendingRequest(data.requestId as string, {
-        sessionId: (data.sessionId as string) || '',
-        toolInput: (data.toolInput as Record<string, unknown>) || {},
-        toolName: (data.toolName as string) || '',
-      });
-    }
-
     // Send notification
     const payload = {
       badge: 1,
@@ -220,6 +213,7 @@ export const POST: RequestHandler = async ({ request }) => {
       category: waitForResponse ? 'CLAUDE_PERMISSION' : undefined,
       data: {
         ...data,
+        requestId: canonicalRequestId,
         source: 'modern-apns-api',
         timestamp: new Date().toISOString(),
         waitForResponse: waitForResponse || false,
@@ -232,9 +226,19 @@ export const POST: RequestHandler = async ({ request }) => {
     try {
       const result = await apnsClient.sendNotification(deviceToken, payload);
 
+      // If this is a bidirectional permission request, store it for polling
+      // only after confirming APNs delivery succeeded
+      if (waitForResponse) {
+        createPendingRequest(canonicalRequestId, {
+          sessionId: (data?.sessionId as string) || '',
+          toolInput: (data?.toolInput as Record<string, unknown>) || {},
+          toolName: (data?.toolName as string) || '',
+        });
+      }
+
       return json({
         message: 'Notification sent successfully',
-        requestId,
+        requestId: canonicalRequestId,
         result,
         success: true,
         timestamp: new Date().toISOString(),
@@ -247,7 +251,7 @@ export const POST: RequestHandler = async ({ request }) => {
         {
           details: err.message,
           error: 'Failed to send notification',
-          requestId,
+          requestId: canonicalRequestId,
           timestamp: new Date().toISOString(),
         },
         { status: 500 }

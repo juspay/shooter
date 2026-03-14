@@ -1,14 +1,10 @@
 <script lang="ts">
+  import type { ShooterConfig } from '$lib/types/config';
+
   import { browser } from '$app/environment';
   import { goto } from '$app/navigation';
   import { Alert, Button, Card, Icon, Input } from '$lib/modules/client/common';
   import { onMount } from 'svelte';
-
-  interface Config {
-    apiKey: string;
-    deviceToken: string;
-    lastUpdated: number;
-  }
 
   let apiKey = $state('');
   let deviceToken = $state('');
@@ -16,17 +12,23 @@
   let loading = $state(false);
   let statusType = $state<'' | 'error' | 'success' | 'warning'>('');
 
+  function isShooterConfig(value: unknown): value is ShooterConfig {
+    if (!value || typeof value !== 'object') return false;
+    const obj = value as Record<string, unknown>;
+    return typeof obj.apiKey === 'string' && typeof obj.deviceToken === 'string';
+  }
+
   onMount(() => {
     if (browser) {
       try {
         const saved = localStorage.getItem('shooter_config');
         if (saved) {
-          const config = JSON.parse(saved) as Config;
-          if (config.apiKey) {
-            apiKey = config.apiKey;
-          }
-          if (config.deviceToken) {
-            deviceToken = config.deviceToken;
+          const parsed: unknown = JSON.parse(saved);
+          if (isShooterConfig(parsed)) {
+            if (parsed.apiKey) apiKey = parsed.apiKey;
+            if (parsed.deviceToken) deviceToken = parsed.deviceToken;
+          } else {
+            localStorage.removeItem('shooter_config');
           }
         }
       } catch {
@@ -47,7 +49,7 @@
           apiKey: apiKey.trim(),
           deviceToken: deviceToken.trim(),
           lastUpdated: Date.now(),
-        } satisfies Config)
+        } satisfies ShooterConfig)
       );
 
       const response = await fetch('/api/health');

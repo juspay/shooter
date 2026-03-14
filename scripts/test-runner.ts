@@ -23,7 +23,10 @@ interface RunnerConfig {
 }
 
 class CLIRunner {
-  private config: Required<Omit<RunnerConfig, 'useLoginShell'>> & { useLoginShell: boolean; env: NodeJS.ProcessEnv };
+  private config: Required<Omit<RunnerConfig, 'useLoginShell'>> & {
+    useLoginShell: boolean;
+    env: NodeJS.ProcessEnv;
+  };
   private onExitCallback: null | ExitCallback = null;
   private onOutputCallback: null | OutputCallback = null;
   private process: IPty | null = null;

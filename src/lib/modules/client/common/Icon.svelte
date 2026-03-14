@@ -12,14 +12,14 @@
 
   const icons: Record<string, string> = {
     'alert-triangle': AlertTriangle,
-    'bell': Bell,
+    bell: Bell,
     'check-circle': CheckCircle,
-    'file': File,
-    'folder': Folder,
-    'play': Play,
-    'refresh': Refresh,
-    'settings': Settings,
-    'tool': Tool,
+    file: File,
+    folder: Folder,
+    play: Play,
+    refresh: Refresh,
+    settings: Settings,
+    tool: Tool,
     'x-circle': XCircle,
   };
 
