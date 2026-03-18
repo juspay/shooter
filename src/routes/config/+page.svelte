@@ -13,7 +13,9 @@
   let statusType = $state<'' | 'error' | 'success' | 'warning'>('');
 
   function isShooterConfig(value: unknown): value is ShooterConfig {
-    if (!value || typeof value !== 'object') return false;
+    if (!value || typeof value !== 'object') {
+      return false;
+    }
     const obj = value as Record<string, unknown>;
     return typeof obj.apiKey === 'string' && typeof obj.deviceToken === 'string';
   }
@@ -25,14 +27,18 @@
         if (saved) {
           const parsed: unknown = JSON.parse(saved);
           if (isShooterConfig(parsed)) {
-            if (parsed.apiKey) apiKey = parsed.apiKey;
-            if (parsed.deviceToken) deviceToken = parsed.deviceToken;
+            if (parsed.apiKey) {
+              apiKey = parsed.apiKey;
+            }
+            if (parsed.deviceToken) {
+              deviceToken = parsed.deviceToken;
+            }
           } else {
             localStorage.removeItem('shooter_config');
           }
         }
       } catch {
-        console.log('No saved configuration found');
+        // No saved configuration — expected on first visit
       }
     }
   });

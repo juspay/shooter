@@ -1,0 +1,714 @@
+<script lang="ts">
+  import type { ShooterConfig } from '$lib/types/config';
+
+  import { goto } from '$app/navigation';
+  import { Button, EmptyState, Icon } from '$lib/modules/client/common';
+  import LaunchSheet from '$lib/modules/client/terminal/LaunchSheet.svelte';
+  import { onDestroy, onMount } from 'svelte';
+
+  interface Terminal {
+    args: string[];
+    command: string;
+    createdAt: string;
+    cwd: string;
+    exitCode: null | number;
+    exitedAt: null | string;
+    id: string;
+    lastOutput: null | string;
+    pid: number;
+    status: 'exited' | 'running';
+  }
+
+  const POLL_INTERVAL_MS = 10_000;
+  const CACHE_KEY = 'shooter_terminals';
+  const AI_COMMANDS = ['claude', 'opencode'];
+  const SHELL_COMMANDS = ['zsh', 'bash', 'sh', 'fish'];
+
+  let terminals = $state<Terminal[]>([]);
+  let loading = $state(false);
+  let fetching = false;
+  let config = $state<null | ShooterConfig>(null);
+  let pollTimer: null | ReturnType<typeof setInterval> = null;
+
+  // Derived: split into running and exited for ordering
+  const runningTerminals = $derived(terminals.filter((t) => t.status === 'running'));
+  const exitedTerminals = $derived(terminals.filter((t) => t.status === 'exited'));
+
+  // Cache helpers using sessionStorage
+  function getCached(key: string): unknown {
+    try {
+      const item = sessionStorage.getItem(key);
+      if (!item) {
+        return null;
+      }
+      const { data, timestamp } = JSON.parse(item) as { data: unknown; timestamp: number };
+      // Cache valid for 10 seconds (matches poll interval)
+      if (Date.now() - timestamp > 10000) {
+        return null;
+      }
+      return data;
+    } catch {
+      return null;
+    }
+  }
+
+  function setCache(key: string, data: unknown): void {
+    try {
+      sessionStorage.setItem(key, JSON.stringify({ data, timestamp: Date.now() }));
+    } catch {
+      // sessionStorage full — silently ignore
+    }
+  }
+
+  onMount(() => {
+    loadConfiguration();
+
+    // Show cached data immediately
+    const cached = getCached(CACHE_KEY) as null | Terminal[];
+    if (cached) {
+      terminals = cached;
+      loading = false;
+    }
+
+    // Then fetch fresh data in background
+    void fetchTerminals();
+
+    pollTimer = setInterval(() => {
+      if (config?.apiKey) {
+        void fetchTerminals();
+      }
+    }, POLL_INTERVAL_MS);
+  });
+
+  onDestroy(() => {
+    if (pollTimer) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+  });
+
+  function isShooterConfig(value: unknown): value is ShooterConfig {
+    return (
+      typeof value === 'object' && value !== null && 'apiKey' in value && 'deviceToken' in value
+    );
+  }
+
+  function loadConfiguration(): void {
+    try {
+      const saved = localStorage.getItem('shooter_config');
+      if (saved) {
+        const parsed: unknown = JSON.parse(saved);
+        if (isShooterConfig(parsed)) {
+          config = parsed;
+        } else {
+          localStorage.removeItem('shooter_config');
+          config = null;
+        }
+      }
+    } catch {
+      // No configuration found — expected on first visit
+    }
+  }
+
+  async function fetchTerminals(): Promise<void> {
+    if (!config?.apiKey || fetching) {
+      return;
+    }
+    fetching = true;
+
+    // Don't show loading spinner if we already have cached data
+    if (terminals.length === 0) {
+      loading = true;
+    }
+
+    try {
+      const response = await fetch('/api/terminals', {
+        headers: {
+          Authorization: `Bearer ${config.apiKey}`,
+        },
+      });
+
+      if (!response.ok) {
+        return;
+      }
+
+      const result = (await response.json()) as { terminals: Terminal[] };
+      terminals = result.terminals;
+      setCache(CACHE_KEY, terminals);
+    } catch (error) {
+      console.error('Failed to fetch terminals:', error);
+    } finally {
+      loading = false;
+      fetching = false;
+    }
+  }
+
+  async function forceRefresh(): Promise<void> {
+    loading = true;
+    sessionStorage.removeItem(CACHE_KEY);
+    await fetchTerminals();
+  }
+
+  function navigateToConfig(): void {
+    void goto('/config');
+  }
+
+  let showLaunchSheet = $state(false);
+
+  function handleNewTerminal(): void {
+    showLaunchSheet = true;
+  }
+
+  function handleLaunchClose(): void {
+    showLaunchSheet = false;
+  }
+
+  function handleLaunchComplete(response: { id: string }): void {
+    showLaunchSheet = false;
+    void goto(`/terminals/${response.id}`);
+  }
+
+  function getTerminalType(command: string): 'ai' | 'ended' | 'shell' {
+    const base = command.split('/').pop() || command;
+    if (AI_COMMANDS.includes(base)) {
+      return 'ai';
+    }
+    if (SHELL_COMMANDS.includes(base)) {
+      return 'shell';
+    }
+    return 'shell';
+  }
+
+  function getBadgeInfo(terminal: Terminal): { class: string; label: string } {
+    if (terminal.status === 'exited') {
+      return { class: 'badge-ended', label: 'ENDED' };
+    }
+    const type = getTerminalType(terminal.command);
+    if (type === 'ai') {
+      return { class: 'badge-ai', label: 'AI' };
+    }
+    return { class: 'badge-shell', label: 'SHELL' };
+  }
+
+  function formatRelativeTime(ts: string): string {
+    const diff = Date.now() - new Date(ts).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) {
+      return 'just now';
+    }
+    if (mins < 60) {
+      return `${mins}m ago`;
+    }
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) {
+      return `${hrs}h ago`;
+    }
+    return `${Math.floor(hrs / 24)}d ago`;
+  }
+
+  function truncatePath(path: string, maxLen = 40): string {
+    if (path.length <= maxLen) {
+      return path;
+    }
+    const parts = path.split('/');
+    if (parts.length <= 3) {
+      return path;
+    }
+    // Show first part + ... + last 2 segments
+    return `${parts[0]}/.../${parts.slice(-2).join('/')}`;
+  }
+
+  function stripAnsi(str: string): string {
+    return str.replace(/\x1b\[[0-9;]*[a-zA-Z]|\x1b\][^\x07]*\x07|\x1b\[[\?]?[0-9;]*[a-zA-Z]|\x1b/g, '').replace(/[\x00-\x1f]/g, '').trim();
+  }
+
+  function truncateOutput(output: null | string, maxLen = 80): string {
+    if (!output) {
+      return '';
+    }
+    // Strip ANSI escape codes first, then take the last non-empty line
+    const cleaned = stripAnsi(output);
+    const lines = cleaned.trim().split('\n').filter(l => l.trim());
+    const lastLine = lines[lines.length - 1] || '';
+    if (lastLine.length <= maxLen) {
+      return lastLine;
+    }
+    return `${lastLine.slice(0, maxLen)}...`;
+  }
+
+  function getCommandName(command: string): string {
+    return command.split('/').pop() || command;
+  }
+
+  async function removeTerminal(event: MouseEvent, id: string): Promise<void> {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (!config?.apiKey) return;
+
+    try {
+      const response = await fetch(`/api/terminals/${id}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${config.apiKey}`,
+        },
+      });
+
+      if (response.ok) {
+        terminals = terminals.filter((t) => t.id !== id);
+        setCache(CACHE_KEY, terminals);
+      }
+    } catch (err) {
+      console.error('Failed to remove terminal:', err);
+    }
+  }
+</script>
+
+<svelte:head>
+  <title>Terminals - Shooter</title>
+  <meta name="description" content="Active terminal sessions on this machine" />
+</svelte:head>
+
+<main class="main">
+  <div class="page-header">
+    <div class="page-header-content">
+      <div>
+        <h1 class="page-title">Terminals</h1>
+        <p class="page-description">Active terminal sessions on this machine</p>
+      </div>
+      <div class="page-actions">
+        <Button variant="secondary" onclick={forceRefresh} disabled={loading}>
+          <Icon name="refresh" size={14} />
+          Refresh
+        </Button>
+        <Button variant="primary" onclick={handleNewTerminal}>
+          <span class="plus-icon">+</span>
+          New Terminal
+        </Button>
+      </div>
+    </div>
+  </div>
+
+  {#if loading && terminals.length === 0}
+    <div class="loading-container">
+      {#each Array(4) as _, i (i)}
+        <div class="skeleton skeleton-card"></div>
+      {/each}
+    </div>
+  {:else if !config?.apiKey}
+    <EmptyState
+      icon="settings"
+      title="Configuration Required"
+      description="Set up your API credentials to view terminal sessions"
+    >
+      <Button variant="primary" onclick={navigateToConfig}>Configure Settings</Button>
+    </EmptyState>
+  {:else if terminals.length === 0}
+    <EmptyState
+      icon="play"
+      title="No terminals"
+      description="Launch a new terminal session to get started. Terminal sessions will appear here once created."
+    >
+      <Button variant="primary" onclick={handleNewTerminal}>
+        <span class="plus-icon">+</span>
+        New Terminal
+      </Button>
+    </EmptyState>
+  {:else}
+    <div class="terminals-container">
+      <!-- Running terminals first -->
+      {#each runningTerminals as terminal (terminal.id)}
+        {@const badge = getBadgeInfo(terminal)}
+        <a href="/terminals/{terminal.id}" class="terminal-card">
+          <div class="terminal-card-header">
+            <div class="terminal-card-left">
+              <span class="status-indicator status-running">
+                <span class="status-dot-pulse"></span>
+              </span>
+              <span class="terminal-command">{getCommandName(terminal.command)}</span>
+              <span class="terminal-badge {badge.class}">{badge.label}</span>
+            </div>
+            <span class="terminal-time">{formatRelativeTime(terminal.createdAt)}</span>
+          </div>
+
+          <div class="terminal-card-meta">
+            <span class="terminal-cwd" title={terminal.cwd}>{truncatePath(terminal.cwd)}</span>
+            <span class="terminal-pid">PID {terminal.pid}</span>
+          </div>
+
+          {#if terminal.lastOutput}
+            <div class="terminal-preview">
+              <span class="terminal-preview-text">{truncateOutput(terminal.lastOutput)}</span>
+            </div>
+          {/if}
+        </a>
+      {/each}
+
+      <!-- Exited terminals at lower opacity -->
+      {#each exitedTerminals as terminal (terminal.id)}
+        {@const badge = getBadgeInfo(terminal)}
+        <a href="/terminals/{terminal.id}" class="terminal-card terminal-card-exited">
+          <div class="terminal-card-header">
+            <div class="terminal-card-left">
+              <span class="status-indicator status-exited">
+                <span class="status-dot-static"></span>
+              </span>
+              <span class="terminal-command">{getCommandName(terminal.command)}</span>
+              <span class="terminal-badge {badge.class}">{badge.label}</span>
+              {#if terminal.exitCode !== null}
+                <span class="terminal-exit-code" class:exit-error={terminal.exitCode !== 0}>
+                  exit {terminal.exitCode}
+                </span>
+              {/if}
+            </div>
+            <div class="terminal-card-right">
+              <span class="terminal-time">
+                {terminal.exitedAt
+                  ? formatRelativeTime(terminal.exitedAt)
+                  : formatRelativeTime(terminal.createdAt)}
+              </span>
+              <button
+                class="terminal-remove-btn"
+                onclick={(e) => removeTerminal(e, terminal.id)}
+                type="button"
+                aria-label="Remove terminal"
+                title="Remove terminal"
+              >&times;</button>
+            </div>
+          </div>
+
+          <div class="terminal-card-meta">
+            <span class="terminal-cwd" title={terminal.cwd}>{truncatePath(terminal.cwd)}</span>
+          </div>
+
+          {#if terminal.lastOutput}
+            <div class="terminal-preview">
+              <span class="terminal-preview-text">{truncateOutput(terminal.lastOutput)}</span>
+            </div>
+          {/if}
+        </a>
+      {/each}
+    </div>
+  {/if}
+</main>
+
+{#if config?.apiKey}
+  <LaunchSheet
+    open={showLaunchSheet}
+    apiKey={config.apiKey}
+    onClose={handleLaunchClose}
+    onLaunch={handleLaunchComplete}
+  />
+{/if}
+
+<style>
+  .page-header {
+    margin-bottom: var(--space-6);
+  }
+
+  .page-header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: var(--space-4);
+  }
+
+  .page-title {
+    font-size: var(--text-2xl);
+    font-weight: 600;
+    letter-spacing: -0.03em;
+    color: var(--text-primary);
+    margin-bottom: var(--space-1);
+  }
+
+  .page-description {
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+  }
+
+  .page-actions {
+    display: flex;
+    gap: var(--space-2);
+    flex-shrink: 0;
+  }
+
+  .plus-icon {
+    font-size: 16px;
+    font-weight: 500;
+    line-height: 1;
+  }
+
+  /* Terminals list */
+  .terminals-container {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    animation: fadeIn 0.2s ease;
+  }
+
+  /* Terminal card */
+  .terminal-card {
+    background: var(--component-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-4) var(--space-5);
+    cursor: pointer;
+    transition:
+      border-color var(--transition-fast),
+      background var(--transition-fast);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    text-decoration: none;
+    color: inherit;
+    overflow: hidden;
+    min-width: 0;
+  }
+
+  .terminal-card:hover {
+    border-color: var(--border-hover);
+    background: var(--component-bg-hover);
+  }
+
+  .terminal-card-exited {
+    opacity: 0.55;
+  }
+
+  .terminal-card-exited:hover {
+    opacity: 0.75;
+  }
+
+  /* Card header row */
+  .terminal-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-3);
+    min-width: 0;
+  }
+
+  .terminal-card-left {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+
+  /* Status indicators */
+  .status-indicator {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 10px;
+    height: 10px;
+    flex-shrink: 0;
+  }
+
+  .status-dot-pulse {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #22c55e;
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+
+  .status-dot-static {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--ds-gray-600);
+  }
+
+  /* Command name */
+  .terminal-command {
+    font-family: var(--font-mono);
+    font-size: var(--text-base);
+    font-weight: 600;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 200px;
+  }
+
+  /* Type badges */
+  .terminal-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+    font-size: 11px;
+    font-weight: 600;
+    font-family: var(--font-mono);
+    letter-spacing: 0.03em;
+    border: 1px solid;
+  }
+
+  .badge-ai {
+    background: rgba(139, 92, 246, 0.12);
+    color: #a78bfa;
+    border-color: rgba(139, 92, 246, 0.25);
+  }
+
+  .badge-shell {
+    background: rgba(34, 197, 94, 0.12);
+    color: #22c55e;
+    border-color: rgba(34, 197, 94, 0.25);
+  }
+
+  .badge-ended {
+    background: rgba(107, 114, 128, 0.12);
+    color: #9ca3af;
+    border-color: rgba(107, 114, 128, 0.25);
+  }
+
+  /* Exit code */
+  .terminal-exit-code {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--text-tertiary);
+    padding: 1px 6px;
+    border-radius: var(--radius-sm);
+    background: var(--ds-gray-alpha-100);
+  }
+
+  .terminal-exit-code.exit-error {
+    color: var(--ds-red-900);
+    background: var(--ds-red-100);
+  }
+
+  /* Time */
+  .terminal-time {
+    font-size: var(--text-xs);
+    color: var(--text-tertiary);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  /* Right side of exited card header */
+  .terminal-card-right {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-shrink: 0;
+  }
+
+  /* Remove button for exited terminals */
+  .terminal-remove-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-sm);
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-tertiary);
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+    transition:
+      background var(--transition-fast),
+      color var(--transition-fast),
+      border-color var(--transition-fast);
+    flex-shrink: 0;
+  }
+
+  .terminal-remove-btn:hover {
+    background: var(--ds-red-100);
+    color: var(--ds-red-900);
+    border-color: var(--ds-red-200, rgba(239, 68, 68, 0.25));
+  }
+
+  /* Meta row: cwd + pid */
+  .terminal-card-meta {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    min-width: 0;
+  }
+
+  .terminal-cwd {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--text-tertiary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+
+  .terminal-pid {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--ds-gray-600);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  /* Output preview strip */
+  .terminal-preview {
+    background: var(--ds-background-200);
+    border: 1px solid var(--ds-gray-alpha-200);
+    border-radius: var(--radius-sm);
+    padding: var(--space-2) var(--space-3);
+    overflow: hidden;
+  }
+
+  .terminal-preview-text {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--ds-gray-700);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: block;
+    line-height: var(--leading-normal);
+  }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    .page-header-content {
+      flex-direction: column;
+      gap: var(--space-4);
+    }
+
+    .page-actions {
+      width: 100%;
+    }
+
+    .page-actions :global(.btn) {
+      flex: 1;
+    }
+
+    .terminal-card {
+      padding: var(--space-3);
+    }
+
+    .terminal-card-header {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: var(--space-2);
+    }
+
+    .terminal-time {
+      align-self: flex-start;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .page-actions {
+      flex-direction: column;
+      width: 100%;
+    }
+
+    .page-actions :global(button) {
+      width: 100%;
+    }
+
+    .terminal-command {
+      max-width: 120px;
+    }
+  }
+</style>

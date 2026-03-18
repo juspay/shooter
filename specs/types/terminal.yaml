@@ -1,0 +1,512 @@
+# Terminal Module Type Definitions
+# Non-top file - referenced from index.yaml
+# Contains all types related to managed terminal sessions, WebSocket messages,
+# and the real-time event bus for the mobile terminal access system
+
+Terminal:
+  # ─── REST API Types ────────────────────────────────────────────────
+
+  ManagedTerminalInfo:
+    type: object
+    description: Serializable info about a managed terminal session (excludes runtime handles like PTY, watchers, client sets)
+    required:
+      - id
+      - command
+      - args
+      - cwd
+      - pid
+      - createdAt
+      - status
+    properties:
+      id:
+        type: string
+        description: Unique terminal identifier (e.g. "term_a1b2c3")
+      command:
+        type: string
+        description: The command that was launched (e.g. "zsh", "claude", "opencode")
+      args:
+        type: array
+        description: Command arguments passed at launch
+        items:
+          type: string
+      cwd:
+        type: string
+        description: Working directory the terminal was launched in
+      pid:
+        type: number
+        description: OS process ID of the terminal process
+      createdAt:
+        type: string
+        description: ISO 8601 timestamp when the terminal was created
+      exitedAt:
+        type: string
+        nullable: true
+        description: ISO 8601 timestamp when the process exited, or null if still running
+      status:
+        type: string
+        enum:
+          - running
+          - exited
+        description: Current lifecycle status of the terminal
+      exitCode:
+        type: number
+        nullable: true
+        description: Process exit code (0 = success), or null if still running
+
+  CreateTerminalRequest:
+    type: object
+    description: Request body for creating a new managed terminal session
+    required:
+      - command
+      - cwd
+    properties:
+      command:
+        type: string
+        description: The command to execute (e.g. "zsh", "claude", "opencode")
+      args:
+        type: array
+        description: Optional command arguments
+        items:
+          type: string
+      cwd:
+        type: string
+        description: Working directory for the new terminal
+      cols:
+        type: number
+        description: Terminal width in columns (default 80)
+      rows:
+        type: number
+        description: Terminal height in rows (default 24)
+
+  CreateTerminalResponse:
+    type: object
+    description: Response after successfully creating a managed terminal session
+    required:
+      - id
+      - pid
+      - command
+      - cwd
+      - ws
+      - createdAt
+    properties:
+      id:
+        type: string
+        description: Unique terminal identifier
+      pid:
+        type: number
+        description: OS process ID of the spawned process
+      command:
+        type: string
+        description: The command that was launched
+      cwd:
+        type: string
+        description: Working directory the terminal was launched in
+      ws:
+        type: string
+        description: WebSocket path for raw terminal I/O (e.g. "/ws/terminal/term_a1b2c3")
+      sessionWs:
+        type: string
+        nullable: true
+        description: WebSocket path for structured session stream, or null if not an AI session
+      createdAt:
+        type: string
+        description: ISO 8601 timestamp when the terminal was created
+
+  TerminalListResponse:
+    type: object
+    description: Response for listing all managed terminal sessions
+    required:
+      - terminals
+      - count
+    properties:
+      terminals:
+        type: array
+        description: Array of managed terminal info objects
+        items:
+          $ref: './specs/types/terminal.yaml#/Terminal/ManagedTerminalInfo'
+      count:
+        type: number
+        description: Total number of terminals in the list
+
+  WsTicketResponse:
+    type: object
+    description: Response containing a short-lived ticket for WebSocket authentication
+    required:
+      - ticket
+      - expiresAt
+    properties:
+      ticket:
+        type: string
+        description: Single-use random ticket string (expires in 30 seconds)
+      expiresAt:
+        type: string
+        description: ISO 8601 timestamp when the ticket expires
+
+  WsStatusResponse:
+    type: object
+    description: Response indicating how many WebSocket clients are currently connected
+    required:
+      - connectedClients
+    properties:
+      connectedClients:
+        type: number
+        description: Number of active WebSocket connections across all channels
+
+  # ─── WebSocket Message Types ───────────────────────────────────────
+
+  # Channel 1: Terminal I/O — ws://host/ws/terminal/:id
+
+  WsTerminalMessage:
+    description: Messages sent from client to server on the terminal I/O WebSocket channel
+    oneOf:
+      - type: object
+        description: Send keyboard input to the terminal PTY
+        required:
+          - type
+          - data
+        properties:
+          type:
+            type: string
+            const: input
+          data:
+            type: string
+            description: Raw terminal input data (keystrokes, pasted text)
+      - type: object
+        description: Resize the terminal PTY dimensions
+        required:
+          - type
+          - cols
+          - rows
+        properties:
+          type:
+            type: string
+            const: resize
+          cols:
+            type: number
+            description: New terminal width in columns
+          rows:
+            type: number
+            description: New terminal height in rows
+      - type: object
+        description: Send a signal to the terminal process
+        required:
+          - type
+          - signal
+        properties:
+          type:
+            type: string
+            const: signal
+          signal:
+            type: string
+            description: Signal name to send (e.g. "SIGINT", "SIGTERM", "SIGTSTP")
+
+  WsTerminalOutput:
+    description: Messages sent from server to client on the terminal I/O WebSocket channel
+    oneOf:
+      - type: object
+        description: Terminal output data from the PTY
+        required:
+          - type
+          - data
+        properties:
+          type:
+            type: string
+            const: output
+          data:
+            type: string
+            description: Raw terminal output data
+      - type: object
+        description: Terminal process has exited
+        required:
+          - type
+          - code
+        properties:
+          type:
+            type: string
+            const: exit
+          code:
+            type: number
+            description: Process exit code
+          signal:
+            type: string
+            nullable: true
+            description: Signal that caused the exit, or null if exited normally
+      - type: object
+        description: Scrollback chunk sent on reconnection
+        required:
+          - type
+          - data
+          - chunk
+          - total
+        properties:
+          type:
+            type: string
+            const: scrollback
+          data:
+            type: string
+            description: Scrollback content for this chunk (max 50KB)
+          chunk:
+            type: number
+            description: 1-based chunk index
+          total:
+            type: number
+            description: Total number of scrollback chunks
+      - type: object
+        description: Error message from the terminal server
+        required:
+          - type
+          - message
+        properties:
+          type:
+            type: string
+            const: error
+          message:
+            type: string
+            description: Human-readable error message
+
+  # Channel 2: Live Session — ws://host/ws/session/:id
+
+  WsSessionMessage:
+    description: Messages sent from client to server on the live session WebSocket channel
+    oneOf:
+      - type: object
+        description: Subscribe to a live AI session stream
+        required:
+          - type
+          - sessionId
+        properties:
+          type:
+            type: string
+            const: subscribe
+          sessionId:
+            type: string
+            description: Session ID to subscribe to
+      - type: object
+        description: Send text input to the AI session (writes to PTY stdin with newline)
+        required:
+          - type
+          - text
+        properties:
+          type:
+            type: string
+            const: send-input
+          text:
+            type: string
+            description: Text to send to the AI session
+      - type: object
+        description: Cancel the current AI operation (sends SIGINT to PTY)
+        required:
+          - type
+        properties:
+          type:
+            type: string
+            const: cancel
+
+  WsSessionOutput:
+    description: Messages sent from server to client on the live session WebSocket channel
+    oneOf:
+      - type: object
+        description: Full conversation history sent on connect
+        required:
+          - type
+          - messages
+        properties:
+          type:
+            type: string
+            const: history
+          messages:
+            type: array
+            description: All session messages from the beginning up to the current point
+            items:
+              type: object
+              description: A session message entry
+              additionalProperties: true
+      - type: object
+        description: A new conversation message (user or assistant)
+        required:
+          - type
+          - role
+          - content
+          - timestamp
+        properties:
+          type:
+            type: string
+            const: message
+          role:
+            type: string
+            enum:
+              - user
+              - assistant
+            description: Who sent the message
+          content:
+            type: array
+            description: Message content blocks
+            items:
+              type: object
+              description: A content block (text, code, etc.)
+              additionalProperties: true
+          timestamp:
+            type: string
+            description: ISO 8601 timestamp of the message
+      - type: object
+        description: A tool invocation by the AI assistant
+        required:
+          - type
+          - name
+          - input
+          - status
+        properties:
+          type:
+            type: string
+            const: tool-use
+          name:
+            type: string
+            description: Tool name (e.g. "Edit", "Bash", "Read")
+          input:
+            type: object
+            description: Tool input parameters
+            additionalProperties: true
+          status:
+            type: string
+            enum:
+              - running
+              - done
+              - error
+            description: Current execution status of the tool
+      - type: object
+        description: Result from a completed tool invocation
+        required:
+          - type
+          - id
+          - output
+          - status
+        properties:
+          type:
+            type: string
+            const: tool-result
+          id:
+            type: string
+            description: Tool use ID this result corresponds to
+          output:
+            type: string
+            description: Tool output text
+          status:
+            type: string
+            enum:
+              - done
+              - error
+            description: Whether the tool completed successfully
+      - type: object
+        description: AI thinking/reasoning block (extended thinking)
+        required:
+          - type
+          - text
+        properties:
+          type:
+            type: string
+            const: thinking
+          text:
+            type: string
+            description: Thinking content text
+      - type: object
+        description: Session has ended (process exited or session file closed)
+        required:
+          - type
+        properties:
+          type:
+            type: string
+            const: session-end
+
+  # Channel 3: Global Events — ws://host/ws/events
+
+  WsEvent:
+    description: Broadcast events sent from server to all connected clients on the global events channel
+    oneOf:
+      - type: object
+        description: A new AI session has started
+        required:
+          - type
+          - sessionId
+          - project
+          - source
+        properties:
+          type:
+            type: string
+            const: session-started
+          sessionId:
+            type: string
+            description: Unique session identifier
+          project:
+            type: string
+            description: Project name or path
+          source:
+            type: string
+            description: Source tool that started the session (e.g. "claude-code", "opencode")
+      - type: object
+        description: An AI session has ended
+        required:
+          - type
+          - sessionId
+        properties:
+          type:
+            type: string
+            const: session-ended
+          sessionId:
+            type: string
+            description: Session identifier that ended
+          summary:
+            type: string
+            description: Optional summary of what happened in the session
+      - type: object
+        description: A permission request is awaiting approval
+        required:
+          - type
+          - requestId
+          - tool
+          - input
+        properties:
+          type:
+            type: string
+            const: permission-requested
+          requestId:
+            type: string
+            description: Unique request identifier for the permission flow
+          tool:
+            type: string
+            description: Tool requesting permission (e.g. "Bash", "Edit")
+          input:
+            type: object
+            description: Tool input that requires approval
+            additionalProperties: true
+      - type: object
+        description: A new managed terminal has been created
+        required:
+          - type
+          - terminalId
+          - command
+        properties:
+          type:
+            type: string
+            const: terminal-created
+          terminalId:
+            type: string
+            description: Unique terminal identifier
+          command:
+            type: string
+            description: Command that was launched
+      - type: object
+        description: A managed terminal process has exited
+        required:
+          - type
+          - terminalId
+          - code
+        properties:
+          type:
+            type: string
+            const: terminal-exited
+          terminalId:
+            type: string
+            description: Terminal identifier that exited
+          code:
+            type: number
+            description: Process exit code

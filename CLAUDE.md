@@ -17,7 +17,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This repository contains a **WORKING** bidirectional communication system between Shooter and iOS applications using push notifications. The system enables Shooter to automatically send real-time notifications to iOS devices when coding events occur, with plans for interactive responses.
+This repository contains a **WORKING** bidirectional communication system between Shooter and iOS applications. Features include push notifications for coding events, mobile terminal access via WebSocket streaming, and session viewing. The system enables real-time notifications to iOS devices, interactive permission responses, remote terminal sessions from a phone, and browsing of coding session history.
 
 ## Project Structure
 
@@ -29,13 +29,20 @@ This repository contains a **WORKING** bidirectional communication system betwee
 - `src/lib/modules/` - Organized modular code (client + server)
   - `server/apn/` - Apple Push Notification service implementations
   - `server/cli/` - CLI command execution utilities
+  - `server/terminal/` - PTY manager, session watcher
+  - `server/ws/` - WebSocket server, handlers, ticket-store, keepalive
+  - `server/sessions/` - JSONL reader, OpenCode reader, types
+  - `server/auth.ts` - Shared authentication
   - `client/common/` - Reusable UI components
+  - `client/terminal/` - ChatView, LaunchSheet, QuickKeys, ConnectionStatus, xterm-wrapper
+- `server.ts` - Custom server entry point (Node.js with WebSocket upgrade handling)
 - `src/lib/types/` - Auto-generated TypeScript types (DO NOT EDIT)
 - `specs/types/` - Type-crafter YAML specifications (EDIT HERE for types)
   - `index.yaml` - Main spec file (top file with references)
   - `jwt.yaml` - JWT authentication types
   - `apn.yaml` - APNs notification types
   - `cli.yaml` - CLI module types
+  - `terminal.yaml` - Terminal and WebSocket types
 - `ios/` - Swift iOS app (working, receiving notifications + interactive permission responses)
 
 ### Architecture Documentation (in `plans/` and `docs/`)
@@ -50,9 +57,13 @@ This repository contains a **WORKING** bidirectional communication system betwee
 ## Key Technologies
 
 - **SvelteKit** - Central server framework for API endpoints and admin interface
-- **Vercel** - Cloud deployment platform
+- **Local Node.js server (adapter-node)** - Self-hosted behind Cloudflare Tunnel
 - **Apple Push Notifications (APNs)** - iOS notification delivery
-- **Cloudflare Tunnel** - Webhook delivery for bidirectional communication
+- **Cloudflare Tunnel** - Secure public access to local server
+- **ws** - WebSocket server for terminal streaming and session events
+- **node-pty** - Pseudoterminal management for remote shell sessions
+- **@xterm/xterm** - Terminal emulator UI in the browser
+- **chokidar** - File system watching for session changes
 - **TypeScript** - Primary development language
 - **Swift/SwiftUI** - iOS application development
 
@@ -70,9 +81,13 @@ The system is designed to be built in four phases:
 ### SvelteKit Application
 
 - API routes: `/api/notify`, `/api/response`, `/api/webhook`, `/api/health`
+- Terminal API routes: `/api/terminals`, `/api/terminals/[id]`, `/api/terminals/[id]/resize`, `/api/ws-ticket`, `/api/ws-status`
+- Session API route: `/api/sessions`
 - APNs integration with JWT authentication (sandbox/production via `APNS_PRODUCTION` env var)
 - In-memory pending request store for bidirectional permission flow
 - Request validation and error handling
+- UI pages: `/terminals` (list), `/terminals/[id]` (live terminal), `/project` (project dashboard), `/session/[id]` (session viewer), `/config`
+- WebSocket channels: `terminal` (PTY I/O, resize), `session` (live session updates), `events` (server-sent events)
 
 ### iOS Application
 
@@ -80,6 +95,14 @@ The system is designed to be built in four phases:
 - Interactive notification categories (confirmation, text input)
 - Response handling and server communication
 - Local notification history
+
+### Terminal Subsystem
+
+- **PTY Manager**: Creates and manages pseudoterminal sessions via node-pty, handles input/output/resize
+- **Session Watcher**: Monitors OpenCode/Claude session directories with chokidar, detects new and updated sessions
+- **WebSocket Server**: Runs alongside SvelteKit via custom `server.ts` entry point, handles upgrade requests with ticket-based auth, multiplexes terminal/session/events channels
+- **Ticket Store**: Short-lived auth tickets for WebSocket connections (avoids sending API keys over WS URL)
+- **Keepalive**: Ping/pong heartbeat to detect stale connections
 
 ### Shooter Integration ✅ **WORKING**
 
@@ -122,7 +145,8 @@ Required environment variables (set in `.env` for local dev):
 You'll also need:
 
 - Apple Developer account with Push Notifications capability
-- Vercel account for deployment
+- Local machine running the server (`pnpm build && pnpm start`)
+- Cloudflare Tunnel for public HTTPS access
 
 ## Testing Strategy
 
@@ -136,16 +160,16 @@ The plans include comprehensive testing approaches:
 
 ## Deployment
 
-- SvelteKit app deploys to Vercel
+- SvelteKit app builds with adapter-node: `pnpm build && pnpm start` (runs custom `server.ts`)
 - iOS app requires Xcode and device/simulator
-- Cloudflare Tunnel for webhook delivery (Phase 3+)
-- Environment variables managed through Vercel dashboard
+- Cloudflare Tunnel provides public HTTPS + WSS access to the local server
+- Environment variables managed via `.env` file
 
 ## Known Limitations
 
-### In-Memory Pending Requests Store
+### In-Memory State
 
-The bidirectional permission flow uses an in-memory `Map` in `pending-requests.ts`. This works for single-instance deployments but will break if multiple Vercel serverless instances handle the notify and response endpoints. For multi-instance production use, replace with a shared store (e.g., Upstash Redis).
+The server uses in-memory stores for pending requests, PTY sessions, WebSocket connections, and auth tickets. This works because the app runs as a single long-lived Node.js process. If the server restarts, all terminal sessions and pending requests are lost.
 
 ### Hook Completion Timer
 

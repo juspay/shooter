@@ -1,3 +1,5 @@
+> **Historical Document** — Captures the state at POC completion. The system has since been extended with mobile terminal access, WebSocket streaming, and a custom Node.js server.
+
 # 🎯 SHOOTER POC: ACHIEVEMENT SUMMARY
 
 ## Mission Accomplished ✅

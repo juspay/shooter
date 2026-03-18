@@ -107,7 +107,7 @@ Or build directly in Xcode (⌘+B).
 ### Environment Configuration
 
 The app uses the following configuration:
-- **Default Server URL**: `https://shooter-dpucs3r83-sachin-sharmas-projects-7dbbe7a8.vercel.app`
+- **Default Server URL**: `https://your-shooter-app.vercel.app`
 - **Bundle ID**: `in.juspay.shooter`
 - **Minimum iOS Version**: 15.0
 

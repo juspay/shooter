@@ -1,3 +1,5 @@
+> **Status Update**: Phases 1-3 features are largely implemented. The system now runs on a local Node.js server with WebSocket terminal access, bidirectional communication, and a mobile-optimized UI. See docs/superpowers/specs/2026-03-17-mobile-terminal-access-design.md for the latest architecture.
+
 # SHOOTER → iOS Push Notifications: Next Phases Roadmap
 
 ## Current Status: Phase 1 Complete ✅

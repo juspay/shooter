@@ -18,6 +18,7 @@ This document provides guidance for AI assistants and developers on how to work 
 
 ```text
 shooter/
+├── server.ts                   # Custom HTTP + WebSocket server (entry point)
 ├── .claude/                    # Claude Code integration (Shooter lifecycle hooks)
 ├── docs/                       # Project documentation
 │   ├── GUIDANCE.md            # This file - development guidance
@@ -32,22 +33,53 @@ shooter/
 │   └── types/
 │       ├── index.yaml         # Main type spec (top file)
 │       ├── jwt.yaml           # JWT authentication types
-│       └── apn.yaml           # APNs notification types
+│       ├── apn.yaml           # APNs notification types
+│       └── terminal.yaml      # Terminal/PTY types
 ├── src/
+│   ├── generated/
+│   │   └── types/             # Auto-generated TypeScript types (DO NOT EDIT)
 │   ├── lib/
 │   │   ├── modules/
 │   │   │   ├── client/        # Client-side code
-│   │   │   │   └── common/    # Reusable UI components
+│   │   │   │   ├── common/    # Reusable UI components
+│   │   │   │   └── terminal/  # Terminal UI components
+│   │   │   │       ├── ChatView.svelte
+│   │   │   │       ├── LaunchSheet.svelte
+│   │   │   │       ├── QuickKeys.svelte
+│   │   │   │       ├── ConnectionStatus.svelte
+│   │   │   │       └── xterm-wrapper.ts
 │   │   │   └── server/        # Server-side code
 │   │   │       ├── apn/       # APNs implementations
-│   │   │       └── jwt/       # JWT utilities (future)
-│   │   ├── types/             # Auto-generated TypeScript types (DO NOT EDIT)
+│   │   │       ├── auth.ts    # Authentication helpers
+│   │   │       ├── terminal/  # PTY management
+│   │   │       │   ├── pty-manager.ts
+│   │   │       │   └── session-watcher.ts
+│   │   │       ├── ws/        # WebSocket server
+│   │   │       │   ├── server.ts
+│   │   │       │   ├── terminal-handler.ts
+│   │   │       │   ├── session-handler.ts
+│   │   │       │   ├── events-handler.ts
+│   │   │       │   ├── keepalive.ts
+│   │   │       │   └── ticket-store.ts
+│   │   │       └── sessions/  # Session readers
+│   │   │           ├── jsonl-reader.ts
+│   │   │           ├── opencode-reader.ts
+│   │   │           └── types.ts
 │   │   └── assets/            # Static assets
 │   └── routes/                # SvelteKit routes (API + pages)
 │       ├── api/               # API endpoints
 │       │   ├── notify/        # POST /api/notify
+│       │   ├── sessions/      # GET /api/sessions
+│       │   ├── terminals/     # POST/DELETE /api/terminals, /api/terminals/[id]
+│       │   ├── ws-ticket/     # POST /api/ws-ticket
+│       │   ├── ws-status/     # GET /api/ws-status
 │       │   ├── webhook/       # POST /api/webhook (future)
 │       │   └── debug/         # Debug endpoint (authenticated)
+│       ├── terminals/         # Terminal list page (/terminals)
+│       │   └── [id]/          # Terminal session page (/terminals/[id])
+│       ├── project/           # Project overview page (/project)
+│       ├── session/
+│       │   └── [id]/          # Session detail page (/session/[id])
 │       ├── config/            # Configuration UI page
 │       ├── +page.svelte       # Home page
 │       └── +layout.svelte     # Root layout
@@ -102,11 +134,13 @@ shooter/
 
 ### Generated TypeScript Files
 
-**Location**: `src/lib/types/` (DO NOT EDIT THESE FILES)
+**Location**: `src/generated/types/` (DO NOT EDIT THESE FILES)
 
 - `index.ts` - Re-exports all types
 - `JWT.ts` - Generated JWT types
 - `APN.ts` - Generated APNs types
+- `CLI.ts` - Generated CLI types
+- `Terminal.ts` - Generated Terminal types
 
 ### Type Usage Examples
 
@@ -240,6 +274,82 @@ import {
 import type { CLICommand, CLIOptions, CLIResult } from '$lib/modules/server/cli';
 ```
 
+#### 2c. **Terminal Modules** → `src/lib/modules/server/terminal/`
+
+**When**: Working with PTY management and session watching
+
+```text
+src/lib/modules/server/terminal/
+├── pty-manager.ts    # PTY lifecycle (spawn, resize, kill)
+└── session-watcher.ts # Watch for session file changes
+```
+
+**Import pattern**:
+
+```typescript
+import { PtyManager } from '$lib/modules/server/terminal/pty-manager';
+import { SessionWatcher } from '$lib/modules/server/terminal/session-watcher';
+```
+
+#### 2d. **WebSocket Modules** → `src/lib/modules/server/ws/`
+
+**When**: Working with WebSocket server, handlers, and connection management
+
+```text
+src/lib/modules/server/ws/
+├── server.ts          # WebSocket server setup
+├── terminal-handler.ts # Handle terminal I/O over WS
+├── session-handler.ts  # Handle session events over WS
+├── events-handler.ts   # Handle general events over WS
+├── keepalive.ts        # Connection keepalive/ping-pong
+└── ticket-store.ts     # One-time WS auth ticket store
+```
+
+**Import pattern**:
+
+```typescript
+import { createWSServer } from '$lib/modules/server/ws/server';
+import { TicketStore } from '$lib/modules/server/ws/ticket-store';
+```
+
+#### 2e. **Session Modules** → `src/lib/modules/server/sessions/`
+
+**When**: Reading and parsing session data (JSONL, OpenCode formats)
+
+```text
+src/lib/modules/server/sessions/
+├── jsonl-reader.ts    # Parse JSONL session files
+├── opencode-reader.ts # Parse OpenCode session format
+└── types.ts           # Session data types
+```
+
+**Import pattern**:
+
+```typescript
+import { readJsonlSession } from '$lib/modules/server/sessions/jsonl-reader';
+import { readOpencodeSession } from '$lib/modules/server/sessions/opencode-reader';
+```
+
+#### 2f. **Terminal UI Components** → `src/lib/modules/client/terminal/`
+
+**When**: Building terminal-related UI (xterm, controls, status)
+
+```text
+src/lib/modules/client/terminal/
+├── ChatView.svelte        # Chat-style session view
+├── LaunchSheet.svelte     # Terminal launch dialog
+├── QuickKeys.svelte       # Quick-access key buttons
+├── ConnectionStatus.svelte # WS connection indicator
+└── xterm-wrapper.ts       # xterm.js integration wrapper
+```
+
+**Import pattern**:
+
+```typescript
+import ChatView from '$lib/modules/client/terminal/ChatView.svelte';
+import { XtermWrapper } from '$lib/modules/client/terminal/xterm-wrapper';
+```
+
 #### 3. **Server Utilities** → `src/lib/modules/server/`
 
 **When**: Creating server-side utilities (future modules)
@@ -247,8 +357,11 @@ import type { CLICommand, CLIOptions, CLIResult } from '$lib/modules/server/cli'
 ```text
 src/lib/modules/server/
 ├── apn/              # APNs implementations
-├── jwt/              # JWT utilities (future)
-├── auth/             # Authentication helpers (future)
+├── auth.ts           # Authentication helpers
+├── cli/              # CLI command utilities
+├── terminal/         # PTY management
+├── ws/               # WebSocket server
+├── sessions/         # Session readers
 └── webhook/          # Webhook handlers (future)
 ```
 
@@ -260,6 +373,18 @@ src/lib/modules/server/
 src/routes/api/
 ├── notify/
 │   └── +server.ts    # POST /api/notify
+├── sessions/
+│   └── +server.ts    # GET /api/sessions
+├── terminals/
+│   ├── +server.ts    # POST /api/terminals (create)
+│   └── [id]/
+│       ├── +server.ts    # DELETE /api/terminals/[id]
+│       └── resize/
+│           └── +server.ts # POST /api/terminals/[id]/resize
+├── ws-ticket/
+│   └── +server.ts    # POST /api/ws-ticket
+├── ws-status/
+│   └── +server.ts    # GET /api/ws-status
 ├── webhook/
 │   └── +server.ts    # POST /api/webhook (future)
 └── health/
@@ -287,6 +412,15 @@ src/routes/
 ├── +layout.svelte    # Root layout
 ├── config/
 │   └── +page.svelte  # Config page (/config)
+├── terminals/
+│   ├── +page.svelte  # Terminal list page (/terminals)
+│   └── [id]/
+│       └── +page.svelte  # Terminal session page (/terminals/[id])
+├── project/
+│   └── +page.svelte  # Project overview page (/project)
+├── session/
+│   └── [id]/
+│       └── +page.svelte  # Session detail page (/session/[id])
 └── admin/
     └── +page.svelte  # Admin page (/admin) (future)
 ```
@@ -300,6 +434,7 @@ specs/types/
 ├── index.yaml        # Main spec file
 ├── jwt.yaml          # JWT types
 ├── apn.yaml          # APNs types
+├── terminal.yaml     # Terminal/PTY types
 └── webhook.yaml      # Webhook types (future)
 ```
 
@@ -349,8 +484,8 @@ pnpm run format:check      # Check formatting
 pnpm run check             # TypeScript type check
 pnpm run validate          # Run all checks (format + lint + typecheck)
 
-# Deployment
-pnpm run deploy            # Deploy to Vercel
+# Production
+pnpm start                 # Run production server (tsx server.ts)
 ```
 
 ### Making Changes
@@ -566,15 +701,20 @@ When creating a new file, ask:
 
 ### Import Path Patterns
 
-| What                | Import From                            |
-| ------------------- | -------------------------------------- |
-| Types               | `$lib/types`                           |
-| UI Components       | `$lib/modules/client/common`           |
-| APNs Services       | `$lib/modules/server/apn/library-apns` |
-| CLI Utilities       | `$lib/modules/server/cli`              |
-| Server Utils        | `$lib/modules/server/{module}`         |
-| SvelteKit Types     | `./$types`                             |
-| SvelteKit Utilities | `@sveltejs/kit`                        |
+| What                | Import From                                   |
+| ------------------- | --------------------------------------------- |
+| Types               | `$lib/types`                                  |
+| UI Components       | `$lib/modules/client/common`                  |
+| Terminal UI         | `$lib/modules/client/terminal/{component}`    |
+| APNs Services       | `$lib/modules/server/apn/library-apns`        |
+| CLI Utilities       | `$lib/modules/server/cli`                     |
+| Terminal (PTY)      | `$lib/modules/server/terminal/{module}`       |
+| WebSocket           | `$lib/modules/server/ws/{module}`             |
+| Sessions            | `$lib/modules/server/sessions/{module}`       |
+| Auth                | `$lib/modules/server/auth`                    |
+| Server Utils        | `$lib/modules/server/{module}`                |
+| SvelteKit Types     | `./$types`                                    |
+| SvelteKit Utilities | `@sveltejs/kit`                               |
 
 ---
 

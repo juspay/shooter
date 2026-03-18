@@ -1,9 +1,5 @@
 {
-  "framework": "sveltekit",
-  "installCommand": "pnpm install",
-  "buildCommand": "pnpm run build",
-  "devCommand": "pnpm run dev",
-  "env": {
-    "NODE_ENV": "production"
+  "git": {
+    "deploymentEnabled": false
   }
 }

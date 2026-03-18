@@ -6,22 +6,22 @@ This configuration successfully delivers Shooter notifications from local develo
 
 ### Local Server Configuration
 
-- **Server URL**: `http://192.168.29.141:5173` (Mac's local IP address)
+- **Server URL**: `http://YOUR_LOCAL_IP:5173` (Mac's local IP address)
 - **Server Command**: `npm run dev -- --host` (enables network access)
 - **APNs Mode**: `production: false` (sandbox/development mode)
-- **APNs Key ID**: `S85L2ZG5R8` (new key after security incident)
-- **API Key**: `shooter2024`
+- **APNs Key ID**: `YOUR_KEY_ID` (new key after security incident)
+- **API Key**: `YOUR_API_KEY`
 
 ### iOS App Configuration
 
-- **Server URL**: `http://192.168.29.141:5173`
-- **API Key**: `shooter2024` (hardcoded default)
+- **Server URL**: `http://YOUR_LOCAL_IP:5173`
+- **API Key**: `YOUR_API_KEY` (hardcoded default)
 - **APNs Environment**: Development (provisioning profile overrides entitlements)
-- **Device Token**: `7a233090669bd391d60247e3d2c183165a85e44204a5a4246dc9c78bf2cda838`
+- **Device Token**: `YOUR_64_CHAR_HEX_DEVICE_TOKEN`
 
 ### Network Configuration
 
-- **Mac IP**: `192.168.29.141` (Wi-Fi network)
+- **Mac IP**: `YOUR_LOCAL_IP` (Wi-Fi network)
 - **Port**: `5173` (Vite dev server)
 - **Protocol**: `HTTP` (local development)
 - **Firewall**: Allows connections from iPhone to Mac
@@ -37,15 +37,15 @@ This configuration successfully delivers Shooter notifications from local develo
 ### Security Notes
 
 - APNs credentials are local only (not committed to git)
-- Original key `7G377564AL` was revoked after accidental commit
-- New key `S85L2ZG5R8` must never be committed
+- Original key `REVOKED_KEY_ID` was revoked after accidental commit
+- New key `YOUR_KEY_ID` must never be committed
 
 ### Test Command
 
 ```bash
-curl -X POST "http://192.168.29.141:5173/api/notify" \
+curl -X POST "http://YOUR_LOCAL_IP:5173/api/notify" \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer shooter2024" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
   -d '{"title": "Test", "message": "Working!"}'
 ```
 
