@@ -1,3 +1,5 @@
+> **Note**: Some architectural choices have evolved. The system now uses adapter-node + custom server.ts instead of Vercel. Terminal access and WebSocket features described in later phases are now implemented.
+
 # Claude Code to iOS Communication System - Detailed Architecture Plan
 
 ## Executive Summary

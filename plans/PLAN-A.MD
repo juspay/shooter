@@ -1,3 +1,5 @@
+> **Note**: Deployment has moved from Vercel to a local Node.js server with Cloudflare Tunnel. See CLAUDE.md for current architecture.
+
 🎯 SHOOTER: SvelteKit + Vercel Private Push Architecture for iOS/Swift App
 
 **Status**: ✅ **IMPLEMENTED AND WORKING** (Local), ⚠️ **Production Issue** (Environment Variables)

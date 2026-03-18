@@ -178,3 +178,10 @@ yarn.lock
 # Claude Code local settings (personal configurations)
 .claude/settings.local.json
 .playwright-mcp/
+.superpowers/
+
+# Private keys and certificates
+*.p8
+*.p12
+*.pem
+*.key

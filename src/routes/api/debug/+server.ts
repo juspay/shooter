@@ -1,26 +1,13 @@
 import { env } from '$env/dynamic/private';
+import { validateAuth } from '$lib/modules/server/auth';
 import { LibraryAPNsService } from '$lib/modules/server/apn/library-apns';
 import { json } from '@sveltejs/kit';
 
 import type { RequestHandler } from './$types';
 
-function validateAuth(request: Request): boolean {
-  const authHeader = request.headers.get('authorization');
-  if (!authHeader?.startsWith('Bearer ')) {
-    return false;
-  }
-  const apiKey = authHeader.substring(7);
-  const expectedKey = env.API_KEY?.trim();
-  if (!expectedKey) {
-    return false;
-  }
-  return apiKey === expectedKey;
-}
-
 export const GET: RequestHandler = ({ request }) => {
-  if (!validateAuth(request)) {
-    return json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const authError = validateAuth(request);
+  if (authError) return authError;
 
   const apnsClient = new LibraryAPNsService();
   const deviceToken = env.DEVICE_TOKEN?.trim();

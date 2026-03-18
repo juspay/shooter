@@ -40,12 +40,34 @@
   <header class="header">
     <div class="header-content">
       <a href="/" class="logo">
-        <div class="logo-mark"></div>
+        <svg
+          class="logo-icon"
+          width="24"
+          height="24"
+          viewBox="0 0 32 32"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <circle cx="16" cy="16" r="10" stroke="#22c55e" stroke-width="2" />
+          <circle cx="16" cy="16" r="5" stroke="#22c55e" stroke-width="1.5" />
+          <circle cx="16" cy="16" r="1.5" fill="#22c55e" />
+          <line x1="16" y1="2" x2="16" y2="8" stroke="#22c55e" stroke-width="1.5" />
+          <line x1="16" y1="24" x2="16" y2="30" stroke="#22c55e" stroke-width="1.5" />
+          <line x1="2" y1="16" x2="8" y2="16" stroke="#22c55e" stroke-width="1.5" />
+          <line x1="24" y1="16" x2="30" y2="16" stroke="#22c55e" stroke-width="1.5" />
+        </svg>
         <span class="logo-text">Shooter</span>
       </a>
 
       <nav class="nav">
-        <a href="/" class="nav-link" class:active={$page.url.pathname === '/'}> Notifications </a>
+        <a href="/" class="nav-link" class:active={$page.url.pathname === '/'}> Projects </a>
+        <a
+          href="/terminals"
+          class="nav-link"
+          class:active={$page.url.pathname.startsWith('/terminals')}
+        >
+          Terminals
+        </a>
         <a href="/config" class="nav-link" class:active={$page.url.pathname === '/config'}>
           Settings
         </a>
@@ -64,5 +86,11 @@
     height: 20px;
     background: var(--border-default);
     margin: 0 var(--space-2);
+  }
+
+  @media (max-width: 480px) {
+    .nav-divider {
+      margin: 0 var(--space-1);
+    }
   }
 </style>

@@ -91,7 +91,14 @@ export class LibraryAPNsService {
     const result = (await this.provider.send(notification, deviceToken)) as APNsLibraryResult;
 
     if (result.failed && result.failed.length > 0) {
-      const reason = result.failed[0]?.response?.reason || 'Unknown error';
+      console.error(`[apns] Full failed result: ${JSON.stringify(result.failed[0])}`);
+      const failedItem = result.failed[0] as unknown as Record<string, unknown>;
+      const rawReason =
+        (failedItem?.response as Record<string, unknown>)?.reason ??
+        failedItem?.status ??
+        failedItem?.error;
+      const reason =
+        typeof rawReason === 'string' ? rawReason : JSON.stringify(rawReason ?? failedItem);
       console.error(`[apns] Delivery failed: ${reason}`);
 
       return {

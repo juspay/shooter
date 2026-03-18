@@ -1,3 +1,5 @@
+> **Historical Document** — This was the original POC guide. The project has evolved significantly. See CLAUDE.md for the current architecture.
+
 # POC Implementation Guide: Claude Code to iOS Push Notifications
 
 ## Overview

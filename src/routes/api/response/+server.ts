@@ -1,29 +1,15 @@
-import { env } from '$env/dynamic/private';
+import { validateAuth } from '$lib/modules/server/auth';
 import { cleanup, getDecision, setDecision } from '$lib/modules/server/apn/pending-requests';
 import { json } from '@sveltejs/kit';
 
 import type { RequestHandler } from './$types';
 
-function validateAuth(request: Request): boolean {
-  const authHeader = request.headers.get('authorization');
-  if (!authHeader?.startsWith('Bearer ')) {
-    return false;
-  }
-  const apiKey = authHeader.substring(7);
-  const expectedKey = env.API_KEY?.trim();
-  if (!expectedKey) {
-    return false;
-  }
-  return apiKey === expectedKey;
-}
-
 // POST /api/response — iOS app sends the user's decision
 export const POST: RequestHandler = async ({ request }) => {
   cleanup();
 
-  if (!validateAuth(request)) {
-    return json({ error: 'Invalid API key' }, { status: 401 });
-  }
+  const authError = validateAuth(request);
+  if (authError) return authError;
 
   let body: { decision?: string; requestId?: string };
   try {
@@ -65,9 +51,8 @@ export const POST: RequestHandler = async ({ request }) => {
 export const GET: RequestHandler = ({ request, url }) => {
   cleanup();
 
-  if (!validateAuth(request)) {
-    return json({ error: 'Invalid API key' }, { status: 401 });
-  }
+  const authErr = validateAuth(request);
+  if (authErr) return authErr;
 
   const requestId = url.searchParams.get('requestId');
   if (!requestId) {

@@ -2,89 +2,79 @@
   import type { ShooterConfig } from '$lib/types/config';
 
   import { goto } from '$app/navigation';
-  import { Button, EmptyState, Icon, Tag } from '$lib/modules/client/common';
-  import { onMount } from 'svelte';
+  import { Button, EmptyState, Icon } from '$lib/modules/client/common';
+  import { onDestroy, onMount } from 'svelte';
 
-  interface NotificationData {
-    [key: string]: unknown;
-    category?: string;
-    command?: string;
-    cwd?: string;
-    file?: string;
-    project?: string;
-    prompt_preview?: string;
-    source?: string;
-    success?: boolean;
-    timestamp?: number;
-    tool?: string;
+  interface ProjectGroup {
+    fullPath: string;
+    id: string;
+    lastModified: string;
+    name: string;
+    sessionCount: number;
   }
 
-  interface Notification {
-    data: NotificationData;
-    id: number;
-    message: string;
-    status: string;
-    timestamp: number;
-    title: string;
-    type: string;
-  }
+  const POLL_INTERVAL_MS = 30_000; // 30s - avoid heavy reflows
+  const PAGE_SIZE = 20;
 
-  let notifications = $state<Notification[]>([]);
+  let projects = $state<ProjectGroup[]>([]);
   let loading = $state(false);
+  let fetching = false; // non-reactive guard to prevent overlapping fetches
   let config = $state<null | ShooterConfig>(null);
-  let lastUpdate = $state<Date | null>(null);
+  let pollTimer: null | ReturnType<typeof setInterval> = null;
+  let hasMore = $state(false);
+  let currentOffset = $state(0);
 
-  const mockNotifications: Notification[] = [
-    {
-      data: { file: 'config.js', project: 'shooter', tool: 'Edit' },
-      id: 1,
-      message: 'Starting code edit in shooter',
-      status: 'delivered',
-      timestamp: Date.now() - 1000 * 60 * 2,
-      title: 'Editing config.js',
-      type: 'tool_start',
-    },
-    {
-      data: { file: 'config.js', success: true, tool: 'Edit' },
-      id: 2,
-      message: 'config.js updated successfully',
-      status: 'delivered',
-      timestamp: Date.now() - 1000 * 60 * 2 + 3000,
-      title: 'Edit Complete',
-      type: 'tool_complete',
-    },
-    {
-      data: { category: 'feature', prompt_preview: 'Create notification system UI' },
-      id: 3,
-      message: 'Working on: Create notification system UI',
-      status: 'delivered',
-      timestamp: Date.now() - 1000 * 60 * 5,
-      title: 'New Feature Request',
-      type: 'user_prompt',
-    },
-    {
-      data: { command: 'npm run build', tool: 'Bash' },
-      id: 4,
-      message: 'Executing: npm run build',
-      status: 'delivered',
-      timestamp: Date.now() - 1000 * 30,
-      title: 'Running Command',
-      type: 'tool_start',
-    },
-    {
-      data: { cwd: '/Users/user/shooter', project: 'shooter' },
-      id: 5,
-      message: 'Session active in project',
-      status: 'delivered',
-      timestamp: Date.now() - 1000 * 60 * 8,
-      title: 'Session Started',
-      type: 'session_start',
-    },
-  ];
+  // Cache helpers using sessionStorage
+  function getCached(key: string): unknown {
+    try {
+      const item = sessionStorage.getItem(key);
+      if (!item) {
+        return null;
+      }
+      const { data, timestamp } = JSON.parse(item);
+      // Cache valid for 30 seconds
+      if (Date.now() - timestamp > 30000) {
+        return null;
+      }
+      return data;
+    } catch {
+      return null;
+    }
+  }
+
+  function setCache(key: string, data: unknown): void {
+    try {
+      sessionStorage.setItem(key, JSON.stringify({ data, timestamp: Date.now() }));
+    } catch {
+      // sessionStorage full — silently ignore
+    }
+  }
 
   onMount(() => {
     loadConfiguration();
-    loadNotifications();
+
+    // Show cached data immediately
+    const cached = getCached('shooter_projects') as null | ProjectGroup[];
+    if (cached) {
+      projects = cached;
+      loading = false;
+    }
+
+    // Then fetch fresh data in background
+    void fetchSessions();
+
+    pollTimer = setInterval(() => {
+      if (config?.apiKey) {
+        void fetchSessions();
+      }
+    }, POLL_INTERVAL_MS);
+  });
+
+  onDestroy(() => {
+    if (pollTimer) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
   });
 
   function isShooterConfig(value: unknown): value is ShooterConfig {
@@ -106,229 +96,152 @@
         }
       }
     } catch {
-      console.log('No configuration found');
+      // No configuration found — expected on first visit
     }
   }
 
-  function loadNotifications(): void {
-    notifications = [...mockNotifications].sort((a, b) => b.timestamp - a.timestamp);
-    lastUpdate = new Date();
-  }
-
-  async function sendTestNotification(): Promise<void> {
-    if (!config?.apiKey) {
-      void goto('/config');
+  async function fetchSessions(append = false): Promise<void> {
+    if (!config?.apiKey || fetching) {
       return;
     }
+    fetching = true;
 
-    loading = true;
+    // Don't show loading spinner if we already have cached data
+    if (projects.length === 0) {
+      loading = true;
+    }
+
+    const offset = append ? currentOffset : 0;
 
     try {
-      const testPayload: {
-        data: NotificationData;
-        deviceToken?: string;
-        message: string;
-        title: string;
-      } = {
-        data: { source: 'manual-test', timestamp: Date.now() },
-        message: `Test notification sent at ${new Date().toLocaleTimeString()}`,
-        title: 'Manual Test',
-      };
-
-      if (config.deviceToken) {
-        testPayload.deviceToken = config.deviceToken;
-      }
-
-      const response = await fetch('/api/notify', {
-        body: JSON.stringify(testPayload),
+      const response = await fetch(`/api/sessions?limit=${PAGE_SIZE}&offset=${offset}`, {
         headers: {
           Authorization: `Bearer ${config.apiKey}`,
-          'Content-Type': 'application/json',
         },
-        method: 'POST',
       });
 
-      if (response.ok) {
-        const newNotification: Notification = {
-          data: testPayload.data,
-          id: Date.now(),
-          message: testPayload.message,
-          status: 'sent',
-          timestamp: Date.now(),
-          title: testPayload.title,
-          type: 'manual_test',
-        };
-
-        notifications = [newNotification, ...notifications];
+      if (!response.ok) {
+        return;
       }
+
+      const result: { projects: ProjectGroup[]; total?: number } = await response.json();
+      if (append) {
+        projects = [...projects, ...result.projects];
+      } else {
+        projects = result.projects;
+      }
+      currentOffset = projects.length;
+      hasMore = result.total !== undefined ? projects.length < result.total : false;
+      setCache('shooter_projects', projects);
     } catch (error) {
-      console.error('Test notification failed:', error);
-    }
-
-    loading = false;
-  }
-
-  function formatTime(timestamp: number): string {
-    const date = new Date(timestamp);
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  }
-
-  function formatRelativeTime(timestamp: number): string {
-    const now = Date.now();
-    const diff = now - timestamp;
-
-    if (diff < 1000 * 60) {
-      return 'Just now';
-    } else if (diff < 1000 * 60 * 60) {
-      const minutes = Math.floor(diff / (1000 * 60));
-      return `${minutes}m ago`;
-    } else if (diff < 1000 * 60 * 60 * 24) {
-      const hours = Math.floor(diff / (1000 * 60 * 60));
-      return `${hours}h ago`;
-    } else {
-      return new Date(timestamp).toLocaleDateString();
+      console.error('Failed to fetch sessions:', error);
+    } finally {
+      loading = false;
+      fetching = false;
     }
   }
 
-  function getTypeLabel(type: string): string {
-    const labels: Record<string, string> = {
-      error: 'Error',
-      manual_test: 'Test',
-      session_end: 'Session',
-      session_start: 'Session',
-      tool_complete: 'Complete',
-      tool_start: 'Tool',
-      user_prompt: 'Prompt',
-    };
-    return labels[type] || 'Event';
+  async function loadMore(): Promise<void> {
+    await fetchSessions(true);
   }
 
-  type TagVariant = '' | 'error' | 'info' | 'success' | 'warning';
-
-  function getStatusClass(status: string): TagVariant {
-    const classes: Record<string, TagVariant> = {
-      delivered: 'success',
-      failed: 'error',
-      pending: 'warning',
-      sent: 'info',
-    };
-    return classes[status] || '';
+  function formatRelativeTime(ts: string): string {
+    const diff = Date.now() - new Date(ts).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) {
+      return 'just now';
+    }
+    if (mins < 60) {
+      return `${mins}m ago`;
+    }
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) {
+      return `${hrs}h ago`;
+    }
+    return `${Math.floor(hrs / 24)}d ago`;
   }
 
-  function getCategoryClass(category: string): TagVariant {
-    const classes: Record<string, TagVariant> = {
-      debug: 'error',
-      feature: 'success',
-      testing: 'warning',
-    };
-    return classes[category] || '';
+  async function forceRefresh(): Promise<void> {
+    loading = true;
+    sessionStorage.removeItem('shooter_projects');
+    await fetchSessions();
   }
 
   function navigateToConfig(): void {
     void goto('/config');
   }
+
+  function totalSessionCount(): number {
+    return projects.reduce((sum, p) => sum + p.sessionCount, 0);
+  }
 </script>
 
 <svelte:head>
-  <title>Notifications - Shooter</title>
-  <meta name="description" content="Live notifications from your development system" />
+  <title>Projects - Shooter</title>
+  <meta name="description" content="Claude Code sessions across all projects" />
 </svelte:head>
 
 <main class="main">
   <div class="page-header">
     <div class="page-header-content">
       <div>
-        <h1 class="page-title">Notifications</h1>
-        <p class="page-description">Real-time updates from your development sessions</p>
+        <h1 class="page-title">Projects</h1>
+        <p class="page-description">Claude Code sessions across all projects</p>
       </div>
       <div class="page-actions">
-        <Button variant="secondary" onclick={loadNotifications} disabled={loading}>
+        <Button variant="secondary" onclick={forceRefresh} disabled={loading}>
           <Icon name="refresh" size={14} />
           Refresh
-        </Button>
-        <Button
-          variant="primary"
-          onclick={sendTestNotification}
-          disabled={loading || !config?.apiKey}
-        >
-          {#if loading}
-            Sending...
-          {:else}
-            Send Test
-          {/if}
         </Button>
       </div>
     </div>
   </div>
 
-  {#if !config?.apiKey}
+  {#if loading && projects.length === 0}
+    <div class="loading-container">
+      {#each Array(5) as _, i (i)}
+        <div class="skeleton skeleton-card"></div>
+      {/each}
+    </div>
+  {:else if !config?.apiKey}
     <EmptyState
       icon="settings"
       title="Configuration Required"
-      description="Set up your API credentials to start receiving notifications"
+      description="Set up your API credentials to start tracking sessions"
     >
       <Button variant="primary" onclick={navigateToConfig}>Configure Settings</Button>
     </EmptyState>
-  {:else if notifications.length === 0}
+  {:else if totalSessionCount() === 0}
     <EmptyState
       icon="bell"
-      title="No Notifications"
-      description="Notifications from your development sessions will appear here"
-    >
-      <Button variant="secondary" onclick={sendTestNotification} disabled={loading}>
-        {#if loading}
-          Sending...
-        {:else}
-          Send Test Notification
-        {/if}
-      </Button>
-    </EmptyState>
+      title="No sessions yet"
+      description="Claude Code sessions will appear here once JSONL files are found"
+    />
   {:else}
-    <div class="notifications-container">
-      <div class="list">
-        {#each notifications as notification (notification.id)}
-          <div class="list-item notification-row">
-            <div class="notification-main">
-              <div class="notification-header">
-                <span class="notification-title">{notification.title}</span>
-                <Tag>{getTypeLabel(notification.type)}</Tag>
-              </div>
-              <p class="notification-message">{notification.message}</p>
-              {#if notification.data}
-                <div class="notification-tags">
-                  {#if notification.data.file}
-                    <Tag icon="file">{notification.data.file}</Tag>
-                  {/if}
-                  {#if notification.data.tool}
-                    <Tag icon="tool">{notification.data.tool}</Tag>
-                  {/if}
-                  {#if notification.data.project}
-                    <Tag icon="folder">{notification.data.project}</Tag>
-                  {/if}
-                  {#if notification.data.category}
-                    <Tag variant={getCategoryClass(notification.data.category)}
-                      >{notification.data.category}</Tag
-                    >
-                  {/if}
-                </div>
-              {/if}
+    <div class="projects-container">
+      {#each projects as project (project.id)}
+        <a href="/project?id={project.id}" class="session-card">
+          <div class="session-card-header">
+            <div>
+              <h3 class="session-card-title">{project.name}</h3>
+              <div class="session-card-subtitle">{project.fullPath}</div>
             </div>
-            <div class="notification-meta">
-              <span class="notification-time">{formatTime(notification.timestamp)}</span>
-              <span class="notification-relative">{formatRelativeTime(notification.timestamp)}</span
-              >
-              <Tag variant={getStatusClass(notification.status)}>{notification.status}</Tag>
-            </div>
+            <span class="session-badge session-badge-complete">
+              <span class="session-badge-dot"></span>
+              {formatRelativeTime(project.lastModified)}
+            </span>
           </div>
-        {/each}
+          <div class="session-stats">
+            <span><strong>{project.sessionCount}</strong> sessions</span>
+          </div>
+        </a>
+      {/each}
+    </div>
+    {#if hasMore}
+      <div style="text-align: center; padding: 1rem;">
+        <Button variant="secondary" onclick={loadMore}>Load More</Button>
       </div>
-    </div>
-  {/if}
-
-  {#if lastUpdate && notifications.length > 0}
-    <div class="last-update">
-      Last updated: {lastUpdate.toLocaleTimeString()}
-    </div>
+    {/if}
   {/if}
 </main>
 
@@ -363,74 +276,11 @@
     flex-shrink: 0;
   }
 
-  .notifications-container {
-    animation: fadeIn 0.2s ease;
-  }
-
-  .notification-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: var(--space-4);
-    padding: var(--space-4) var(--space-5);
-  }
-
-  .notification-main {
-    flex: 1;
-    min-width: 0;
-  }
-
-  .notification-header {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    margin-bottom: var(--space-1);
-  }
-
-  .notification-title {
-    font-size: var(--text-sm);
-    font-weight: 500;
-    color: var(--text-primary);
-  }
-
-  .notification-message {
-    font-size: var(--text-sm);
-    color: var(--text-secondary);
-    margin-bottom: var(--space-2);
-    line-height: var(--leading-relaxed);
-  }
-
-  .notification-tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-1);
-  }
-
-  .notification-meta {
+  .projects-container {
     display: flex;
     flex-direction: column;
-    align-items: flex-end;
-    gap: var(--space-1);
-    flex-shrink: 0;
-  }
-
-  .notification-time {
-    font-size: var(--text-sm);
-    font-weight: 500;
-    color: var(--text-secondary);
-    font-family: var(--font-mono);
-  }
-
-  .notification-relative {
-    font-size: var(--text-xs);
-    color: var(--text-tertiary);
-  }
-
-  .last-update {
-    text-align: center;
-    margin-top: var(--space-6);
-    font-size: var(--text-xs);
-    color: var(--text-tertiary);
+    gap: var(--space-4);
+    animation: fadeIn 0.2s ease;
   }
 
   @media (max-width: 768px) {
@@ -445,27 +295,6 @@
 
     .page-actions :global(.btn) {
       flex: 1;
-    }
-
-    .notification-row {
-      flex-direction: column;
-      gap: var(--space-3);
-    }
-
-    .notification-meta {
-      flex-direction: row;
-      align-items: center;
-      width: 100%;
-      padding-top: var(--space-2);
-      border-top: 1px solid var(--border-subtle);
-    }
-
-    .notification-relative {
-      margin-left: var(--space-2);
-    }
-
-    .notification-meta :global(.tag) {
-      margin-left: auto;
     }
   }
 </style>

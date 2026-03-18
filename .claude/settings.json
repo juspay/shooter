@@ -9,7 +9,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=5175 node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notifier.cjs PreToolUse"
+            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=5175 SHOOTER_API_KEY=$SHOOTER_API_KEY node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notifier.cjs PreToolUse"
           }
         ]
       }
@@ -20,7 +20,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=5175 node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notifier.cjs PostToolUse"
+            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=5175 SHOOTER_API_KEY=$SHOOTER_API_KEY node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notifier.cjs PostToolUse"
           }
         ]
       }
@@ -31,7 +31,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=5175 node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notifier.cjs PostToolUseFailure"
+            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=5175 SHOOTER_API_KEY=$SHOOTER_API_KEY node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notifier.cjs PostToolUseFailure"
           }
         ]
       }
@@ -42,7 +42,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=5175 node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notifier.cjs Stop"
+            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=5175 SHOOTER_API_KEY=$SHOOTER_API_KEY node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notifier.cjs Stop"
           }
         ]
       }
@@ -53,7 +53,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=5175 node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notifier.cjs SessionStart"
+            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=5175 SHOOTER_API_KEY=$SHOOTER_API_KEY node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notifier.cjs SessionStart"
           }
         ]
       }
@@ -64,7 +64,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=5175 node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notifier.cjs SessionEnd"
+            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=5175 SHOOTER_API_KEY=$SHOOTER_API_KEY node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notifier.cjs SessionEnd"
           }
         ]
       }
@@ -75,7 +75,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=5175 node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notifier.cjs Notification"
+            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=5175 SHOOTER_API_KEY=$SHOOTER_API_KEY node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notifier.cjs Notification"
           }
         ]
       }
@@ -86,7 +86,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=5175 node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notifier.cjs PermissionRequest",
+            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=5175 SHOOTER_API_KEY=$SHOOTER_API_KEY node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notifier.cjs PermissionRequest",
             "timeout": 180
           }
         ]
@@ -98,7 +98,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=5175 node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notifier.cjs SubagentStart"
+            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=5175 SHOOTER_API_KEY=$SHOOTER_API_KEY node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notifier.cjs SubagentStart"
           }
         ]
       }
@@ -109,7 +109,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=5175 node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notifier.cjs SubagentStop"
+            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=5175 SHOOTER_API_KEY=$SHOOTER_API_KEY node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notifier.cjs SubagentStop"
           }
         ]
       }
@@ -120,7 +120,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=5175 node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notifier.cjs UserPromptSubmit"
+            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=5175 SHOOTER_API_KEY=$SHOOTER_API_KEY node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notifier.cjs UserPromptSubmit"
           }
         ]
       }
@@ -131,7 +131,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=5175 node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notifier.cjs TeammateIdle"
+            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=5175 SHOOTER_API_KEY=$SHOOTER_API_KEY node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notifier.cjs TeammateIdle"
           }
         ]
       }
@@ -142,7 +142,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=5175 node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notifier.cjs TaskCompleted"
+            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=5175 SHOOTER_API_KEY=$SHOOTER_API_KEY node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notifier.cjs TaskCompleted"
           }
         ]
       }
@@ -153,7 +153,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=5175 node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notifier.cjs PreCompact"
+            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=5175 SHOOTER_API_KEY=$SHOOTER_API_KEY node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notifier.cjs PreCompact"
           }
         ]
       }

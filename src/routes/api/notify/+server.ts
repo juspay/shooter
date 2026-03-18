@@ -1,5 +1,6 @@
 import { env } from '$env/dynamic/private';
 import { LibraryAPNsService } from '$lib/modules/server/apn/library-apns';
+import { addNotification, getNotifications } from '$lib/modules/server/apn/notification-history';
 import { createPendingRequest } from '$lib/modules/server/apn/pending-requests';
 import { json } from '@sveltejs/kit';
 
@@ -174,6 +175,20 @@ export const POST: RequestHandler = async ({ request }) => {
     const shouldSendNotification = intelligentNotificationFilter(title, message, data);
 
     if (!shouldSendNotification.send) {
+      addNotification({
+        category: data?.category,
+        data: data as Record<string, unknown>,
+        error: shouldSendNotification.reason,
+        id: canonicalRequestId,
+        message,
+        project: data?.project,
+        source: data?.source,
+        status: 'filtered',
+        timestamp: new Date().toISOString(),
+        title,
+        tool: data?.tool,
+      });
+
       return json({
         message: 'Notification filtered (not sent)',
         reason: shouldSendNotification.reason,
@@ -236,6 +251,19 @@ export const POST: RequestHandler = async ({ request }) => {
         });
       }
 
+      addNotification({
+        category: data?.category,
+        data: data as Record<string, unknown>,
+        id: canonicalRequestId,
+        message,
+        project: data?.project,
+        source: data?.source,
+        status: 'sent',
+        timestamp: new Date().toISOString(),
+        title,
+        tool: data?.tool,
+      });
+
       return json({
         message: 'Notification sent successfully',
         requestId: canonicalRequestId,
@@ -246,6 +274,20 @@ export const POST: RequestHandler = async ({ request }) => {
     } catch (notificationError) {
       const err = notificationError as Error;
       console.error(`[notify] APNs delivery failed: ${err.message}`);
+
+      addNotification({
+        category: data?.category,
+        data: data as Record<string, unknown>,
+        error: err.message,
+        id: canonicalRequestId,
+        message,
+        project: data?.project,
+        source: data?.source,
+        status: 'failed',
+        timestamp: new Date().toISOString(),
+        title,
+        tool: data?.tool,
+      });
 
       return json(
         {
@@ -269,4 +311,28 @@ export const POST: RequestHandler = async ({ request }) => {
       { status: 500 }
     );
   }
+};
+
+export const GET: RequestHandler = ({ request, url }) => {
+  const authHeader = request.headers.get('authorization');
+
+  if (!authHeader?.startsWith('Bearer ')) {
+    return json({ error: 'Missing or invalid authorization header' }, { status: 401 });
+  }
+
+  const apiKey = authHeader.substring(7);
+  const expectedKey = env.API_KEY?.trim();
+
+  if (apiKey !== expectedKey) {
+    return json({ error: 'Invalid API key' }, { status: 401 });
+  }
+
+  const limit = parseInt(url.searchParams.get('limit') || '50');
+  const notifications = getNotifications(limit);
+
+  return json({
+    count: notifications.length,
+    notifications,
+    timestamp: new Date().toISOString(),
+  });
 };

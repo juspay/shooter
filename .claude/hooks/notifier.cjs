@@ -67,6 +67,50 @@ const DEBUG_ENABLED = process.env.SHOOTER_DEBUG === 'true';
 const DEBUG_LOG_FILE = '/tmp/shooter-debug.log';
 
 // ============================================
+// SECTION 1.5: WebSocket Client Detection
+// ============================================
+
+/**
+ * Check if any WebSocket clients are connected to the events channel.
+ * When clients are connected, the WebSocket events broadcast handles
+ * permission-requested notifications, so we can skip push notifications.
+ */
+async function hasWebSocketClients() {
+  try {
+    const url = `${BASE_URL}/api/ws-status`;
+    const protocol = url.startsWith('https') ? https : http;
+    return new Promise((resolve) => {
+      const req = protocol.request(url, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${AUTH_KEY}` },
+        timeout: 3000,
+      }, (res) => {
+        let data = '';
+        res.on('data', (chunk) => (data += chunk));
+        res.on('end', () => {
+          if (res.statusCode === 200) {
+            try {
+              const parsed = JSON.parse(data);
+              resolve(parsed.connectedClients > 0);
+            } catch (e) {
+              resolve(false);
+            }
+          } else {
+            resolve(false);
+          }
+        });
+      });
+      req.on('error', () => resolve(false));
+      req.on('timeout', () => { req.destroy(); resolve(false); });
+      req.end();
+    });
+  } catch (e) {
+    // If we can't reach the server, fall back to push
+    return false;
+  }
+}
+
+// ============================================
 // SECTION 2: Stdin Reader (Claude Code)
 // ============================================
 
@@ -560,26 +604,44 @@ async function handlePermission(event) {
 
   const { title, body } = buildPermissionNotification(event);
 
+  // Check if WebSocket clients are connected — if so, the events channel
+  // will broadcast the permission-requested event and we skip the push notification
+  const wsActive = await hasWebSocketClients();
+
   // For Claude Code PermissionRequest: block and poll for iPhone response
   if (IS_CLAUDE_CODE && event.source === 'claude-code') {
     const requestId = Math.random().toString(36).substring(2, 15);
     debugLog(`Starting bidirectional permission flow (requestId: ${requestId})`);
 
-    const result = await sendNotificationAndPoll(
-      title,
-      body,
-      'permission',
-      event.source,
-      requestId,
-      d
-    );
+    let result;
+    if (wsActive) {
+      // WebSocket clients connected — skip push notification, just poll for response
+      debugLog(`[Notifier] WebSocket clients connected, skipping push notification`);
+      if (IS_CLAUDE_CODE) {
+        console.error(`\n=== WEBSOCKET ACTIVE — SKIPPING PUSH [${requestId}] ===`);
+        console.error(`Title: ${title}`);
+        console.error(`Message: ${body}`);
+        console.error(`=== POLLING FOR RESPONSE VIA WEBSOCKET CHANNEL ===\n`);
+      }
+      result = await new Promise((resolve) => startPolling(requestId, resolve));
+    } else {
+      // No WebSocket clients — send push notification and poll
+      result = await sendNotificationAndPoll(
+        title,
+        body,
+        'permission',
+        event.source,
+        requestId,
+        d
+      );
+    }
 
     if (result && result.decision) {
       const hookResponse = {
         hookSpecificOutput: {
           hookEventName: 'PermissionRequest',
           permissionDecision: result.decision,
-          permissionDecisionReason: `User ${result.decision === 'allow' ? 'approved' : 'denied'} via iPhone notification`,
+          permissionDecisionReason: `User ${result.decision === 'allow' ? 'approved' : 'denied'} via ${wsActive ? 'WebSocket' : 'iPhone notification'}`,
         },
       };
       // Write decision to stdout for Claude Code to read
@@ -593,7 +655,11 @@ async function handlePermission(event) {
   }
 
   // For OpenCode or non-blocking: fire-and-forget as before
-  sendNotification(title, body, 'permission', event.source);
+  if (wsActive) {
+    debugLog(`[Notifier] WebSocket clients connected, skipping push notification for permission`);
+  } else {
+    sendNotification(title, body, 'permission', event.source);
+  }
 }
 
 /**
@@ -603,9 +669,16 @@ async function handlePermission(event) {
  * It just sends a fire-and-forget notification to inform the user that
  * Claude Code's local permission dialog is open.
  */
-function handlePermissionNotification(event) {
+async function handlePermissionNotification(event) {
   const d = event.data;
   debugLog(`Permission notification event (non-blocking): message=${d.message}`);
+
+  // Skip push if WebSocket clients are connected (they get the event via the events channel)
+  const wsActive = await hasWebSocketClients();
+  if (wsActive) {
+    debugLog(`[Notifier] WebSocket clients connected, skipping push for permission_notification`);
+    return;
+  }
 
   const { title, body } = buildPermissionNotification(event);
   sendNotification(title, body, 'permission', event.source);

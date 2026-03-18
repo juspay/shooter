@@ -12,7 +12,7 @@ This integration enables **automatic push notifications** to iOS devices when Cl
 ## Architecture
 
 ```
-Claude Code Lifecycle Events → Python Hook Scripts → HTTP POST → SHOOTER API → iOS Push Notifications
+Claude Code Lifecycle Events → notifier.cjs (Node.js) → Local Server (adapter-node) → APNs / WebSocket
 ```
 
 ### Components
@@ -20,17 +20,22 @@ Claude Code Lifecycle Events → Python Hook Scripts → HTTP POST → SHOOTER A
 1. **Claude Code Hooks** (`.claude/settings.json`)
    - Configured to trigger on 5 key lifecycle events
    - Filters specific tools (Edit, Write, Bash, etc.)
-   - Executes Python scripts with JSON payload
+   - Executes `notifier.cjs` with JSON payload
 
-2. **Python Hook Scripts** (`.claude/hooks/`)
-   - Parse Claude Code event data
-   - Format contextual notifications
-   - Send HTTP POST requests to SHOOTER API
+2. **Unified Notifier** (`.claude/hooks/notifier.cjs`)
+   - Single Node.js script handling all hook events
+   - Parses Claude Code event data
+   - Formats contextual notifications
+   - Checks `/api/ws-status` to see if a WebSocket client is connected; skips push if so (push/WebSocket dedup)
+   - Sends HTTP POST requests to SHOOTER API
+   - Supports bidirectional permission flow with async polling
 
-3. **SHOOTER API** (Existing SvelteKit + Vercel)
+3. **SHOOTER Local Server** (SvelteKit + adapter-node)
+   - Runs locally with Cloudflare Tunnel for external access
    - Receives HTTP POST with notification payload
    - Authenticates using Bearer token
    - Delivers push notifications via APNs
+   - Serves WebSocket connections for real-time streaming to the mobile UI
 
 4. **iOS App** (Existing Swift app)
    - Receives and displays push notifications
@@ -40,20 +45,19 @@ Claude Code Lifecycle Events → Python Hook Scripts → HTTP POST → SHOOTER A
 
 ### 1. Configure API Credentials
 
-Edit `/Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/shooter_notifier.py`:
+Environment variables are read by `notifier.cjs` from the shell environment or `.env`:
 
-```python
-# SHOOTER API Configuration
-SHOOTER_API_URL = "https://shooter-rho.vercel.app/api/notify"
-API_KEY = "YOUR_ACTUAL_API_KEY"  # Replace with your API key
-DEVICE_TOKEN = "YOUR_DEVICE_TOKEN"  # Replace with your iPhone device token
-```
+- `SHOOTER_API_URL` — Base URL of the SHOOTER server (local or tunnel)
+- `SHOOTER_USE_LOCAL` — Set to `true` to target local server
+- `SHOOTER_LOCAL_PORT` — Local server port (default: 3000)
+- `API_KEY` — Bearer token for authentication
+- `DEVICE_TOKEN` — Target iOS device token
 
 ### 2. Get Required Credentials
 
 #### API Key
 
-From your existing SHOOTER setup, use the same API key configured in Vercel environment variables.
+From your existing SHOOTER setup, use the same API key configured in your server environment variables.
 
 #### Device Token
 
@@ -65,14 +69,7 @@ Test notification functionality:
 
 ```bash
 cd /Users/sachinsharma/Developer/Personal/shooter
-python3 .claude/hooks/shooter_notifier.py --test
-```
-
-Expected output:
-
-```
-🧪 Testing SHOOTER notification...
-✅ SHOOTER notification sent: 🧪 SHOOTER Test
+node .claude/hooks/notifier.cjs --test
 ```
 
 ### 4. Verify Hook Configuration
@@ -85,7 +82,9 @@ Claude Code will automatically detect the `.claude/settings.json` file and activ
 
 ## Hook Events & Notifications
 
-### PreToolUse Hook (`notify_tool_start.py`)
+All hooks are handled by the unified `notifier.cjs` script, which inspects the event type and payload to determine the notification.
+
+### PreToolUse
 
 **Triggers**: Before Edit, Write, MultiEdit, Bash, Read tools execute
 
@@ -95,7 +94,7 @@ Claude Code will automatically detect the `.claude/settings.json` file and activ
 - 📄 "SHOOTER: Writing filename.ext"
 - ⚡ "SHOOTER: Running Command"
 
-### PostToolUse Hook (`notify_tool_complete.py`)
+### PostToolUse
 
 **Triggers**: After Edit, Write, MultiEdit, Bash tools complete
 
@@ -105,7 +104,7 @@ Claude Code will automatically detect the `.claude/settings.json` file and activ
 - ✅ "SHOOTER: File Written" / ❌ "SHOOTER: Write Failed"
 - ✅ "SHOOTER: Command Complete" / ❌ "SHOOTER: Command Failed"
 
-### UserPromptSubmit Hook (`notify_session_activity.py`)
+### UserPromptSubmit
 
 **Triggers**: When user submits new prompts
 
@@ -117,7 +116,7 @@ Claude Code will automatically detect the `.claude/settings.json` file and activ
 - ❓ "SHOOTER: Learning" (for explain/understand prompts)
 - 💭 "SHOOTER: New Request" (general prompts)
 
-### SessionStart Hook (`notify_session_start.py`)
+### SessionStart
 
 **Triggers**: When Claude Code session begins
 
@@ -125,13 +124,27 @@ Claude Code will automatically detect the `.claude/settings.json` file and activ
 
 - 🎯 "SHOOTER: Session Started"
 
-### Stop Hook (`notify_session_end.py`)
+### Stop
 
 **Triggers**: When Claude Code session ends
 
 **Notifications**:
 
 - 👋 "SHOOTER: Session Ended"
+
+### PermissionRequest
+
+**Triggers**: When Claude Code requests user permission (e.g., running a tool)
+
+**Behavior**:
+
+- Sends an interactive iOS notification with Allow/Deny buttons
+- Polls the server for the user's response
+- Returns the decision to Claude Code before the hook timeout
+
+## Push / WebSocket Deduplication
+
+When a WebSocket client (e.g., the mobile terminal UI) is actively connected, `notifier.cjs` checks the `/api/ws-status` endpoint before sending a push notification. If a WebSocket session is live, the push is skipped to avoid duplicate alerts — the user is already seeing events in real time via the WebSocket stream.
 
 ## Notification Payload Structure
 
@@ -156,35 +169,34 @@ Each notification includes contextual data:
 
 ### Local Development Mode
 
-For local testing, update `SHOOTER_API_URL` in `shooter_notifier.py`:
+Set `SHOOTER_USE_LOCAL=true` and `SHOOTER_LOCAL_PORT=3000` to target the local server:
 
-```python
-SHOOTER_API_URL = "http://localhost:5173/api/notify"
+```bash
+export SHOOTER_USE_LOCAL=true
+export SHOOTER_LOCAL_PORT=3000
 ```
 
 ### Debug Logging
 
-Hook scripts print status messages:
+The notifier prints status messages to stderr:
 
 - ✅ Success: "SHOOTER notification sent: [title]"
 - ❌ Failure: "HTTP Error 401: Unauthorized"
-- ❌ Network: "URL Error: Connection refused"
+- ❌ Network: "Connection refused"
 
-### Test Individual Hooks
-
-Test specific hooks manually:
+### Test the Notifier
 
 ```bash
 # Test with sample JSON input
 echo '{"tool": {"name": "Edit", "parameters": {"file_path": "/test.js"}}}' | \
-python3 .claude/hooks/notify_tool_start.py
+node .claude/hooks/notifier.cjs
 ```
 
 ## Security Considerations
 
 1. **API Key Protection**: Never commit actual API keys to git
 2. **Device Token Privacy**: Device tokens are sensitive identifiers
-3. **Network Security**: All HTTPS requests to SHOOTER API
+3. **Network Security**: All HTTPS requests to SHOOTER API (Cloudflare Tunnel provides TLS)
 4. **Error Handling**: Failed notifications don't interrupt Claude Code operation
 
 ## Troubleshooting
@@ -192,22 +204,18 @@ python3 .claude/hooks/notify_tool_start.py
 ### Common Issues
 
 1. **"Unauthorized" Error**
-   - Verify API_KEY matches Vercel environment variable
+   - Verify API_KEY matches the server environment variable
    - Check Bearer token format in requests
 
 2. **"Connection refused"**
-   - Verify SHOOTER_API_URL is correct
-   - Check if local server is running (for localhost)
-   - Ensure network connectivity
+   - Verify the local server is running
+   - Check `SHOOTER_USE_LOCAL` and `SHOOTER_LOCAL_PORT` settings
+   - Ensure Cloudflare Tunnel is active (if using tunnel URL)
 
-3. **"Module not found"**
-   - Verify Python 3 is available
-   - Check file permissions are executable
-   - Ensure shooter_notifier.py is in correct location
-
-4. **No notifications received**
+3. **No notifications received**
    - Verify device token is correct (64 hex characters)
    - Check iOS app is properly registered for push notifications
+   - Check `/api/ws-status` — if a WebSocket client is connected, pushes are intentionally skipped
    - Test with SHOOTER web interface first
 
 ### Debug Steps
@@ -215,16 +223,16 @@ python3 .claude/hooks/notify_tool_start.py
 1. **Test API directly**:
 
    ```bash
-   curl -X POST https://shooter-rho.vercel.app/api/notify \
+   curl -X POST http://localhost:3000/api/notify \
      -H "Authorization: Bearer YOUR_API_KEY" \
      -H "Content-Type: application/json" \
      -d '{"title":"Test","body":"Direct API test","deviceToken":"YOUR_TOKEN"}'
    ```
 
-2. **Test hook script**:
+2. **Test notifier script**:
 
    ```bash
-   python3 .claude/hooks/shooter_notifier.py --test
+   node .claude/hooks/notifier.cjs --test
    ```
 
 3. **Check hook execution**:
@@ -251,38 +259,6 @@ python3 .claude/hooks/notify_tool_start.py
 - No need to check Claude Code interface constantly
 - Get alerted to important events while mobile
 - Stay connected to development progress
-
-## Future Enhancements
-
-### Planned Features
-
-1. **Interactive Notifications**: Response buttons for common actions
-2. **Smart Filtering**: User-configurable notification preferences
-3. **Progress Tracking**: Multi-step task progress indicators
-4. **Error Recovery**: Automatic retry mechanisms for failed notifications
-
-### Advanced Integrations
-
-1. **Webhook Responses**: iOS app responses sent back to Claude Code
-2. **State Synchronization**: Track notification history and responses
-3. **Team Notifications**: Multiple device support
-4. **Custom Triggers**: User-defined hook conditions
-
-## Success Metrics
-
-### Integration Health
-
-- ✅ Hook scripts execute without errors
-- ✅ API requests return 200/success responses
-- ✅ Notifications appear on iOS device within 5 seconds
-- ✅ Contextual information accurately reflects Claude Code activity
-
-### User Experience
-
-- 📱 Immediate awareness of Claude Code activity
-- 🎯 Relevant, non-spam notification content
-- 🔄 Reliable delivery during development sessions
-- 📊 Clear success/failure status indicators
 
 ---
 

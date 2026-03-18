@@ -17,3 +17,7 @@ groupedTypes:
   # CLI module types for command execution
   CLI:
     $ref: './specs/types/cli.yaml#/CLI'
+
+  # Terminal module types for managed terminal sessions, WebSocket messages, and events
+  Terminal:
+    $ref: './specs/types/terminal.yaml#/Terminal'
