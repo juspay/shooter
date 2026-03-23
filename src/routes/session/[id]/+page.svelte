@@ -8,25 +8,13 @@
 
   import { browser } from '$app/environment';
   import { page } from '$app/state';
-  import { EmptyState } from '$lib/modules/client/common';
-  import DOMPurify from 'dompurify';
-  import { marked } from 'marked';
-  import { onMount, tick } from 'svelte';
-  import { SvelteSet } from 'svelte/reactivity';
-
-  // Configure marked for safe rendering
-  marked.setOptions({
-    breaks: true,
-    gfm: true,
-  });
-
-  function renderMarkdown(text: string): string {
-    if (!text) {
-      return '';
-    }
-    const html = marked.parse(text) as string;
-    return DOMPurify.sanitize(html);
-  }
+  import {
+    EmptyState,
+    getCached,
+    setCache,
+  } from '$lib/modules/client/common';
+  import ChatView from '$lib/modules/client/terminal/ChatView.svelte';
+  import { onMount } from 'svelte';
 
   interface SessionResponse {
     messages: ConversationMessage[];
@@ -35,32 +23,32 @@
 
   // WebSocket message types from the live session channel
   interface WsMessage {
-    type: string;
-    role?: string;
     content?: MessagePart[];
-    timestamp?: string;
-    name?: string;
-    input?: Record<string, unknown>;
-    status?: string;
     id?: string;
-    output?: string;
-    text?: string;
+    input?: Record<string, unknown>;
     isError?: boolean;
+    message?: string;
+    name?: string;
+    output?: string;
+    role?: string;
+    status?: string;
+    text?: string;
+    timestamp?: string;
+    type: string;
   }
 
   let session = $state<null | SessionInfo>(null);
   let messages = $state<ConversationMessage[]>([]);
   let loading = $state(true);
   let error = $state<null | string>(null);
-  const expandedTools = new SvelteSet<string>();
 
   // Live streaming state
   type ConnectionState = 'connected' | 'connecting' | 'disconnected' | 'idle';
   let isSessionActive = $state(false);
   let connectionState = $state<ConnectionState>('idle');
-  let ws = $state<WebSocket | null>(null);
-  let chatContainerEl = $state<HTMLDivElement | null>(null);
-  let shouldAutoScroll = $state(true);
+  let ws = $state<null | WebSocket>(null);
+  let wsReconnectAttempts = 0;
+  let wsReconnectTimer: number | null = null;
 
   const sessionId = $derived(page.params.id);
   const projectId = $derived(page.url.searchParams.get('project') || '');
@@ -70,21 +58,6 @@
     const modifiedTime = new Date(sess.modified).getTime();
     const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
     return modifiedTime > fiveMinutesAgo;
-  }
-
-  // Auto-scroll to bottom of chat container
-  async function scrollToBottom(): Promise<void> {
-    if (!shouldAutoScroll || !chatContainerEl) return;
-    await tick();
-    chatContainerEl.scrollTop = chatContainerEl.scrollHeight;
-  }
-
-  // Track whether user has scrolled up (disable auto-scroll)
-  function handleScroll(): void {
-    if (!chatContainerEl) return;
-    const { scrollTop, scrollHeight, clientHeight } = chatContainerEl;
-    // Consider "at bottom" if within 100px of the end
-    shouldAutoScroll = scrollHeight - scrollTop - clientHeight < 100;
   }
 
   // Generate a unique message ID for WebSocket-delivered messages
@@ -107,45 +80,55 @@
       // Full message (user or assistant)
       const newMsg: ConversationMessage = {
         id: nextWsMessageId(),
-        role: (data.role as 'assistant' | 'system' | 'user') || 'assistant',
         parts: data.content || [],
+        role: (data.role as 'assistant' | 'system' | 'user') || 'assistant',
         timestamp: data.timestamp || new Date().toISOString(),
       };
       messages = [...messages, newMsg];
-      void scrollToBottom();
     } else if (data.type === 'tool-use') {
       // Append tool_use block to the last assistant message
       const toolPart: ToolUsePart = {
-        type: 'tool_use',
         id: data.id || nextWsMessageId(),
-        toolName: data.name || 'Unknown',
         input: data.input || {},
+        toolName: data.name || 'Unknown',
+        type: 'tool_use',
       };
       appendToLastAssistant(toolPart);
     } else if (data.type === 'tool-result') {
       // Append a system message with the tool result
       const resultMsg: ConversationMessage = {
         id: nextWsMessageId(),
-        role: 'system',
         parts: [
           {
-            type: 'tool_result',
-            toolUseId: data.id || '',
-            output: data.output || '',
             isError: data.isError || false,
+            output: data.output || '',
+            toolUseId: data.id || '',
+            type: 'tool_result',
           },
         ],
+        role: 'system',
         timestamp: new Date().toISOString(),
       };
       messages = [...messages, resultMsg];
-      void scrollToBottom();
     } else if (data.type === 'thinking') {
       // Append thinking block to the last assistant message
       const thinkPart: MessagePart = {
-        type: 'thinking',
         content: data.text || '',
+        type: 'thinking',
       };
       appendToLastAssistant(thinkPart);
+    } else if (data.type === 'error') {
+      // Server-sent error — display in the UI
+      const errorMsg: ConversationMessage = {
+        id: nextWsMessageId(),
+        parts: [{ content: data.text || data.message || 'Unknown error', type: 'text' }],
+        role: 'system',
+        timestamp: new Date().toISOString(),
+      };
+      messages = [...messages, errorMsg];
+    } else if (data.type === 'permission-requested') {
+      // Permission request — log for now (full UI integration would go here)
+      console.log('[session] Permission requested:', data);
     } else if (data.type === 'session-end') {
       // Session has ended — mark as inactive
       isSessionActive = false;
@@ -160,7 +143,7 @@
   // Append a part to the last assistant message, or create one
   function appendToLastAssistant(part: MessagePart): void {
     const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null;
-    if (lastMsg && lastMsg.role === 'assistant') {
+    if (lastMsg?.role === 'assistant') {
       // Mutate the parts array and reassign to trigger reactivity
       const updatedParts = [...lastMsg.parts, part];
       const updatedMsg = { ...lastMsg, parts: updatedParts };
@@ -169,21 +152,20 @@
       // Create a new assistant message to hold this part
       const newMsg: ConversationMessage = {
         id: nextWsMessageId(),
-        role: 'assistant',
         parts: [part],
+        role: 'assistant',
         timestamp: new Date().toISOString(),
       };
       messages = [...messages, newMsg];
     }
-    void scrollToBottom();
   }
 
   // Connect to the live session WebSocket
   async function connectWebSocket(): Promise<void> {
-    if (!browser || !isSessionActive) return;
+    if (!browser || !isSessionActive) {return;}
 
     const saved = localStorage.getItem('shooter_config');
-    if (!saved) return;
+    if (!saved) {return;}
     const config = JSON.parse(saved);
 
     connectionState = 'connecting';
@@ -191,8 +173,8 @@
     try {
       // Obtain a short-lived ticket
       const ticketRes = await fetch('/api/ws-ticket', {
-        method: 'POST',
         headers: { Authorization: `Bearer ${config.apiKey}` },
+        method: 'POST',
       });
       if (!ticketRes.ok) {
         connectionState = 'disconnected';
@@ -209,6 +191,7 @@
       socket.onopen = () => {
         connectionState = 'connected';
         ws = socket;
+        wsReconnectAttempts = 0; // Reset on successful connection
       };
 
       socket.onmessage = handleWsMessage;
@@ -216,6 +199,13 @@
       socket.onclose = () => {
         connectionState = 'disconnected';
         ws = null;
+        // Reconnect with backoff (max 5 retries)
+        if (isSessionActive && wsReconnectAttempts < 5) {
+          wsReconnectAttempts++;
+          wsReconnectTimer = window.setTimeout(() => {
+            void connectWebSocket();
+          }, 2000);
+        }
       };
 
       socket.onerror = () => {
@@ -225,44 +215,6 @@
     } catch {
       connectionState = 'disconnected';
     }
-  }
-
-  // Cache helpers using sessionStorage
-  function getCached(key: string): unknown {
-    try {
-      const item = sessionStorage.getItem(key);
-      if (!item) {
-        return null;
-      }
-      const { data, timestamp } = JSON.parse(item);
-      // Cache valid for 30 seconds
-      if (Date.now() - timestamp > 30000) {
-        return null;
-      }
-      return data;
-    } catch {
-      return null;
-    }
-  }
-
-  function setCache(key: string, data: unknown): void {
-    try {
-      sessionStorage.setItem(key, JSON.stringify({ data, timestamp: Date.now() }));
-    } catch {
-      // sessionStorage full — silently ignore
-    }
-  }
-
-  function toggleTool(id: string): void {
-    if (expandedTools.has(id)) {
-      expandedTools.delete(id);
-    } else {
-      expandedTools.add(id);
-    }
-  }
-
-  function formatTime(ts: string): string {
-    return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
 
   function formatDate(ts: string): string {
@@ -276,37 +228,6 @@
   function shortPath(p: string): string {
     const parts = p.split('/');
     return parts.slice(-2).join('/');
-  }
-
-  function getToolDescription(part: ToolUsePart): string {
-    const input = part.input;
-    if (part.toolName === 'Bash') {
-      return (input.command as string) || (input.description as string) || '';
-    }
-    if (part.toolName === 'Read') {
-      return (input.file_path as string) || '';
-    }
-    if (part.toolName === 'Edit' || part.toolName === 'Write') {
-      return (input.file_path as string) || '';
-    }
-    if (part.toolName === 'Grep') {
-      return (input.pattern as string) || '';
-    }
-    if (part.toolName === 'Glob') {
-      return (input.pattern as string) || '';
-    }
-    if (part.toolName === 'Agent') {
-      return (input.description as string) || (input.prompt as string)?.slice(0, 50) || '';
-    }
-    return JSON.stringify(input).slice(0, 60);
-  }
-
-  function formatInput(input: Record<string, unknown>): string {
-    return JSON.stringify(input, null, 2);
-  }
-
-  function isToolUsePart(part: MessagePart): part is ToolUsePart {
-    return part.type === 'tool_use';
   }
 
   async function fetchSession(): Promise<void> {
@@ -373,8 +294,12 @@
 
     void fetchSession();
 
-    // Cleanup WebSocket on component destroy
+    // Cleanup WebSocket and reconnect timer on component destroy
     return () => {
+      if (wsReconnectTimer) {
+        clearTimeout(wsReconnectTimer);
+        wsReconnectTimer = null;
+      }
       if (ws) {
         ws.close();
         ws = null;
@@ -388,7 +313,7 @@
   <meta name="description" content="Session conversation view" />
 </svelte:head>
 
-<main class="main">
+<main class="main session-page-main">
   {#if loading && messages.length === 0}
     <div class="loading-container">
       <div class="skeleton" style="height: 80px; margin-bottom: 1rem;"></div>
@@ -452,134 +377,33 @@
     </div>
 
     <!-- Chat Container -->
-    <div
-      class="chat-container"
-      bind:this={chatContainerEl}
-      onscroll={handleScroll}
-    >
-      {#each messages as message (message.id)}
-        {#if message.role === 'user'}
-          <div class="chat-message chat-message-user">
-            <div>
-              {#each message.parts as part, partIdx (partIdx)}
-                {#if part.type === 'text'}
-                  <div class="chat-bubble chat-bubble-user">
-                    {@html renderMarkdown(part.content)}
-                  </div>
-                {/if}
-              {/each}
-              <div class="chat-timestamp">{formatTime(message.timestamp)}</div>
-            </div>
-            <div class="chat-avatar chat-avatar-user">U</div>
-          </div>
-        {:else if message.role === 'assistant'}
-          <div class="chat-message chat-message-assistant">
-            <div class="chat-avatar chat-avatar-assistant">C</div>
-            <div>
-              {#each message.parts as part, partIdx (partIdx)}
-                {#if part.type === 'text'}
-                  <div class="chat-bubble chat-bubble-assistant">
-                    {@html renderMarkdown(part.content)}
-                  </div>
-                {:else if isToolUsePart(part)}
-                  {@const toolId = part.id}
-                  {@const isExpanded = expandedTools.has(toolId)}
-                  <div class="chat-tool-card">
-                    <div
-                      class="chat-tool-header"
-                      onclick={() => {
-                        toggleTool(toolId);
-                      }}
-                      onkeydown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          toggleTool(toolId);
-                        }
-                      }}
-                      role="button"
-                      tabindex="0"
-                    >
-                      <span class="chat-tool-chevron" class:expanded={isExpanded}>&#9654;</span>
-                      <span class="chat-tool-name" data-tool={part.toolName}>{part.toolName}</span>
-                      <span class="chat-tool-description">{getToolDescription(part)}</span>
-                    </div>
-                    {#if isExpanded}
-                      <div class="chat-tool-body">{formatInput(part.input)}</div>
-                    {/if}
-                  </div>
-                {:else if part.type === 'thinking'}
-                  {@const thinkId = `thinking-${message.id}`}
-                  {@const isThinkExpanded = expandedTools.has(thinkId)}
-                  <div class="chat-thinking">
-                    <div
-                      class="chat-thinking-header"
-                      onclick={() => {
-                        toggleTool(thinkId);
-                      }}
-                      onkeydown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          toggleTool(thinkId);
-                        }
-                      }}
-                      role="button"
-                      tabindex="0"
-                    >
-                      &#128173; Thinking... {isThinkExpanded ? '&#9660;' : '&#9654;'}
-                    </div>
-                    {#if isThinkExpanded}
-                      <div class="chat-thinking-body">{@html renderMarkdown(part.content)}</div>
-                    {/if}
-                  </div>
-                {/if}
-              {/each}
-              <div class="chat-timestamp">{formatTime(message.timestamp)}</div>
-            </div>
-          </div>
-        {:else if message.role === 'system'}
-          <!-- Tool results rendered as collapsed panels -->
-          {#each message.parts as part, partIdx (partIdx)}
-            {#if part.type === 'tool_result'}
-              {@const resultId = `result-${part.toolUseId}`}
-              {@const isResultExpanded = expandedTools.has(resultId)}
-              <div class="chat-message chat-message-system">
-                <div class="chat-tool-card">
-                  <div
-                    class="chat-tool-header"
-                    onclick={() => {
-                      toggleTool(resultId);
-                    }}
-                    onkeydown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        toggleTool(resultId);
-                      }
-                    }}
-                    role="button"
-                    tabindex="0"
-                  >
-                    <span class="chat-tool-chevron" class:expanded={isResultExpanded}>&#9654;</span>
-                    <span class="chat-tool-description">
-                      {part.isError ? '\u274C Tool Error' : '\u2705 Tool Result'}
-                    </span>
-                  </div>
-                  {#if isResultExpanded}
-                    <div
-                      class="chat-tool-result"
-                      class:chat-tool-result-success={!part.isError}
-                      class:chat-tool-result-error={part.isError}
-                    >
-                      {part.output}
-                    </div>
-                  {/if}
-                </div>
-              </div>
-            {/if}
-          {/each}
-        {/if}
-      {/each}
+    <div class="session-chat-container">
+      <ChatView
+        messages={messages}
+        connectionState={connectionState}
+        showInput={false}
+        sessionEnded={!isSessionActive}
+      />
     </div>
   {/if}
 </main>
 
 <style>
+  /* Make the main element a flex column so the chat fills remaining space */
+  .session-page-main {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* Chat container fills remaining space */
+  .session-chat-container {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
   /* Back link (used in error state) */
   .session-back-row {
     margin-bottom: var(--space-5);

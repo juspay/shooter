@@ -1,13 +1,13 @@
 import { env } from '$env/dynamic/private';
-import { validateAuth } from '$lib/modules/server/auth';
 import { LibraryAPNsService } from '$lib/modules/server/apn/library-apns';
+import { validateAuth } from '$lib/modules/server/auth';
 import { json } from '@sveltejs/kit';
 
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = ({ request }) => {
   const authError = validateAuth(request);
-  if (authError) return authError;
+  if (authError) {return authError;}
 
   const apnsClient = new LibraryAPNsService();
   const deviceToken = env.DEVICE_TOKEN?.trim();

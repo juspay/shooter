@@ -8,17 +8,17 @@ import type { WebSocket } from 'ws';
 
 /** Inbound messages from the client. */
 type ClientMessage =
-  | { type: 'input'; data: string }
-  | { type: 'resize'; cols: number; rows: number }
-  | { type: 'signal'; signal: 'SIGINT' | 'SIGTERM' | 'SIGTSTP' };
+  | { cols: number; rows: number; type: 'resize'; }
+  | { data: string; type: 'input'; }
+  | { signal: 'SIGINT' | 'SIGTERM' | 'SIGTSTP'; type: 'signal'; };
 
 /** Outbound messages to the client. */
 type ServerMessage =
-  | { type: 'output'; data: string }
-  | { type: 'exit'; code: number | null; signal: string | null }
-  | { type: 'scrollback'; data: string; chunk: number; total: number }
-  | { type: 'output-dropped'; bytes: number }
-  | { type: 'error'; message: string };
+  | { bytes: number; type: 'output-dropped'; }
+  | { chunk: number; data: string; total: number; type: 'scrollback'; }
+  | { code: null | number; signal: null | string; type: 'exit'; }
+  | { data: string; type: 'output'; }
+  | { message: string; type: 'error'; };
 
 // ── Constants ────────────────────────────────────────────────────────
 
@@ -33,84 +33,27 @@ const SIGNAL_MAP: Record<string, NodeJS.Signals> = {
 // Minimal duck-typed interface matching the real pty-manager singleton.
 
 interface ManagedTerminal {
+  clients: Set<WebSocket>;
+  exitCode: null | number;
   id: string;
   pty: {
-    write: (data: string) => void;
-    resize: (cols: number, rows: number) => void;
+    kill: (signal: string) => void;
     pid: number;
+    resize: (cols: number, rows: number) => void;
+    write: (data: string) => void;
   };
-  clients: Set<WebSocket>;
-  scrollback: string[];
-  status: 'running' | 'exited';
-  exitCode: number | null;
+  status: 'exited' | 'running';
 }
 
 interface PtyManagerLike {
-  getTerminal: (id: string) => ManagedTerminal | undefined;
   attach: (id: string, ws: WebSocket) => boolean;
   detach: (id: string, ws: WebSocket) => boolean;
+  getTerminal: (id: string) => ManagedTerminal | undefined;
 }
 
 // Placeholder: will be replaced with the real ptyManager singleton import.
 // import { ptyManager } from '../terminal/pty-manager';
-let _ptyManager: PtyManagerLike | null = null;
-
-/**
- * Register the PTY manager instance. Called once during server bootstrap
- * after the PTY manager is initialised.
- */
-export function setPtyManager(manager: PtyManagerLike): void {
-  _ptyManager = manager;
-}
-
-// ── Helpers ──────────────────────────────────────────────────────────
-
-/** Safely send a JSON message over a WebSocket. */
-function safeSend(ws: WebSocket, msg: ServerMessage): boolean {
-  try {
-    if (ws.readyState !== 1 /* OPEN */) {
-      return false;
-    }
-    ws.send(JSON.stringify(msg));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/** Parse and validate an inbound client message. Returns null for invalid messages. */
-function parseClientMessage(raw: string): ClientMessage | null {
-  try {
-    const msg = JSON.parse(raw);
-    if (!msg || typeof msg !== 'object' || typeof msg.type !== 'string') {
-      return null;
-    }
-
-    switch (msg.type) {
-      case 'input':
-        if (typeof msg.data !== 'string') return null;
-        return { type: 'input', data: msg.data };
-      case 'resize':
-        if (typeof msg.cols !== 'number' || typeof msg.rows !== 'number') return null;
-        if (msg.cols < 1 || msg.rows < 1 || msg.cols > 500 || msg.rows > 200) return null;
-        return { type: 'resize', cols: Math.floor(msg.cols), rows: Math.floor(msg.rows) };
-      case 'signal':
-        if (typeof msg.signal !== 'string' || !(msg.signal in SIGNAL_MAP)) return null;
-        return {
-          type: 'signal',
-          signal: msg.signal as ClientMessage & { type: 'signal' } extends { signal: infer S }
-            ? S
-            : never,
-        };
-      default:
-        return null;
-    }
-  } catch {
-    return null;
-  }
-}
-
-// ── Main handler ─────────────────────────────────────────────────────
+let _ptyManager: null | PtyManagerLike = null;
 
 /**
  * Handle a new WebSocket connection on the `/ws/terminal/:id` channel.
@@ -120,14 +63,14 @@ function parseClientMessage(raw: string): ClientMessage | null {
 export function handleTerminalConnection(ws: WebSocket, terminalId: string): void {
   // ── 1. Look up the terminal ──────────────────────────────────────
   if (!_ptyManager) {
-    safeSend(ws, { type: 'error', message: 'PTY manager not initialised' });
+    safeSend(ws, { message: 'PTY manager not initialised', type: 'error' });
     ws.close(1011, 'PTY manager not initialised');
     return;
   }
 
   const terminal = _ptyManager.getTerminal(terminalId);
   if (!terminal) {
-    safeSend(ws, { type: 'error', message: `Terminal not found: ${terminalId}` });
+    safeSend(ws, { message: `Terminal not found: ${terminalId}`, type: 'error' });
     ws.close(1008, 'Terminal not found');
     return;
   }
@@ -140,7 +83,7 @@ export function handleTerminalConnection(ws: WebSocket, terminalId: string): voi
 
   // If the terminal already exited, tell the client immediately.
   if (terminal.status === 'exited') {
-    safeSend(ws, { type: 'exit', code: terminal.exitCode, signal: null });
+    safeSend(ws, { code: terminal.exitCode, signal: null, type: 'exit' });
   }
 
   // ── 3. Handle messages from the client ───────────────────────────
@@ -153,7 +96,7 @@ export function handleTerminalConnection(ws: WebSocket, terminalId: string): voi
 
     // Don't allow input to exited terminals.
     if (terminal.status === 'exited') {
-      safeSend(ws, { type: 'error', message: 'Terminal has exited' });
+      safeSend(ws, { message: 'Terminal has exited', type: 'error' });
       return;
     }
 
@@ -172,8 +115,8 @@ export function handleTerminalConnection(ws: WebSocket, terminalId: string): voi
             terminal.pty.write('\x03');
           } else if (msg.signal === 'SIGTSTP') {
             terminal.pty.write('\x1a');
-          } else if (msg.signal === 'SIGTERM' && terminal.pty.pid) {
-            process.kill(terminal.pty.pid, 'SIGTERM');
+          } else if (msg.signal === 'SIGTERM') {
+            terminal.pty.kill('SIGTERM');
           }
           break;
         }
@@ -181,7 +124,7 @@ export function handleTerminalConnection(ws: WebSocket, terminalId: string): voi
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
       console.error(`[ws/terminal] Error handling ${msg.type} for ${terminalId}:`, errMsg);
-      safeSend(ws, { type: 'error', message: `Failed to handle ${msg.type}: ${errMsg}` });
+      safeSend(ws, { message: `Failed to handle ${msg.type}: ${errMsg}`, type: 'error' });
     }
   });
 
@@ -194,4 +137,61 @@ export function handleTerminalConnection(ws: WebSocket, terminalId: string): voi
     // Errors are followed by 'close', which handles cleanup.
     // This handler prevents unhandled error crashes.
   });
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────
+
+/**
+ * Register the PTY manager instance. Called once during server bootstrap
+ * after the PTY manager is initialised.
+ */
+export function setPtyManager(manager: PtyManagerLike): void {
+  _ptyManager = manager;
+}
+
+/** Parse and validate an inbound client message. Returns null for invalid messages. */
+function parseClientMessage(raw: string): ClientMessage | null {
+  try {
+    const msg = JSON.parse(raw);
+    if (!msg || typeof msg !== 'object' || typeof msg.type !== 'string') {
+      return null;
+    }
+
+    switch (msg.type) {
+      case 'input':
+        if (typeof msg.data !== 'string') {return null;}
+        return { data: msg.data, type: 'input' };
+      case 'resize':
+        if (typeof msg.cols !== 'number' || typeof msg.rows !== 'number') {return null;}
+        if (msg.cols < 1 || msg.rows < 1 || msg.cols > 500 || msg.rows > 200) {return null;}
+        return { cols: Math.floor(msg.cols), rows: Math.floor(msg.rows), type: 'resize' };
+      case 'signal':
+        if (typeof msg.signal !== 'string' || !(msg.signal in SIGNAL_MAP)) {return null;}
+        return {
+          signal: msg.signal as ClientMessage & { type: 'signal' } extends { signal: infer S }
+            ? S
+            : never,
+          type: 'signal',
+        };
+      default:
+        return null;
+    }
+  } catch {
+    return null;
+  }
+}
+
+// ── Main handler ─────────────────────────────────────────────────────
+
+/** Safely send a JSON message over a WebSocket. */
+function safeSend(ws: WebSocket, msg: ServerMessage): boolean {
+  try {
+    if (ws.readyState !== 1 /* OPEN */) {
+      return false;
+    }
+    ws.send(JSON.stringify(msg));
+    return true;
+  } catch {
+    return false;
+  }
 }

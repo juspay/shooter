@@ -1,5 +1,6 @@
 <script lang="ts">
   import type {
+    ConversationMessage,
     MessagePart,
     ToolUsePart,
   } from '$lib/modules/server/sessions/types';
@@ -8,43 +9,25 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
   import { EmptyState } from '$lib/modules/client/common';
+  import ChatView from '$lib/modules/client/terminal/ChatView.svelte';
   import ConnectionStatus from '$lib/modules/client/terminal/ConnectionStatus.svelte';
   import QuickKeys from '$lib/modules/client/terminal/QuickKeys.svelte';
-  import DOMPurify from 'dompurify';
-  import { marked } from 'marked';
   import { onDestroy, onMount } from 'svelte';
-  import { SvelteSet } from 'svelte/reactivity';
-
-  // Configure marked for safe rendering
-  marked.setOptions({ breaks: true, gfm: true });
-
-  function renderMarkdown(text: string): string {
-    if (!text) return '';
-    const html = marked.parse(text) as string;
-    return DOMPurify.sanitize(html);
-  }
 
   // ------- Interfaces -------
 
   interface TerminalDetail {
-    id: string;
-    command: string;
     args: string[];
-    cwd: string;
-    pid: number;
-    status: 'exited' | 'running';
+    command: string;
     createdAt: string;
-    exitedAt: string | null;
-    exitCode: number | null;
-    ws: string;
-    sessionWs: string;
-  }
-
-  interface ChatMessage {
+    cwd: string;
+    exitCode: null | number;
+    exitedAt: null | string;
     id: string;
-    role: 'assistant' | 'system' | 'user';
-    content: MessagePart[];
-    timestamp: string;
+    pid: number;
+    sessionWs: string;
+    status: 'exited' | 'running';
+    ws: string;
   }
 
   // ------- Constants -------
@@ -61,18 +44,16 @@
   let viewMode = $state<'chat' | 'raw'>('raw');
   let connectionStatus = $state<'connected' | 'disconnected' | 'reconnecting'>('disconnected');
   let inputText = $state('');
-  let chatMessages = $state<ChatMessage[]>([]);
-  const expandedTools = new SvelteSet<string>();
+  let chatMessages = $state<ConversationMessage[]>([]);
+  let chatSessionEnded = $state(false);
 
   // DOM references
   let termContainer = $state<HTMLDivElement | null>(null);
-  let chatEndRef = $state<HTMLDivElement | null>(null);
   let inputRef = $state<HTMLInputElement | null>(null);
-  let chatInputRef = $state<HTMLInputElement | null>(null);
 
   // WebSocket and terminal instance refs (not reactive)
-  let termInstance: { dispose: () => void; term: { cols: number; rows: number }; sendInput: (data: string) => void } | null = null;
-  let sessionWs: WebSocket | null = null;
+  let termInstance: null | { dispose: () => void; sendInput: (data: string) => void; term: { cols: number; rows: number }; } = null;
+  let sessionWs: null | WebSocket = null;
   let disposed = false;
 
   // ------- Derived -------
@@ -88,57 +69,23 @@
 
   // ------- Helpers -------
 
-  function getConfig(): { apiKey: string } | null {
+  function getConfig(): null | { apiKey: string } {
     try {
       const saved = localStorage.getItem('shooter_config');
-      if (!saved) return null;
+      if (!saved) {return null;}
       const parsed = JSON.parse(saved);
-      if (typeof parsed?.apiKey === 'string' && parsed.apiKey) return parsed;
+      if (typeof parsed?.apiKey === 'string' && parsed.apiKey) {return parsed;}
       return null;
     } catch {
       return null;
     }
   }
 
-  function formatTime(ts: string): string {
-    return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  }
-
-  function isToolUsePart(part: MessagePart): part is ToolUsePart {
-    return part.type === 'tool_use';
-  }
-
-  function getToolDescription(part: ToolUsePart): string {
-    const input = part.input;
-    if (part.toolName === 'Bash') return (input.command as string) || (input.description as string) || '';
-    if (part.toolName === 'Read') return (input.file_path as string) || '';
-    if (part.toolName === 'Edit' || part.toolName === 'Write') return (input.file_path as string) || '';
-    if (part.toolName === 'Grep') return (input.pattern as string) || '';
-    if (part.toolName === 'Glob') return (input.pattern as string) || '';
-    if (part.toolName === 'Agent')
-      return (input.description as string) || (input.prompt as string)?.slice(0, 50) || '';
-    return JSON.stringify(input).slice(0, 60);
-  }
-
-  function formatInput(input: Record<string, unknown>): string {
-    return JSON.stringify(input, null, 2);
-  }
-
-  function toggleTool(id: string): void {
-    if (expandedTools.has(id)) expandedTools.delete(id);
-    else expandedTools.add(id);
-  }
-
-  function scrollChatToBottom(): void {
-    requestAnimationFrame(() => {
-      chatEndRef?.scrollIntoView({ behavior: 'smooth' });
-    });
-  }
 
   // ------- API calls -------
 
   async function fetchTerminal(): Promise<void> {
-    if (!browser) return;
+    if (!browser) {return;}
 
     const config = getConfig();
     if (!config) {
@@ -163,15 +110,15 @@
     loading = false;
   }
 
-  async function getWsTicket(): Promise<string | null> {
+  async function getWsTicket(): Promise<null | string> {
     const config = getConfig();
-    if (!config) return null;
+    if (!config) {return null;}
     try {
       const res = await fetch('/api/ws-ticket', {
-        method: 'POST',
         headers: { Authorization: `Bearer ${config.apiKey}` },
+        method: 'POST',
       });
-      if (!res.ok) return null;
+      if (!res.ok) {return null;}
       const data: { ticket: string } = await res.json();
       return data.ticket;
     } catch {
@@ -180,15 +127,15 @@
   }
 
   async function killTerminal(): Promise<void> {
-    if (!terminal || killing) return;
+    if (!terminal || killing) {return;}
     const config = getConfig();
-    if (!config) return;
+    if (!config) {return;}
 
     killing = true;
     try {
       const res = await fetch(`/api/terminals/${terminalId}`, {
-        method: 'DELETE',
         headers: { Authorization: `Bearer ${config.apiKey}` },
+        method: 'DELETE',
       });
       if (res.ok) {
         void goto('/terminals');
@@ -201,15 +148,15 @@
   }
 
   async function removeTerminal(): Promise<void> {
-    if (!terminal || removing) return;
+    if (!terminal || removing) {return;}
     const config = getConfig();
-    if (!config) return;
+    if (!config) {return;}
 
     removing = true;
     try {
       const res = await fetch(`/api/terminals/${terminalId}`, {
-        method: 'DELETE',
         headers: { Authorization: `Bearer ${config.apiKey}` },
+        method: 'DELETE',
       });
       if (res.ok) {
         void goto('/terminals');
@@ -224,7 +171,7 @@
   // ------- Raw terminal (xterm.js) -------
 
   async function initRawTerminal(): Promise<void> {
-    if (!termContainer || !terminal || disposed) return;
+    if (!termContainer || !terminal || disposed) {return;}
 
     // Build the WebSocket URL
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -232,32 +179,32 @@
 
     const getTicket = async (): Promise<string> => {
       const ticket = await getWsTicket();
-      if (!ticket) throw new Error('Failed to obtain WebSocket ticket');
+      if (!ticket) {throw new Error('Failed to obtain WebSocket ticket');}
       return ticket;
     };
 
     try {
       const { createTerminal } = await import('$lib/modules/client/terminal/xterm-wrapper');
 
-      if (disposed || !termContainer) return;
+      if (disposed || !termContainer) {return;}
 
       const instance = await createTerminal({
         container: termContainer,
-        wsUrl,
-        getTicket,
         fontSize: window.innerWidth < 768 ? 12 : 14,
+        getTicket,
         onDisconnect: () => {
-          if (!disposed) connectionStatus = 'reconnecting';
-        },
-        onReconnect: () => {
-          if (!disposed) connectionStatus = 'connected';
+          if (!disposed) {connectionStatus = 'reconnecting';}
         },
         onExit: (code: number) => {
           if (!disposed && terminal) {
-            terminal = { ...terminal, status: 'exited', exitCode: code, exitedAt: new Date().toISOString() };
+            terminal = { ...terminal, exitCode: code, exitedAt: new Date().toISOString(), status: 'exited' };
             connectionStatus = 'disconnected';
           }
         },
+        onReconnect: () => {
+          if (!disposed) {connectionStatus = 'connected';}
+        },
+        wsUrl,
       });
 
       if (disposed) {
@@ -283,7 +230,7 @@
   // ------- Chat (session WebSocket) -------
 
   async function connectSessionWs(): Promise<void> {
-    if (!terminal || disposed) return;
+    if (!terminal || disposed) {return;}
 
     const ticket = await getWsTicket();
     if (!ticket || disposed || !terminal) {
@@ -299,12 +246,12 @@
     sessionWs.onopen = () => {
       if (!disposed) {
         connectionStatus = 'connected';
-        sessionWs?.send(JSON.stringify({ type: 'subscribe', sessionId: terminalId }));
+        sessionWs?.send(JSON.stringify({ sessionId: terminalId, type: 'subscribe' }));
       }
     };
 
     sessionWs.onmessage = (event) => {
-      if (disposed) return;
+      if (disposed) {return;}
       try {
         const msg = JSON.parse(event.data);
         handleSessionMessage(msg);
@@ -318,71 +265,113 @@
         connectionStatus = 'reconnecting';
         // Reconnect after delay (will fetch a fresh ticket)
         setTimeout(() => {
-          if (!disposed && terminal?.status === 'running') void connectSessionWs();
+          if (!disposed && terminal?.status === 'running') {void connectSessionWs();}
         }, 2000);
       }
     };
 
     sessionWs.onerror = () => {
-      if (!disposed) connectionStatus = 'disconnected';
+      if (!disposed) {connectionStatus = 'disconnected';}
     };
   }
 
   function handleSessionMessage(msg: Record<string, unknown>): void {
     if (msg.type === 'history') {
-      const history = msg.messages as ChatMessage[];
-      chatMessages = history || [];
-      scrollChatToBottom();
+      // History messages use `content` on the wire; convert to `parts` for ConversationMessage
+      const historyRaw = (msg.messages || []) as Array<{
+        content: MessagePart[];
+        id: string;
+        role: 'assistant' | 'system' | 'user';
+        timestamp: string;
+      }>;
+      chatMessages = historyRaw.map((m) => ({
+        id: m.id,
+        parts: m.content,
+        role: m.role,
+        timestamp: m.timestamp,
+      }));
     } else if (msg.type === 'message') {
       chatMessages = [
         ...chatMessages,
         {
           id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          role: msg.role as ChatMessage['role'],
-          content: msg.content as MessagePart[],
+          parts: (msg.content as MessagePart[]) || [],
+          role: (msg.role as ConversationMessage['role']) || 'assistant',
           timestamp: (msg.timestamp as string) || new Date().toISOString(),
         },
       ];
-      scrollChatToBottom();
     } else if (msg.type === 'tool-use') {
       // Append tool use as an assistant message fragment
       chatMessages = [
         ...chatMessages,
         {
           id: `tool-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          role: 'assistant',
-          content: [
+          parts: [
             {
-              type: 'tool_use',
               id: (msg.id as string) || `tool-${Date.now()}`,
-              toolName: msg.name as string,
               input: (msg.input as Record<string, unknown>) || {},
+              toolName: msg.name as string,
+              type: 'tool_use',
             } as ToolUsePart,
           ],
+          role: 'assistant',
           timestamp: new Date().toISOString(),
         },
       ];
-      scrollChatToBottom();
     } else if (msg.type === 'tool-result') {
       chatMessages = [
         ...chatMessages,
         {
           id: `result-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          role: 'system',
-          content: [
+          parts: [
             {
-              type: 'tool_result',
-              toolUseId: msg.id as string,
+              isError: msg.isError || false,
               output: (msg.output as string) || '',
-              isError: msg.status === 'error',
+              toolUseId: msg.id as string,
+              type: 'tool_result',
             } as MessagePart,
           ],
+          role: 'system',
           timestamp: new Date().toISOString(),
         },
       ];
-      scrollChatToBottom();
+    } else if (msg.type === 'thinking') {
+      // Append thinking block to the last assistant message
+      const thinkPart: MessagePart = {
+        content: (msg.text as string) || '',
+        type: 'thinking',
+      };
+      const lastMsg = chatMessages.length > 0 ? chatMessages[chatMessages.length - 1] : null;
+      if (lastMsg?.role === 'assistant') {
+        chatMessages = [
+          ...chatMessages.slice(0, -1),
+          { ...lastMsg, parts: [...lastMsg.parts, thinkPart] },
+        ];
+      } else {
+        chatMessages = [
+          ...chatMessages,
+          {
+            id: `think-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            parts: [thinkPart],
+            role: 'assistant',
+            timestamp: new Date().toISOString(),
+          },
+        ];
+      }
+    } else if (msg.type === 'error') {
+      // Server-sent error — display as a system message
+      chatMessages = [
+        ...chatMessages,
+        {
+          id: `err-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          parts: [{ content: (msg.message as string) || 'Unknown error', type: 'text' } as MessagePart],
+          role: 'system',
+          timestamp: new Date().toISOString(),
+        },
+      ];
     } else if (msg.type === 'session-end') {
-      if (terminal) terminal = { ...terminal, status: 'exited' };
+      chatSessionEnded = true;
+      if (terminal) { terminal = { ...terminal, status: 'exited' }; }
     }
   }
 
@@ -397,20 +386,24 @@
   // ------- Input handling -------
 
   function handleRawInput(): void {
-    if (!inputText.trim()) return;
+    if (!inputText.trim()) {return;}
     // Send the text as raw PTY input with a newline via the xterm wrapper's WebSocket
     if (termInstance && connectionStatus === 'connected') {
-      termInstance.sendInput(inputText + '\r');
+      termInstance.sendInput(`${inputText  }\r`);
     }
     inputText = '';
     inputRef?.focus();
   }
 
-  function handleChatInput(): void {
-    if (!inputText.trim() || !sessionWs || sessionWs.readyState !== WebSocket.OPEN) return;
-    sessionWs.send(JSON.stringify({ type: 'send-input', text: inputText }));
-    inputText = '';
-    chatInputRef?.focus();
+  function handleChatSendInput(text: string): void {
+    if (!text.trim() || sessionWs?.readyState !== WebSocket.OPEN) { return; }
+    sessionWs.send(JSON.stringify({ text, type: 'send-input' }));
+  }
+
+  function handleChatCancel(): void {
+    if (sessionWs?.readyState === WebSocket.OPEN) {
+      sessionWs.send(JSON.stringify({ type: 'cancel' }));
+    }
   }
 
   function handleQuickKey(key: string): void {
@@ -420,8 +413,8 @@
       }
     } else if (viewMode === 'chat') {
       // For chat mode, Ctrl+C sends a cancel signal
-      if (key === '\x03' && sessionWs && sessionWs.readyState === WebSocket.OPEN) {
-        sessionWs.send(JSON.stringify({ type: 'cancel' }));
+      if (key === '\x03') {
+        handleChatCancel();
       }
     }
   }
@@ -429,8 +422,7 @@
   function handleInputKeydown(e: KeyboardEvent): void {
     if (e.key === 'Enter') {
       e.preventDefault();
-      if (viewMode === 'raw') handleRawInput();
-      else handleChatInput();
+      handleRawInput();
     }
   }
 
@@ -441,7 +433,7 @@
   let chatInitialized = false;
 
   function setViewMode(mode: 'chat' | 'raw'): void {
-    if (mode === viewMode) return;
+    if (mode === viewMode) {return;}
     viewMode = mode;
 
     // Lazily initialize connections on first switch — keep them alive afterwards
@@ -455,10 +447,6 @@
       chatInitialized = true;
     }
 
-    // Scroll chat to bottom when switching to chat
-    if (mode === 'chat') {
-      scrollChatToBottom();
-    }
   }
 
   // ------- Retry connection -------
@@ -482,7 +470,7 @@
   onMount(async () => {
     await fetchTerminal();
 
-    if (!terminal || error) return;
+    if (!terminal || error) {return;}
 
     // Default view: Chat on mobile for AI sessions, Raw on desktop
     if (isAI && window.innerWidth < 768) {
@@ -551,7 +539,7 @@
             <button
               class="term-toggle-btn"
               class:active={viewMode === 'raw'}
-              onclick={() => setViewMode('raw')}
+              onclick={() => { setViewMode('raw'); }}
               type="button"
               role="radio"
               aria-checked={viewMode === 'raw'}
@@ -561,7 +549,7 @@
             <button
               class="term-toggle-btn"
               class:active={viewMode === 'chat'}
-              onclick={() => setViewMode('chat')}
+              onclick={() => { setViewMode('chat'); }}
               type="button"
               role="radio"
               aria-checked={viewMode === 'chat'}
@@ -638,141 +626,14 @@
 
     <!-- Chat View -->
     <div class="term-chat-body" style:display={viewMode === 'chat' ? 'flex' : 'none'}>
-      {#if chatMessages.length === 0}
-        <div class="term-chat-empty">
-          <p class="term-chat-empty-text">Waiting for session messages...</p>
-        </div>
-      {:else}
-        <div class="chat-container term-chat-messages">
-          {#each chatMessages as message (message.id)}
-            {#if message.role === 'user'}
-              <div class="chat-message chat-message-user">
-                <div>
-                  {#each message.content as part, partIdx (partIdx)}
-                    {#if part.type === 'text'}
-                      <div class="chat-bubble chat-bubble-user">
-                        {@html renderMarkdown(part.content)}
-                      </div>
-                    {/if}
-                  {/each}
-                  <div class="chat-timestamp">{formatTime(message.timestamp)}</div>
-                </div>
-                <div class="chat-avatar chat-avatar-user">U</div>
-              </div>
-            {:else if message.role === 'assistant'}
-              <div class="chat-message chat-message-assistant">
-                <div class="chat-avatar chat-avatar-assistant">C</div>
-                <div>
-                  {#each message.content as part, partIdx (partIdx)}
-                    {#if part.type === 'text'}
-                      <div class="chat-bubble chat-bubble-assistant">
-                        {@html renderMarkdown(part.content)}
-                      </div>
-                    {:else if isToolUsePart(part)}
-                      {@const toolId = part.id}
-                      {@const isExpanded = expandedTools.has(toolId)}
-                      <div class="chat-tool-card">
-                        <div
-                          class="chat-tool-header"
-                          onclick={() => toggleTool(toolId)}
-                          onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') toggleTool(toolId); }}
-                          role="button"
-                          tabindex="0"
-                        >
-                          <span class="chat-tool-chevron" class:expanded={isExpanded}>&#9654;</span>
-                          <span class="chat-tool-name" data-tool={part.toolName}>{part.toolName}</span>
-                          <span class="chat-tool-description">{getToolDescription(part)}</span>
-                        </div>
-                        {#if isExpanded}
-                          <div class="chat-tool-body">{formatInput(part.input)}</div>
-                        {/if}
-                      </div>
-                    {:else if part.type === 'thinking'}
-                      {@const thinkId = `thinking-${message.id}`}
-                      {@const isThinkExpanded = expandedTools.has(thinkId)}
-                      <div class="chat-thinking">
-                        <div
-                          class="chat-thinking-header"
-                          onclick={() => toggleTool(thinkId)}
-                          onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') toggleTool(thinkId); }}
-                          role="button"
-                          tabindex="0"
-                        >
-                          &#128173; Thinking... {isThinkExpanded ? '&#9660;' : '&#9654;'}
-                        </div>
-                        {#if isThinkExpanded}
-                          <div class="chat-thinking-body">{@html renderMarkdown(part.content)}</div>
-                        {/if}
-                      </div>
-                    {/if}
-                  {/each}
-                  <div class="chat-timestamp">{formatTime(message.timestamp)}</div>
-                </div>
-              </div>
-            {:else if message.role === 'system'}
-              {#each message.content as part, partIdx (partIdx)}
-                {#if part.type === 'tool_result'}
-                  {@const resultId = `result-${part.toolUseId}`}
-                  {@const isResultExpanded = expandedTools.has(resultId)}
-                  <div class="chat-message chat-message-system">
-                    <div class="chat-tool-card">
-                      <div
-                        class="chat-tool-header"
-                        onclick={() => toggleTool(resultId)}
-                        onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') toggleTool(resultId); }}
-                        role="button"
-                        tabindex="0"
-                      >
-                        <span class="chat-tool-chevron" class:expanded={isResultExpanded}>&#9654;</span>
-                        <span class="chat-tool-description">
-                          {part.isError ? '\u274C Tool Error' : '\u2705 Tool Result'}
-                        </span>
-                      </div>
-                      {#if isResultExpanded}
-                        <div
-                          class="chat-tool-result"
-                          class:chat-tool-result-success={!part.isError}
-                          class:chat-tool-result-error={part.isError}
-                        >
-                          {part.output}
-                        </div>
-                      {/if}
-                    </div>
-                  </div>
-                {/if}
-              {/each}
-            {/if}
-          {/each}
-          <div bind:this={chatEndRef}></div>
-        </div>
-      {/if}
-
-      <!-- Chat Input Bar -->
-      {#if isRunning}
-        <div class="term-input-area">
-          <div class="term-input-bar">
-            <input
-              class="term-input"
-              type="text"
-              bind:value={inputText}
-              bind:this={chatInputRef}
-              onkeydown={handleInputKeydown}
-              placeholder="Send a message..."
-              autocomplete="off"
-              autocapitalize="off"
-            />
-            <button
-              class="term-send-btn"
-              onclick={handleChatInput}
-              disabled={!inputText.trim()}
-              type="button"
-              aria-label="Send"
-            >
-              &crarr;
-            </button>
-          </div>
-        </div>
-      {/if}
+      <ChatView
+        messages={chatMessages}
+        connectionState={connectionStatus}
+        sessionEnded={chatSessionEnded}
+        showInput={isRunning}
+        onSendInput={handleChatSendInput}
+        onCancel={handleChatCancel}
+      />
     </div>
 
     <!-- Exited overlay for non-running terminals -->
@@ -828,7 +689,7 @@
     display: flex;
     align-items: center;
     gap: var(--space-3);
-    flex-shrink: 0;
+    flex-shrink: 1;
   }
 
   /* Back button */
@@ -1026,25 +887,6 @@
     overflow: hidden;
   }
 
-  .term-chat-messages {
-    flex: 1;
-    overflow-y: auto;
-    padding: var(--space-4) var(--space-5);
-    -webkit-overflow-scrolling: touch;
-  }
-
-  .term-chat-empty {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: var(--space-8);
-  }
-
-  .term-chat-empty-text {
-    font-size: var(--text-sm);
-    color: var(--text-tertiary);
-  }
 
   /* ============================================
      Input area (shared between raw + chat)
@@ -1160,16 +1002,17 @@
       max-width: 100px;
     }
 
-    .term-chat-messages {
-      padding: var(--space-3);
-    }
-
     .term-input {
       font-size: var(--text-sm);
     }
   }
 
   @media (max-width: 480px) {
+    .term-topbar {
+      min-height: 44px;
+      padding: var(--space-1) var(--space-2);
+    }
+
     .term-command-name {
       max-width: 80px;
       text-overflow: ellipsis;
@@ -1180,8 +1023,14 @@
     }
 
     .term-kill-btn {
-      padding: 0 8px;
+      padding: 0 6px;
       font-size: 11px;
+      height: 28px;
+    }
+
+    .term-badge {
+      font-size: 10px;
+      padding: 1px 6px;
     }
   }
 </style>

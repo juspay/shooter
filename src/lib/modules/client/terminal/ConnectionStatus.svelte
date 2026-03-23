@@ -1,10 +1,10 @@
 <script lang="ts">
   interface Props {
-    status: 'connected' | 'disconnected' | 'reconnecting';
     onretry?: () => void;
+    status: 'connected' | 'disconnected' | 'reconnecting';
   }
 
-  const { status, onretry }: Props = $props();
+  const { onretry, status }: Props = $props();
 
   const label = $derived(
     status === 'connected'

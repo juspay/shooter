@@ -11,13 +11,13 @@
   const { onKey }: Props = $props();
 
   const keys: QuickKey[] = [
-    { label: 'Ctrl+C', escape: '\x03' },
-    { label: 'Tab', escape: '\t' },
-    { label: '\u2191', escape: '\x1b[A' },
-    { label: '\u2193', escape: '\x1b[B' },
-    { label: 'Esc', escape: '\x1b' },
-    { label: 'Ctrl+D', escape: '\x04' },
-    { label: 'Ctrl+Z', escape: '\x1a' },
+    { escape: '\x03', label: 'Ctrl+C' },
+    { escape: '\t', label: 'Tab' },
+    { escape: '\x1b[A', label: '\u2191' },
+    { escape: '\x1b[B', label: '\u2193' },
+    { escape: '\x1b', label: 'Esc' },
+    { escape: '\x04', label: 'Ctrl+D' },
+    { escape: '\x1a', label: 'Ctrl+Z' },
   ];
 </script>
 
@@ -25,7 +25,7 @@
   {#each keys as k (k.label)}
     <button
       class="quick-key"
-      onclick={() => onKey(k.escape)}
+      onclick={() => { onKey(k.escape); }}
       type="button"
       aria-label={k.label}
     >

@@ -36,10 +36,10 @@ export function generateTicket(): string {
  * Returns true if the ticket is valid, not yet used, and not expired.
  * A valid ticket is marked as used (single-use) and cannot be reused.
  */
-export function validateTicket(ticket: string | null): boolean {
-	if (!ticket) return false;
+export function validateTicket(ticket: null | string): boolean {
+	if (!ticket) {return false;}
 	const entry = tickets.get(ticket);
-	if (!entry || entry.used) return false;
+	if (!entry || entry.used) {return false;}
 	if (Date.now() - entry.createdAt > 30_000) {
 		tickets.delete(ticket);
 		return false;
@@ -53,6 +53,6 @@ export function validateTicket(ticket: string | null): boolean {
 setInterval(() => {
 	const now = Date.now();
 	for (const [key, val] of tickets) {
-		if (now - val.createdAt > 60_000) tickets.delete(key);
+		if (now - val.createdAt > 60_000) {tickets.delete(key);}
 	}
 }, 60_000).unref();

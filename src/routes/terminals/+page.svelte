@@ -2,7 +2,15 @@
   import type { ShooterConfig } from '$lib/types/config';
 
   import { goto } from '$app/navigation';
-  import { Button, EmptyState, Icon } from '$lib/modules/client/common';
+  import {
+    Button,
+    EmptyState,
+    formatRelativeTime,
+    getCached,
+    Icon,
+    isShooterConfig,
+    setCache,
+  } from '$lib/modules/client/common';
   import LaunchSheet from '$lib/modules/client/terminal/LaunchSheet.svelte';
   import { onDestroy, onMount } from 'svelte';
 
@@ -34,37 +42,11 @@
   const runningTerminals = $derived(terminals.filter((t) => t.status === 'running'));
   const exitedTerminals = $derived(terminals.filter((t) => t.status === 'exited'));
 
-  // Cache helpers using sessionStorage
-  function getCached(key: string): unknown {
-    try {
-      const item = sessionStorage.getItem(key);
-      if (!item) {
-        return null;
-      }
-      const { data, timestamp } = JSON.parse(item) as { data: unknown; timestamp: number };
-      // Cache valid for 10 seconds (matches poll interval)
-      if (Date.now() - timestamp > 10000) {
-        return null;
-      }
-      return data;
-    } catch {
-      return null;
-    }
-  }
-
-  function setCache(key: string, data: unknown): void {
-    try {
-      sessionStorage.setItem(key, JSON.stringify({ data, timestamp: Date.now() }));
-    } catch {
-      // sessionStorage full — silently ignore
-    }
-  }
-
   onMount(() => {
     loadConfiguration();
 
-    // Show cached data immediately
-    const cached = getCached(CACHE_KEY) as null | Terminal[];
+    // Show cached data immediately (10s TTL matches poll interval)
+    const cached = getCached(CACHE_KEY, 10_000) as null | Terminal[];
     if (cached) {
       terminals = cached;
       loading = false;
@@ -86,12 +68,6 @@
       pollTimer = null;
     }
   });
-
-  function isShooterConfig(value: unknown): value is ShooterConfig {
-    return (
-      typeof value === 'object' && value !== null && 'apiKey' in value && 'deviceToken' in value
-    );
-  }
 
   function loadConfiguration(): void {
     try {
@@ -188,22 +164,6 @@
       return { class: 'badge-ai', label: 'AI' };
     }
     return { class: 'badge-shell', label: 'SHELL' };
-  }
-
-  function formatRelativeTime(ts: string): string {
-    const diff = Date.now() - new Date(ts).getTime();
-    const mins = Math.floor(diff / 60000);
-    if (mins < 1) {
-      return 'just now';
-    }
-    if (mins < 60) {
-      return `${mins}m ago`;
-    }
-    const hrs = Math.floor(mins / 60);
-    if (hrs < 24) {
-      return `${hrs}h ago`;
-    }
-    return `${Math.floor(hrs / 24)}d ago`;
   }
 
   function truncatePath(path: string, maxLen = 40): string {
@@ -305,7 +265,7 @@
     </EmptyState>
   {:else if terminals.length === 0}
     <EmptyState
-      icon="play"
+      icon="terminal"
       title="No terminals"
       description="Launch a new terminal session to get started. Terminal sessions will appear here once created."
     >
@@ -433,8 +393,8 @@
   }
 
   .plus-icon {
-    font-size: 16px;
-    font-weight: 500;
+    font-size: 14px;
+    font-weight: 600;
     line-height: 1;
   }
 
@@ -674,14 +634,6 @@
       gap: var(--space-4);
     }
 
-    .page-actions {
-      width: 100%;
-    }
-
-    .page-actions :global(.btn) {
-      flex: 1;
-    }
-
     .terminal-card {
       padding: var(--space-3);
     }
@@ -695,6 +647,10 @@
     .terminal-time {
       align-self: flex-start;
     }
+
+    .terminal-command {
+      max-width: 160px;
+    }
   }
 
   @media (max-width: 480px) {
@@ -705,6 +661,10 @@
 
     .page-actions :global(button) {
       width: 100%;
+    }
+
+    .page-actions :global(.btn) {
+      flex: 1;
     }
 
     .terminal-command {

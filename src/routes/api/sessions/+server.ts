@@ -57,7 +57,7 @@ function getMergedProjects(): ProjectGroup[] {
 
 export const GET: RequestHandler = ({ request, url }) => {
   const authError = validateAuth(request);
-  if (authError) return authError;
+  if (authError) {return authError;}
 
   const sessionId = url.searchParams.get('id');
 

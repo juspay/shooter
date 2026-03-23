@@ -2,6 +2,8 @@ import { env } from '$env/dynamic/private';
 import { LibraryAPNsService } from '$lib/modules/server/apn/library-apns';
 import { addNotification, getNotifications } from '$lib/modules/server/apn/notification-history';
 import { createPendingRequest } from '$lib/modules/server/apn/pending-requests';
+import { validateAuth } from '$lib/modules/server/auth';
+import { isFCMConfigured, sendFCMNotification } from '$lib/modules/server/fcm/fcm-service.js';
 import { json } from '@sveltejs/kit';
 
 import type { RequestHandler } from './$types';
@@ -128,9 +130,6 @@ function isDuplicateNotification(title: string, message: string, data?: Notifica
     }
   }
 
-  // Record this notification
-  notificationCache.set(key, now);
-
   // Clean up old entries
   for (const [k, v] of notificationCache.entries()) {
     if (now - v > DEDUP_WINDOW) {
@@ -138,7 +137,15 @@ function isDuplicateNotification(title: string, message: string, data?: Notifica
     }
   }
 
+  // Do NOT record here — caller must call recordNotification() after
+  // successful delivery to avoid cache poisoning on send failure.
   return false;
+}
+
+/** Record a notification key in the dedup cache after successful delivery. */
+function recordNotification(title: string, message: string, data?: NotificationData): void {
+  const key = `${title}|${message}|${data?.category || 'unknown'}`;
+  notificationCache.set(key, Date.now());
 }
 
 export const POST: RequestHandler = async ({ request }) => {
@@ -146,19 +153,9 @@ export const POST: RequestHandler = async ({ request }) => {
     // Use singleton APNs client to reuse HTTP/2 connection
     const apnsClient = getAPNsClient();
 
-    // Validate API key
-    const authHeader = request.headers.get('authorization');
-
-    if (!authHeader?.startsWith('Bearer ')) {
-      return json({ error: 'Missing or invalid authorization header' }, { status: 401 });
-    }
-
-    const apiKey = authHeader.substring(7);
-    const expectedKey = env.API_KEY?.trim();
-
-    if (apiKey !== expectedKey) {
-      return json({ error: 'Invalid API key' }, { status: 401 });
-    }
+    // Validate API key using timing-safe comparison
+    const authError = validateAuth(request);
+    if (authError) return authError;
 
     // Parse request body
     const body = (await request.json()) as NotificationRequest;
@@ -197,31 +194,7 @@ export const POST: RequestHandler = async ({ request }) => {
       });
     }
 
-    // Check APNs configuration
-    if (!apnsClient.isConfigured()) {
-      return json(
-        {
-          details: 'Missing APNS_KEY, APNS_KEY_ID, or APNS_TEAM_ID environment variables',
-          error: 'APNs client not configured',
-        },
-        { status: 500 }
-      );
-    }
-
-    // Get device token
-    const deviceToken = env.DEVICE_TOKEN?.trim();
-
-    if (!deviceToken) {
-      return json(
-        {
-          details: 'DEVICE_TOKEN environment variable is missing',
-          error: 'No device token configured',
-        },
-        { status: 500 }
-      );
-    }
-
-    // Send notification
+    // Build notification payload (shared between APNs and FCM)
     const payload = {
       badge: 1,
       body: message,
@@ -238,66 +211,182 @@ export const POST: RequestHandler = async ({ request }) => {
       title,
     };
 
-    try {
-      const result = await apnsClient.sendNotification(deviceToken, payload);
+    // Platform-based routing: Android (FCM) or iOS (APNs)
+    const platform = env.DEVICE_PLATFORM || 'ios';
 
-      // If this is a bidirectional permission request, store it for polling
-      // only after confirming APNs delivery succeeded
-      if (waitForResponse) {
-        createPendingRequest(canonicalRequestId, {
-          sessionId: (data?.sessionId as string) || '',
-          toolInput: (data?.toolInput as Record<string, unknown>) || {},
-          toolName: (data?.toolName as string) || '',
-        });
+    if (platform === 'android') {
+      // --- FCM (Android) path ---
+      if (!isFCMConfigured()) {
+        return json(
+          {
+            details: 'Missing FCM_PROJECT_ID, FCM_CLIENT_EMAIL, or FCM_PRIVATE_KEY environment variables',
+            error: 'FCM not configured',
+          },
+          { status: 500 }
+        );
       }
 
-      addNotification({
-        category: data?.category,
-        data: data as Record<string, unknown>,
-        id: canonicalRequestId,
-        message,
-        project: data?.project,
-        source: data?.source,
-        status: 'sent',
-        timestamp: new Date().toISOString(),
-        title,
-        tool: data?.tool,
-      });
+      const androidToken = (env.ANDROID_DEVICE_TOKEN || env.DEVICE_TOKEN)?.trim();
 
-      return json({
-        message: 'Notification sent successfully',
-        requestId: canonicalRequestId,
-        result,
-        success: true,
-        timestamp: new Date().toISOString(),
-      });
-    } catch (notificationError) {
-      const err = notificationError as Error;
-      console.error(`[notify] APNs delivery failed: ${err.message}`);
+      if (!androidToken) {
+        return json(
+          {
+            details: 'ANDROID_DEVICE_TOKEN or DEVICE_TOKEN environment variable is missing',
+            error: 'No device token configured',
+          },
+          { status: 500 }
+        );
+      }
 
-      addNotification({
-        category: data?.category,
-        data: data as Record<string, unknown>,
-        error: err.message,
-        id: canonicalRequestId,
-        message,
-        project: data?.project,
-        source: data?.source,
-        status: 'failed',
-        timestamp: new Date().toISOString(),
-        title,
-        tool: data?.tool,
-      });
+      const fcmResult = await sendFCMNotification(androidToken, payload);
 
-      return json(
-        {
-          details: err.message,
-          error: 'Failed to send notification',
-          requestId: canonicalRequestId,
+      if (fcmResult.success) {
+        // Record in dedup cache only after successful delivery
+        recordNotification(title, message, data);
+
+        if (waitForResponse) {
+          createPendingRequest(canonicalRequestId, {
+            sessionId: (data?.sessionId as string) || '',
+            toolInput: (data?.toolInput as Record<string, unknown>) || {},
+            toolName: (data?.toolName as string) || '',
+          });
+        }
+
+        addNotification({
+          category: data?.category,
+          data: data as Record<string, unknown>,
+          id: canonicalRequestId,
+          message,
+          project: data?.project,
+          source: data?.source,
+          status: 'sent',
           timestamp: new Date().toISOString(),
-        },
-        { status: 500 }
-      );
+          title,
+          tool: data?.tool,
+        });
+
+        return json({
+          message: 'Notification sent successfully',
+          requestId: canonicalRequestId,
+          result: { messageId: fcmResult.messageId },
+          success: true,
+          timestamp: new Date().toISOString(),
+        });
+      } else {
+        console.error(`[notify] FCM delivery failed: ${fcmResult.error}`);
+
+        addNotification({
+          category: data?.category,
+          data: data as Record<string, unknown>,
+          error: fcmResult.error,
+          id: canonicalRequestId,
+          message,
+          project: data?.project,
+          source: data?.source,
+          status: 'failed',
+          timestamp: new Date().toISOString(),
+          title,
+          tool: data?.tool,
+        });
+
+        return json(
+          {
+            details: fcmResult.error,
+            error: 'Failed to send notification',
+            requestId: canonicalRequestId,
+            timestamp: new Date().toISOString(),
+          },
+          { status: 500 }
+        );
+      }
+    } else {
+      // --- APNs (iOS) path ---
+      if (!apnsClient.isConfigured()) {
+        return json(
+          {
+            details: 'Missing APNS_KEY, APNS_KEY_ID, or APNS_TEAM_ID environment variables',
+            error: 'APNs client not configured',
+          },
+          { status: 500 }
+        );
+      }
+
+      const deviceToken = env.DEVICE_TOKEN?.trim();
+
+      if (!deviceToken) {
+        return json(
+          {
+            details: 'DEVICE_TOKEN environment variable is missing',
+            error: 'No device token configured',
+          },
+          { status: 500 }
+        );
+      }
+
+      try {
+        const result = await apnsClient.sendNotification(deviceToken, payload);
+
+        // Record in dedup cache only after successful delivery
+        recordNotification(title, message, data);
+
+        // If this is a bidirectional permission request, store it for polling
+        // only after confirming APNs delivery succeeded
+        if (waitForResponse) {
+          createPendingRequest(canonicalRequestId, {
+            sessionId: (data?.sessionId as string) || '',
+            toolInput: (data?.toolInput as Record<string, unknown>) || {},
+            toolName: (data?.toolName as string) || '',
+          });
+        }
+
+        addNotification({
+          category: data?.category,
+          data: data as Record<string, unknown>,
+          id: canonicalRequestId,
+          message,
+          project: data?.project,
+          source: data?.source,
+          status: 'sent',
+          timestamp: new Date().toISOString(),
+          title,
+          tool: data?.tool,
+        });
+
+        return json({
+          message: 'Notification sent successfully',
+          requestId: canonicalRequestId,
+          result,
+          success: true,
+          timestamp: new Date().toISOString(),
+        });
+      } catch (notificationError) {
+        const err = notificationError as Error;
+        console.error(`[notify] APNs delivery failed: ${err.message}`);
+
+        addNotification({
+          category: data?.category,
+          data: data as Record<string, unknown>,
+          error: err.message,
+          id: canonicalRequestId,
+          message,
+          project: data?.project,
+          source: data?.source,
+          status: 'failed',
+          timestamp: new Date().toISOString(),
+          title,
+          tool: data?.tool,
+        });
+
+        return json(
+          {
+            details: err.message,
+            error: 'Failed to send notification',
+            requestId: canonicalRequestId,
+            timestamp: new Date().toISOString(),
+          },
+          { status: 500 }
+        );
+      }
     }
   } catch (error) {
     const err = error as Error;
@@ -314,18 +403,9 @@ export const POST: RequestHandler = async ({ request }) => {
 };
 
 export const GET: RequestHandler = ({ request, url }) => {
-  const authHeader = request.headers.get('authorization');
-
-  if (!authHeader?.startsWith('Bearer ')) {
-    return json({ error: 'Missing or invalid authorization header' }, { status: 401 });
-  }
-
-  const apiKey = authHeader.substring(7);
-  const expectedKey = env.API_KEY?.trim();
-
-  if (apiKey !== expectedKey) {
-    return json({ error: 'Invalid API key' }, { status: 401 });
-  }
+  // Validate API key using timing-safe comparison
+  const authError = validateAuth(request);
+  if (authError) return authError;
 
   const limit = parseInt(url.searchParams.get('limit') || '50');
   const notifications = getNotifications(limit);

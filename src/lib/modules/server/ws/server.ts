@@ -9,13 +9,13 @@ import type { IncomingMessage } from 'http';
 import type { Duplex } from 'stream';
 import type { WebSocket, WebSocketServer } from 'ws';
 
-import { handleTerminalConnection } from './terminal-handler.js';
-import { handleSessionConnection } from './session-handler.js';
 import {
-	handleEventsConnection,
 	broadcastEvent as broadcastEventToClients,
 	getEventsClientCount,
+	handleEventsConnection,
 } from './events-handler.js';
+import { handleSessionConnection } from './session-handler.js';
+import { handleTerminalConnection } from './terminal-handler.js';
 export type { ShooterEvent } from './events-handler.js';
 
 // ── Connection tracking ──────────────────────────────────────────────
@@ -26,18 +26,18 @@ const allConnections = new Set<WebSocket>();
 // ── Public API ───────────────────────────────────────────────────────
 
 /**
+ * Returns the set of all tracked connections (needed by keepalive module).
+ */
+export function getAllConnections(): Set<WebSocket> {
+	return allConnections;
+}
+
+/**
  * Returns the number of clients connected to the events channel.
  * Used by the notifier to decide between WebSocket broadcast vs APNs push.
  */
 export function getConnectedClientCount(): number {
 	return getEventsClientCount();
-}
-
-/**
- * Returns the set of all tracked connections (needed by keepalive module).
- */
-export function getAllConnections(): Set<WebSocket> {
-	return allConnections;
 }
 
 /**
@@ -54,8 +54,8 @@ export function setupWebSocketHandlers(
 	const pathname = url.pathname;
 
 	// Route matching
-	const terminalMatch = pathname.match(/^\/ws\/terminal\/(.+)$/);
-	const sessionMatch = pathname.match(/^\/ws\/session\/(.+)$/);
+	const terminalMatch = /^\/ws\/terminal\/(.+)$/.exec(pathname);
+	const sessionMatch = /^\/ws\/session\/(.+)$/.exec(pathname);
 	const isEvents = pathname === '/ws/events';
 
 	if (!terminalMatch && !sessionMatch && !isEvents) {

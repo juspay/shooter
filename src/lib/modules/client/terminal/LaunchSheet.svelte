@@ -30,32 +30,32 @@
 
   const presets: Preset[] = [
     {
-      label: 'Claude Code',
-      command: 'claude',
       args: [],
-      border: 'rgba(167,139,250,0.5)',
       bg: 'rgba(167,139,250,0.1)',
+      border: 'rgba(167,139,250,0.5)',
+      command: 'claude',
+      label: 'Claude Code',
     },
     {
-      label: 'OpenCode',
-      command: 'opencode',
       args: [],
-      border: 'rgba(56,189,248,0.5)',
       bg: 'rgba(56,189,248,0.1)',
+      border: 'rgba(56,189,248,0.5)',
+      command: 'opencode',
+      label: 'OpenCode',
     },
     {
-      label: 'Shell / zsh',
-      command: 'zsh',
       args: [],
-      border: 'rgba(34,197,94,0.5)',
       bg: 'rgba(34,197,94,0.1)',
+      border: 'rgba(34,197,94,0.5)',
+      command: 'zsh',
+      label: 'Shell / zsh',
     },
     {
-      label: 'Bash',
-      command: 'bash',
       args: [],
-      border: 'rgba(245,158,11,0.5)',
       bg: 'rgba(245,158,11,0.1)',
+      border: 'rgba(245,158,11,0.5)',
+      command: 'bash',
+      label: 'Bash',
     },
   ];
 
@@ -76,7 +76,7 @@
       const response = await fetch('/api/sessions?limit=50&offset=0', {
         headers: { Authorization: `Bearer ${apiKey}` },
       });
-      if (!response.ok) return;
+      if (!response.ok) {return;}
       const data: { projects: { fullPath: string }[] } = await response.json();
       const paths = data.projects
         .map((p) => p.fullPath)
@@ -99,7 +99,7 @@
   }
 
   function getCommand(): string {
-    if (isCustom()) return customCommand.trim().split(/\s+/)[0] || '';
+    if (isCustom()) {return customCommand.trim().split(/\s+/)[0] || '';}
     return presets[selectedPreset].command;
   }
 
@@ -114,30 +114,30 @@
   function getEffectiveCwd(): string {
     // Custom path takes priority over dropdown selection
     const custom = customCwd.trim();
-    if (custom) return custom;
-    if (selectedCwd) return selectedCwd;
+    if (custom) {return custom;}
+    if (selectedCwd) {return selectedCwd;}
     // Safe fallback when no projects exist and no custom path entered
     return '/tmp';
   }
 
   async function handleLaunch(): Promise<void> {
     const command = getCommand();
-    if (!command) return;
+    if (!command) {return;}
 
     launching = true;
     launchError = '';
     try {
       const response = await fetch('/api/terminals', {
-        method: 'POST',
+        body: JSON.stringify({
+          args: getArgs(),
+          command,
+          cwd: getEffectiveCwd() || undefined,
+        }),
         headers: {
           Authorization: `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          command,
-          args: getArgs(),
-          cwd: getEffectiveCwd() || undefined,
-        }),
+        method: 'POST',
       });
 
       if (!response.ok) {
@@ -188,7 +188,7 @@
               class="preset-card"
               class:selected={selectedPreset === i}
               style="--preset-border: {preset.border}; --preset-bg: {preset.bg};"
-              onclick={() => selectPreset(i)}
+              onclick={() => { selectPreset(i); }}
             >
               <span class="preset-label">{preset.label}</span>
             </button>

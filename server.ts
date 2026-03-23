@@ -19,6 +19,8 @@ import {
 } from './src/lib/modules/server/ws/session-handler.js';
 import { ptyManager } from './src/lib/modules/server/terminal/pty-manager.js';
 import { sessionWatcher } from './src/lib/modules/server/terminal/session-watcher.js';
+import { openCodeWatcher } from './src/lib/modules/server/terminal/opencode-watcher.js';
+import type { ConversationMessage } from './src/lib/modules/server/sessions/types.js';
 
 // ── Adapters ─────────────────────────────────────────────────────────
 // The WS handlers define their own duck-typed interfaces (PtyManagerLike,
@@ -42,15 +44,23 @@ const ptyManagerAdapter = {
  * Adapt SessionWatcher (`.watch()` + `.getHistory()`) to the session
  * handler's expected `.subscribe()` + `.getHistory()` interface.
  *
- * `.subscribe()` starts watching the file and returns an unsubscribe
- * function that stops the watcher.
+ * Both watchers now deliver ConversationMessage[] — the adapter just
+ * routes to the correct watcher based on the session key format.
  */
 const sessionWatcherAdapter = {
 	getHistory(sessionFile: string) {
-		return sessionWatcher.getRawEntries(sessionFile);
+		// Check if this is an OpenCode session ID (not a file path)
+		if (!sessionFile.includes('/') && !sessionFile.includes('.jsonl')) {
+			return openCodeWatcher.getHistory(sessionFile);
+		}
+		return sessionWatcher.getHistory(sessionFile);
 	},
-	subscribe(sessionFile: string, callback: (entries: unknown[]) => void) {
-		sessionWatcher.watch(sessionFile, callback as Parameters<typeof sessionWatcher.watch>[1]);
+	subscribe(sessionFile: string, callback: Parameters<typeof sessionWatcher.watch>[1]) {
+		if (!sessionFile.includes('/') && !sessionFile.includes('.jsonl')) {
+			openCodeWatcher.watch(sessionFile, callback as (messages: ConversationMessage[]) => void);
+			return () => openCodeWatcher.stop(sessionFile, callback as (messages: ConversationMessage[]) => void);
+		}
+		sessionWatcher.watch(sessionFile, callback);
 		return () => sessionWatcher.stop(sessionFile);
 	},
 };
@@ -60,8 +70,11 @@ const sessionWatcherAdapter = {
 // The adapters bridge the gap between the real singletons' public APIs and
 // the duck-typed interfaces expected by each WS handler.
 setTerminalHandlerPtyManager(ptyManagerAdapter);
-setSessionHandlerPtyManager(ptyManagerAdapter as unknown as Parameters<typeof setSessionHandlerPtyManager>[0]);
-setSessionWatcher(sessionWatcherAdapter as unknown as Parameters<typeof setSessionWatcher>[0]);
+setSessionHandlerPtyManager(ptyManagerAdapter);
+setSessionWatcher(sessionWatcherAdapter);
+
+// Recover persisted terminals before accepting connections
+await ptyManager.reconnectAll();
 
 // ── HTTP server wrapping SvelteKit ───────────────────────────────────
 
@@ -104,8 +117,9 @@ function shutdown(signal: string): void {
 	console.log(`\n${signal} received — shutting down…`);
 
 	stopKeepalive();
-	ptyManager.destroy();
+	ptyManager.disconnectAll();
 	sessionWatcher.stopAll();
+	openCodeWatcher.stopAll();
 
 	wss.close(() => {
 		server.close(() => {

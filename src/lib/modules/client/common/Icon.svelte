@@ -7,6 +7,7 @@
   import Play from '$lib/assets/icons/play.svg?raw';
   import Refresh from '$lib/assets/icons/refresh.svg?raw';
   import Settings from '$lib/assets/icons/settings.svg?raw';
+  import Terminal from '$lib/assets/icons/terminal.svg?raw';
   import Tool from '$lib/assets/icons/tool.svg?raw';
   import XCircle from '$lib/assets/icons/x-circle.svg?raw';
 
@@ -19,6 +20,7 @@
     play: Play,
     refresh: Refresh,
     settings: Settings,
+    terminal: Terminal,
     tool: Tool,
     'x-circle': XCircle,
   };

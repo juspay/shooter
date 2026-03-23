@@ -1,410 +1,89 @@
 // WebSocket handler for /ws/session/:id — structured session stream.
 // Used by the Chat view for AI sessions. Sends parsed conversation history
-// on connect and streams new entries (messages, tool-use, tool-result,
-// thinking) as they appear in the session file.
+// on connect and streams new messages (text, tool-use, tool-result,
+// thinking) as they appear.
 
 import type { WebSocket } from 'ws';
 
-// ── Types ────────────────────────────────────────────────────────────
+import type { ConversationMessage, MessagePart } from '../sessions/types';
 
-/** Content block in a message (text, image, tool-use, etc.). */
-type ContentBlock = Record<string, unknown>;
+// ── Types ────────────────────────────────────────────────────────────
 
 /** Inbound messages from the client. */
 type ClientMessage =
-  | { type: 'send-input'; text: string }
-  | { type: 'cancel' }
-  | { type: 'subscribe'; sessionId: string };
-
-/** Outbound messages to the client. */
-type ServerMessage =
-  | { type: 'history'; messages: HistoryMessage[] }
-  | { type: 'message'; role: string; content: ContentBlock[]; timestamp: string }
-  | { type: 'tool-use'; name: string; input: Record<string, unknown>; status: string; id: string }
-  | { type: 'tool-result'; id: string; output: string; status: string; isError: boolean }
-  | { type: 'thinking'; text: string }
-  | { type: 'session-end' }
-  | { type: 'error'; message: string };
+  | { sessionId: string; type: 'subscribe'; }
+  | { text: string; type: 'send-input'; }
+  | { type: 'cancel' };
 
 /** A message in the history payload. */
 interface HistoryMessage {
-  id: string;
-  role: string;
   content: HistoryPart[];
+  id: string;
+  role: MessageRole;
   timestamp: string;
 }
 
-/** A single part within a history message. */
-interface HistoryPart {
-  type: string;
-  [key: string]: unknown;
-}
-
-// ── PTY Manager interface ────────────────────────────────────────────
+/** A single part within a history message — discriminated union. */
+type HistoryPart =
+  | { content: string; type: 'text'; }
+  | { content: string; type: 'thinking'; }
+  | { id: string; input: Record<string, unknown>; toolName: string; type: 'tool_use'; }
+  | { isError: boolean; output: string; toolUseId: string; type: 'tool_result'; };
 
 interface ManagedTerminal {
   id: string;
+  openCodeSessionId: null | string;
   pty: {
-    write: (data: string) => void;
     pid: number;
+    write: (data: string) => void;
   };
-  sessionFile: string | null;
-  status: 'running' | 'exited';
+  sessionFile: null | string;
+  status: 'exited' | 'running';
 }
+
+/** Role values that appear in session messages. */
+type MessageRole = 'assistant' | 'system' | 'user';
 
 interface PtyManagerLike {
   getTerminal: (id: string) => ManagedTerminal | undefined;
 }
 
-// ── Session Watcher interface ────────────────────────────────────────
+// ── PTY Manager interface ────────────────────────────────────────────
 
-/** A parsed session entry from JSONL or SQLite. */
-interface SessionEntry {
-  type: string;
-  uuid?: string;
-  timestamp?: string;
-  message?: {
-    id?: string;
-    role?: string;
-    content?: unknown;
-    stop_reason?: string;
-  };
-  toolUseResult?: {
-    content?: unknown;
-  };
-}
-
-/** Callback invoked when new entries appear in a session file. */
-type EntryCallback = (entries: SessionEntry[]) => void;
+/** Outbound messages to the client. */
+type ServerMessage =
+  | { content: TextContentBlock[]; role: MessageRole; timestamp: string; type: 'message'; }
+  | { id: string; input: Record<string, unknown>; name: string; status: 'running'; type: 'tool-use'; }
+  | { id: string; isError: boolean; output: string; status: 'done'; type: 'tool-result'; }
+  | { message: string; type: 'error'; }
+  | { messages: HistoryMessage[]; type: 'history'; }
+  | { text: string; type: 'thinking'; }
+  | { type: 'session-end' };
 
 interface SessionWatcherLike {
-  getHistory: (sessionFile: string) => SessionEntry[];
-  subscribe: (sessionFile: string, callback: EntryCallback) => () => void;
+  getHistory: (sessionFile: string) => ConversationMessage[];
+  subscribe: (sessionFile: string, callback: (messages: ConversationMessage[]) => void) => () => void;
+}
+
+// ── Session Watcher interface ────────────────────────────────────────
+
+/** Content block in the live 'message' payload. */
+interface TextContentBlock {
+  content: string;
+  type: 'text';
 }
 
 // ── Module-level references ──────────────────────────────────────────
 
-let _ptyManager: PtyManagerLike | null = null;
-let _sessionWatcher: SessionWatcherLike | null = null;
-
-/**
- * Register the PTY manager instance. Called once during server bootstrap.
- */
-export function setPtyManager(manager: PtyManagerLike): void {
-  _ptyManager = manager;
-}
-
-/**
- * Register the session watcher instance. Called once during server bootstrap.
- */
-export function setSessionWatcher(watcher: SessionWatcherLike): void {
-  _sessionWatcher = watcher;
-}
-
-// ── Helpers ──────────────────────────────────────────────────────────
-
-/** Safely send a JSON message over a WebSocket. */
-function safeSend(ws: WebSocket, msg: ServerMessage): boolean {
-  try {
-    if (ws.readyState !== 1 /* OPEN */) {
-      return false;
-    }
-    ws.send(JSON.stringify(msg));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/** Parse and validate an inbound client message. */
-function parseClientMessage(raw: string): ClientMessage | null {
-  try {
-    const msg = JSON.parse(raw);
-    if (!msg || typeof msg !== 'object' || typeof msg.type !== 'string') {
-      return null;
-    }
-
-    switch (msg.type) {
-      case 'send-input':
-        if (typeof msg.text !== 'string' || msg.text.length === 0) return null;
-        // Cap input length at 10KB to prevent abuse.
-        if (msg.text.length > 10240) return null;
-        return { type: 'send-input', text: msg.text };
-      case 'cancel':
-        return { type: 'cancel' };
-      case 'subscribe':
-        if (typeof msg.sessionId !== 'string' || msg.sessionId.length === 0) return null;
-        return { type: 'subscribe', sessionId: msg.sessionId };
-      default:
-        return null;
-    }
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Convert raw SessionEntry[] from the watcher into HistoryMessage[] for
- * the initial `history` payload. Groups assistant entries by message ID,
- * extracts text/thinking/tool_use/tool_result parts.
- */
-function entriesToHistoryMessages(entries: SessionEntry[]): HistoryMessage[] {
-  const messages: HistoryMessage[] = [];
-  const assistantTurns = new Map<string, { content: HistoryPart[]; timestamp: string }>();
-
-  for (const entry of entries) {
-    try {
-      if (entry.type === 'user') {
-        const msg = entry.message;
-        if (!msg?.content) continue;
-
-        const parts: HistoryPart[] = [];
-        const content = Array.isArray(msg.content) ? msg.content : [msg.content];
-
-        for (const block of content) {
-          if (typeof block === 'string') {
-            parts.push({ type: 'text', content: block });
-          } else if (block && typeof block === 'object') {
-            const b = block as Record<string, unknown>;
-            if (b.type === 'text') {
-              parts.push({ type: 'text', content: (b.text as string) || '' });
-            } else if (b.type === 'tool_result') {
-              let output = '';
-              if (typeof b.content === 'string') {
-                output = b.content;
-              } else if (Array.isArray(b.content)) {
-                output = (b.content as Record<string, unknown>[])
-                  .filter((c) => c.type === 'text')
-                  .map((c) => c.text as string)
-                  .join('\n');
-              }
-              // Check toolUseResult for richer data.
-              if (entry.toolUseResult?.content) {
-                const trc = entry.toolUseResult.content;
-                if (typeof trc === 'string') {
-                  output = trc;
-                } else if (Array.isArray(trc)) {
-                  output = (trc as Record<string, unknown>[])
-                    .filter((c) => c.type === 'text')
-                    .map((c) => c.text as string)
-                    .join('\n');
-                }
-              }
-              parts.push({
-                type: 'tool_result',
-                toolUseId: (b.tool_use_id as string) || '',
-                output: typeof output === 'string' ? output.slice(0, 2000) : '',
-                isError: !!b.is_error,
-              });
-            }
-          }
-        }
-
-        if (parts.length > 0) {
-          messages.push({
-            id: entry.uuid || `user-${messages.length}`,
-            role: 'user',
-            content: parts,
-            timestamp: entry.timestamp || '',
-          });
-        }
-      } else if (entry.type === 'assistant') {
-        const msg = entry.message;
-        if (!msg?.content) continue;
-
-        const content = Array.isArray(msg.content) ? msg.content : [msg.content];
-        const msgId = msg.id || entry.uuid || `assistant-${messages.length}`;
-
-        for (const block of content) {
-          if (!block || typeof block !== 'object') continue;
-          const b = block as Record<string, unknown>;
-
-          let part: HistoryPart | null = null;
-          switch (b.type) {
-            case 'text':
-              part = { type: 'text', content: (b.text as string) || '' };
-              break;
-            case 'thinking':
-              part = { type: 'thinking', content: (b.thinking as string) || '' };
-              break;
-            case 'tool_use':
-              part = {
-                type: 'tool_use',
-                id: (b.id as string) || '',
-                toolName: (b.name as string) || 'Unknown',
-                input: (b.input as Record<string, unknown>) || {},
-              };
-              break;
-          }
-
-          if (part) {
-            if (!assistantTurns.has(msgId)) {
-              assistantTurns.set(msgId, { content: [], timestamp: entry.timestamp || '' });
-            }
-            assistantTurns.get(msgId)!.content.push(part);
-          }
-        }
-
-        // If this entry has a stop_reason, the turn is complete.
-        if (msg.stop_reason) {
-          const turn = assistantTurns.get(msgId);
-          if (turn && turn.content.length > 0) {
-            messages.push({
-              id: msgId,
-              role: 'assistant',
-              content: turn.content,
-              timestamp: turn.timestamp,
-            });
-            assistantTurns.delete(msgId);
-          }
-        }
-      }
-    } catch {
-      // Skip malformed entries.
-    }
-  }
-
-  // Flush remaining assistant turns (in-progress or missing stop_reason).
-  for (const [msgId, turn] of assistantTurns) {
-    if (turn.content.length > 0) {
-      messages.push({
-        id: msgId,
-        role: 'assistant',
-        content: turn.content,
-        timestamp: turn.timestamp,
-      });
-    }
-  }
-
-  return messages;
-}
-
-/**
- * Convert a single new SessionEntry into one or more ServerMessages for
- * the live stream. Returns an array because one entry may produce
- * multiple messages (e.g., an assistant entry with text + tool_use).
- */
-function entryToLiveMessages(entry: SessionEntry): ServerMessage[] {
-  const messages: ServerMessage[] = [];
-
-  try {
-    if (entry.type === 'user') {
-      const msg = entry.message;
-      if (!msg?.content) return messages;
-
-      const content = Array.isArray(msg.content) ? msg.content : [msg.content];
-      const contentBlocks: ContentBlock[] = [];
-
-      for (const block of content) {
-        if (typeof block === 'string') {
-          contentBlocks.push({ type: 'text', text: block });
-        } else if (block && typeof block === 'object') {
-          const b = block as Record<string, unknown>;
-          if (b.type === 'text') {
-            contentBlocks.push({ type: 'text', text: (b.text as string) || '' });
-          } else if (b.type === 'tool_result') {
-            let output = '';
-            if (typeof b.content === 'string') {
-              output = b.content;
-            } else if (Array.isArray(b.content)) {
-              output = (b.content as Record<string, unknown>[])
-                .filter((c) => c.type === 'text')
-                .map((c) => c.text as string)
-                .join('\n');
-            }
-            if (entry.toolUseResult?.content) {
-              const trc = entry.toolUseResult.content;
-              if (typeof trc === 'string') {
-                output = trc;
-              } else if (Array.isArray(trc)) {
-                output = (trc as Record<string, unknown>[])
-                  .filter((c) => c.type === 'text')
-                  .map((c) => c.text as string)
-                  .join('\n');
-              }
-            }
-            messages.push({
-              type: 'tool-result',
-              id: (b.tool_use_id as string) || '',
-              output: typeof output === 'string' ? output.slice(0, 2000) : '',
-              status: 'done',
-              isError: !!b.is_error,
-            });
-          }
-        }
-      }
-
-      if (contentBlocks.length > 0) {
-        messages.push({
-          type: 'message',
-          role: 'user',
-          content: contentBlocks,
-          timestamp: entry.timestamp || '',
-        });
-      }
-    } else if (entry.type === 'assistant') {
-      const msg = entry.message;
-      if (!msg?.content) return messages;
-
-      const content = Array.isArray(msg.content) ? msg.content : [msg.content];
-      const textBlocks: ContentBlock[] = [];
-
-      for (const block of content) {
-        if (!block || typeof block !== 'object') continue;
-        const b = block as Record<string, unknown>;
-
-        switch (b.type) {
-          case 'text':
-            textBlocks.push({ type: 'text', text: (b.text as string) || '' });
-            break;
-          case 'thinking':
-            messages.push({
-              type: 'thinking',
-              text: (b.thinking as string) || '',
-            });
-            break;
-          case 'tool_use':
-            messages.push({
-              type: 'tool-use',
-              name: (b.name as string) || 'Unknown',
-              input: (b.input as Record<string, unknown>) || {},
-              status: 'running',
-              id: (b.id as string) || '',
-            });
-            break;
-        }
-      }
-
-      if (textBlocks.length > 0) {
-        messages.push({
-          type: 'message',
-          role: 'assistant',
-          content: textBlocks,
-          timestamp: entry.timestamp || '',
-        });
-      }
-
-      // If the assistant turn is complete, optionally signal it.
-      if (msg.stop_reason === 'end_turn') {
-        messages.push({ type: 'session-end' });
-      }
-    }
-  } catch {
-    // Skip malformed entries.
-  }
-
-  return messages;
-}
-
-// ── Connection state ─────────────────────────────────────────────────
+let _ptyManager: null | PtyManagerLike = null;
+let _sessionWatcher: null | SessionWatcherLike = null;
 
 /** Per-connection state tracked for cleanup. */
 interface ConnectionState {
+  retryInterval: ReturnType<typeof setInterval> | null;
   terminalId: string;
   unsubscribe: (() => void) | null;
 }
-
-// ── Main handler ─────────────────────────────────────────────────────
 
 /**
  * Handle a new WebSocket connection on the `/ws/session/:id` channel.
@@ -412,18 +91,18 @@ interface ConnectionState {
  * as they appear in the session file.
  */
 export function handleSessionConnection(ws: WebSocket, terminalId: string): void {
-  const state: ConnectionState = { terminalId, unsubscribe: null };
+  const state: ConnectionState = { retryInterval: null, terminalId, unsubscribe: null };
 
   // ── 1. Look up the terminal ──────────────────────────────────────
   if (!_ptyManager) {
-    safeSend(ws, { type: 'error', message: 'PTY manager not initialised' });
+    safeSend(ws, { message: 'PTY manager not initialised', type: 'error' });
     ws.close(1011, 'PTY manager not initialised');
     return;
   }
 
   const terminal = _ptyManager.getTerminal(terminalId);
   if (!terminal) {
-    safeSend(ws, { type: 'error', message: `Terminal not found: ${terminalId}` });
+    safeSend(ws, { message: `Terminal not found: ${terminalId}`, type: 'error' });
     ws.close(1008, 'Terminal not found');
     return;
   }
@@ -441,31 +120,26 @@ export function handleSessionConnection(ws: WebSocket, terminalId: string): void
 
     try {
       switch (msg.type) {
+        case 'cancel': {
+          // Send SIGINT to the terminal process.
+          const currentTerminal = _ptyManager?.getTerminal(state.terminalId);
+          if (!currentTerminal || currentTerminal.status === 'exited') {
+            safeSend(ws, { message: 'Terminal has exited', type: 'error' });
+            return;
+          }
+          currentTerminal.pty.write('\x03');
+          break;
+        }
+
         case 'send-input': {
           // Write text + newline to PTY stdin (the Chat view sends complete
           // messages, not raw keystrokes).
           const currentTerminal = _ptyManager?.getTerminal(state.terminalId);
           if (!currentTerminal || currentTerminal.status === 'exited') {
-            safeSend(ws, { type: 'error', message: 'Terminal has exited' });
+            safeSend(ws, { message: 'Terminal has exited', type: 'error' });
             return;
           }
-          currentTerminal.pty.write(msg.text + '\n');
-          break;
-        }
-
-        case 'cancel': {
-          // Send SIGINT to the terminal process.
-          const currentTerminal = _ptyManager?.getTerminal(state.terminalId);
-          if (!currentTerminal || currentTerminal.status === 'exited') {
-            safeSend(ws, { type: 'error', message: 'Terminal has exited' });
-            return;
-          }
-          try {
-            process.kill(currentTerminal.pty.pid, 'SIGINT');
-          } catch (err) {
-            const errMsg = err instanceof Error ? err.message : String(err);
-            safeSend(ws, { type: 'error', message: `Failed to cancel: ${errMsg}` });
-          }
+          currentTerminal.pty.write(`${msg.text  }\n`);
           break;
         }
 
@@ -475,13 +149,17 @@ export function handleSessionConnection(ws: WebSocket, terminalId: string): void
           const newTerminal = _ptyManager?.getTerminal(msg.sessionId);
           if (!newTerminal) {
             safeSend(ws, {
-              type: 'error',
               message: `Terminal not found: ${msg.sessionId}`,
+              type: 'error',
             });
             return;
           }
 
-          // Tear down old subscription.
+          // Tear down old subscription and retry interval.
+          if (state.retryInterval) {
+            clearInterval(state.retryInterval);
+            state.retryInterval = null;
+          }
           if (state.unsubscribe) {
             state.unsubscribe();
             state.unsubscribe = null;
@@ -495,12 +173,16 @@ export function handleSessionConnection(ws: WebSocket, terminalId: string): void
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
       console.error(`[ws/session] Error handling ${msg.type} for ${state.terminalId}:`, errMsg);
-      safeSend(ws, { type: 'error', message: `Failed to handle ${msg.type}: ${errMsg}` });
+      safeSend(ws, { message: `Failed to handle ${msg.type}: ${errMsg}`, type: 'error' });
     }
   });
 
   // ── 4. Cleanup on disconnect ─────────────────────────────────────
   ws.on('close', () => {
+    if (state.retryInterval) {
+      clearInterval(state.retryInterval);
+      state.retryInterval = null;
+    }
     if (state.unsubscribe) {
       state.unsubscribe();
       state.unsubscribe = null;
@@ -512,6 +194,148 @@ export function handleSessionConnection(ws: WebSocket, terminalId: string): void
   });
 }
 
+// ── Helpers ──────────────────────────────────────────────────────────
+
+/**
+ * Register the PTY manager instance. Called once during server bootstrap.
+ */
+export function setPtyManager(manager: PtyManagerLike): void {
+  _ptyManager = manager;
+}
+
+/**
+ * Register the session watcher instance. Called once during server bootstrap.
+ */
+export function setSessionWatcher(watcher: SessionWatcherLike): void {
+  _sessionWatcher = watcher;
+}
+
+// ── Conversion: ConversationMessage → wire format ────────────────────
+
+/**
+ * Convert ConversationMessage[] into HistoryMessage[] for the initial
+ * `history` payload sent when a client connects.
+ */
+function conversationToHistory(messages: ConversationMessage[]): HistoryMessage[] {
+  return messages
+    .filter(msg => msg.parts.length > 0)
+    .map(msg => ({
+      content: msg.parts.map(partToHistoryPart),
+      id: msg.id,
+      role: msg.role,
+      timestamp: msg.timestamp,
+    }));
+}
+
+/**
+ * Convert a single ConversationMessage into one or more ServerMessages
+ * for the live stream.
+ */
+function conversationToLive(msg: ConversationMessage): ServerMessage[] {
+  const messages: ServerMessage[] = [];
+  const textBlocks: TextContentBlock[] = [];
+
+  for (const part of msg.parts) {
+    switch (part.type) {
+      case 'text':
+        textBlocks.push({ content: part.content, type: 'text' });
+        break;
+      case 'thinking':
+        messages.push({ text: part.content, type: 'thinking' });
+        break;
+      case 'tool_result':
+        messages.push({
+          id: part.toolUseId,
+          isError: part.isError,
+          output: part.output,
+          status: 'done',
+          type: 'tool-result',
+        });
+        break;
+      case 'tool_use':
+        messages.push({
+          id: part.id,
+          input: part.input,
+          name: part.toolName,
+          status: 'running',
+          type: 'tool-use',
+        });
+        break;
+    }
+  }
+
+  if (textBlocks.length > 0) {
+    messages.push({
+      content: textBlocks,
+      role: msg.role,
+      timestamp: msg.timestamp,
+      type: 'message',
+    });
+  }
+
+  return messages;
+}
+
+/** Parse and validate an inbound client message. */
+function parseClientMessage(raw: string): ClientMessage | null {
+  try {
+    const msg = JSON.parse(raw);
+    if (!msg || typeof msg !== 'object' || typeof msg.type !== 'string') {
+      return null;
+    }
+
+    switch (msg.type) {
+      case 'cancel':
+        return { type: 'cancel' };
+      case 'send-input':
+        if (typeof msg.text !== 'string' || msg.text.length === 0) {return null;}
+        // Cap input length at 10KB to prevent abuse.
+        if (msg.text.length > 10240) {return null;}
+        return { text: msg.text, type: 'send-input' };
+      case 'subscribe':
+        if (typeof msg.sessionId !== 'string' || msg.sessionId.length === 0) {return null;}
+        return { sessionId: msg.sessionId, type: 'subscribe' };
+      default:
+        return null;
+    }
+  } catch {
+    return null;
+  }
+}
+
+// ── Connection state ─────────────────────────────────────────────────
+
+/**
+ * Map a single MessagePart to the HistoryPart wire format.
+ */
+function partToHistoryPart(part: MessagePart): HistoryPart {
+  switch (part.type) {
+    case 'text':
+      return { content: part.content, type: 'text' };
+    case 'thinking':
+      return { content: part.content, type: 'thinking' };
+    case 'tool_result':
+      return { isError: part.isError, output: part.output, toolUseId: part.toolUseId, type: 'tool_result' };
+    case 'tool_use':
+      return { id: part.id, input: part.input, toolName: part.toolName, type: 'tool_use' };
+  }
+}
+
+// ── Main handler ─────────────────────────────────────────────────────
+
+/** Safely send a JSON message over a WebSocket. */
+function safeSend(ws: WebSocket, msg: ServerMessage): boolean {
+  try {
+    if (ws.readyState !== 1 /* OPEN */) {
+      return false;
+    }
+    ws.send(JSON.stringify(msg));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Subscribe to a terminal's session file. Sends the full history as a
  * `history` message, then streams new entries as they appear.
@@ -521,44 +345,102 @@ function subscribeToSession(
   state: ConnectionState,
   terminal: ManagedTerminal
 ): void {
-  // If no session file (e.g., a plain shell), send empty history.
-  if (!terminal.sessionFile) {
-    safeSend(ws, { type: 'history', messages: [] });
+  // Use sessionFile for Claude Code (JSONL) or openCodeSessionId for OpenCode (SQLite).
+  const sessionKey = terminal.sessionFile || terminal.openCodeSessionId;
 
-    // If the terminal already exited, signal it.
+  // If no session key yet and the terminal is still running, the session ID
+  // may not have been discovered yet (e.g., pty-manager is still polling for
+  // the OpenCode session). Poll until it appears rather than giving up.
+  if (!sessionKey && terminal.status === 'running') {
+    safeSend(ws, { messages: [], type: 'history' });
+
+    // Clear any previous retry interval to prevent accumulation on re-subscribe.
+    if (state.retryInterval) {
+      clearInterval(state.retryInterval);
+      state.retryInterval = null;
+    }
+
+    state.retryInterval = setInterval(() => {
+      // Re-fetch the terminal to get the latest sessionFile / openCodeSessionId.
+      const freshTerminal = _ptyManager?.getTerminal(terminal.id);
+      if (!freshTerminal) {
+        if (state.retryInterval) {
+          clearInterval(state.retryInterval);
+          state.retryInterval = null;
+        }
+        return;
+      }
+
+      const key = freshTerminal.sessionFile || freshTerminal.openCodeSessionId;
+      if (key || freshTerminal.status === 'exited') {
+        if (state.retryInterval) {
+          clearInterval(state.retryInterval);
+          state.retryInterval = null;
+        }
+        if (key) {
+          // Session discovered — send history and subscribe.
+          subscribeWithSessionKey(ws, state, freshTerminal, key);
+        } else {
+          safeSend(ws, { type: 'session-end' });
+        }
+      }
+    }, 2000);
+
+    // Cleanup is handled by the single 'close' listener in handleSessionConnection.
+    return;
+  }
+
+  // If no session key (e.g., a plain shell or already exited), send empty history.
+  if (!sessionKey) {
+    safeSend(ws, { messages: [], type: 'history' });
+
     if (terminal.status === 'exited') {
       safeSend(ws, { type: 'session-end' });
     }
     return;
   }
 
+  subscribeWithSessionKey(ws, state, terminal, sessionKey);
+}
+
+/**
+ * Subscribe to a session using an already-known session key. Sends history
+ * and starts streaming new entries. Extracted so both the normal path and
+ * the retry-after-discovery path can share it.
+ */
+function subscribeWithSessionKey(
+  ws: WebSocket,
+  state: ConnectionState,
+  terminal: ManagedTerminal,
+  sessionKey: string
+): void {
   if (!_sessionWatcher) {
-    safeSend(ws, { type: 'error', message: 'Session watcher not initialised' });
-    safeSend(ws, { type: 'history', messages: [] });
+    safeSend(ws, { message: 'Session watcher not initialised', type: 'error' });
+    safeSend(ws, { messages: [], type: 'history' });
     return;
   }
 
   // ── Send full history ────────────────────────────────────────────
   try {
-    const allEntries = _sessionWatcher.getHistory(terminal.sessionFile);
-    const historyMessages = entriesToHistoryMessages(allEntries);
-    safeSend(ws, { type: 'history', messages: historyMessages });
+    const allMessages = _sessionWatcher.getHistory(sessionKey);
+    const historyMessages = conversationToHistory(allMessages);
+    safeSend(ws, { messages: historyMessages, type: 'history' });
   } catch (err) {
     console.error(`[ws/session] Failed to read history for ${terminal.id}:`, err);
-    safeSend(ws, { type: 'history', messages: [] });
+    safeSend(ws, { messages: [], type: 'history' });
   }
 
-  // ── Stream new entries ───────────────────────────────────────────
+  // ── Stream new messages ────────────────────────────────────────
   try {
     const unsubscribe = _sessionWatcher.subscribe(
-      terminal.sessionFile,
-      (entries: SessionEntry[]) => {
+      sessionKey,
+      (messages: ConversationMessage[]) => {
         if (ws.readyState !== 1 /* OPEN */) {
           return;
         }
 
-        for (const entry of entries) {
-          const liveMessages = entryToLiveMessages(entry);
+        for (const msg of messages) {
+          const liveMessages = conversationToLive(msg);
           for (const liveMsg of liveMessages) {
             safeSend(ws, liveMsg);
           }
@@ -570,7 +452,7 @@ function subscribeToSession(
     state.unsubscribe = unsubscribe;
   } catch (err) {
     console.error(`[ws/session] Failed to subscribe for ${terminal.id}:`, err);
-    safeSend(ws, { type: 'error', message: 'Failed to subscribe to session updates' });
+    safeSend(ws, { message: 'Failed to subscribe to session updates', type: 'error' });
   }
 
   // If the terminal already exited, signal it.

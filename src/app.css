@@ -142,9 +142,10 @@ body {
 
 /* App Layout */
 .app {
-  min-height: 100vh;
+  height: 100vh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 /* Header */
@@ -361,7 +362,7 @@ body {
   justify-content: center;
   gap: var(--space-2);
   height: 40px;
-  padding: 0 10px;
+  padding: 0 16px;
   border-radius: var(--radius-md);
   font-size: var(--text-base);
   font-weight: 500;
@@ -426,13 +427,13 @@ body {
 
 .btn-sm {
   height: 32px;
-  padding: 0 6px;
+  padding: 0 10px;
   font-size: var(--text-base);
 }
 
 .btn-lg {
   height: 48px;
-  padding: 0 14px;
+  padding: 0 20px;
   font-size: var(--text-lg);
   border-radius: var(--radius-lg);
 }
@@ -487,6 +488,17 @@ body {
 .empty-state {
   text-align: center;
   padding: var(--space-16) var(--space-6);
+}
+
+@media (max-width: 768px) {
+  .empty-state {
+    padding: var(--space-8) var(--space-4);
+  }
+}
+@media (max-width: 480px) {
+  .empty-state {
+    padding: var(--space-6) var(--space-3);
+  }
 }
 
 .empty-state-icon {
@@ -692,6 +704,10 @@ body {
 }
 
 @media (max-width: 480px) {
+  :root {
+    --header-height: 48px;
+  }
+
   .main {
     padding: var(--space-4) var(--space-3);
   }
@@ -718,6 +734,25 @@ body {
     min-height: 44px;
     display: inline-flex;
     align-items: center;
+  }
+
+  /* Mobile touch targets — iOS HIG minimum 44px */
+  .btn {
+    min-height: 44px;
+    height: auto;
+    padding: 10px 16px;
+  }
+
+  .btn-sm {
+    min-height: 44px;
+    height: auto;
+    padding: 10px 12px;
+  }
+
+  .input {
+    min-height: 44px;
+    height: auto;
+    padding: 10px 12px;
   }
 }
 
@@ -1147,6 +1182,18 @@ body {
   .session-event-time {
     font-size: 0.7rem;
   }
+
+  .session-card {
+    padding: 10px 12px;
+    gap: var(--space-2);
+  }
+  .session-card-subtitle {
+    font-size: 0.7rem;
+  }
+  .session-stats {
+    gap: var(--space-1);
+    font-size: 0.75rem;
+  }
 }
 
 /* ============================================
@@ -1158,6 +1205,9 @@ body {
   flex-direction: column;
   gap: var(--space-4, 1rem);
   padding: var(--space-4, 1rem) 0;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
 }
 
 .chat-message {
@@ -1265,6 +1315,12 @@ body {
   overflow-x: auto;
   margin: 0.5rem 0;
   font-size: 0.8rem;
+}
+
+@media (max-width: 768px) {
+  .chat-bubble pre {
+    max-width: calc(100vw - 120px);
+  }
 }
 
 .chat-bubble pre code {
@@ -1552,6 +1608,8 @@ body {
   text-decoration: none;
   margin-bottom: var(--space-3, 0.75rem);
   transition: color var(--transition-fast, 150ms);
+  min-height: 44px;
+  padding: 8px 4px;
 }
 
 .back-link:hover {
@@ -1692,6 +1750,12 @@ body {
   border: 1px solid var(--border, #2a2a2a);
   border-radius: var(--radius-lg, 12px);
   margin-bottom: var(--space-3, 0.75rem);
+}
+
+@media (max-width: 768px) {
+  .skeleton-card {
+    height: 90px;
+  }
 }
 
 .skeleton-text {

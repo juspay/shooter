@@ -21,7 +21,7 @@ This repository contains a **WORKING** bidirectional communication system betwee
 
 ## Project Structure
 
-### Core Implementation ✅
+### Core Implementation
 
 - `docs/GUIDANCE.md` - **READ THIS FIRST** - Complete development guide
 - `docs/CLAUDE-CODE-INTEGRATION.md` - **WORKING** Shooter lifecycle hooks integration
@@ -29,13 +29,23 @@ This repository contains a **WORKING** bidirectional communication system betwee
 - `src/lib/modules/` - Organized modular code (client + server)
   - `server/apn/` - Apple Push Notification service implementations
   - `server/cli/` - CLI command execution utilities
-  - `server/terminal/` - PTY manager, session watcher
+  - `server/terminal/` - PTY manager, session watcher, PTY persistence
+    - `pty-manager.ts` - Creates/manages terminals, reconnects after restart
+    - `pty-holder.cjs` - Standalone detached process that owns a single PTY (survives server restarts)
+    - `holder-client.ts` - Unix socket client connecting PtyManager to holder processes
+    - `terminal-store.ts` - SQLite persistence for terminal metadata (`~/.shooter/shooter.db`)
+    - `session-watcher.ts` - Watches Claude Code JSONL session files
+    - `opencode-watcher.ts` - Watches OpenCode sessions via SQLite
   - `server/ws/` - WebSocket server, handlers, ticket-store, keepalive
   - `server/sessions/` - JSONL reader, OpenCode reader, types
   - `server/auth.ts` - Shared authentication
-  - `client/common/` - Reusable UI components
-  - `client/terminal/` - ChatView, LaunchSheet, QuickKeys, ConnectionStatus, xterm-wrapper
+  - `client/common/` - Reusable UI components (Button, Card, Alert, EmptyState, StatusBadge, Tag, Icon, Input) and shared utilities (markdown, cache, time, tool-title, config-guard)
+  - `client/terminal/` - ChatView (shared rendering component), LaunchSheet, QuickKeys, ConnectionStatus, xterm-wrapper
 - `server.ts` - Custom server entry point (Node.js with WebSocket upgrade handling)
+- `scripts/setup.cjs` - Interactive first-run setup wizard (`pnpm setup`)
+- `scripts/install.sh` - One-line install script
+- `bin/shooter.cjs` - CLI entry point for npm package distribution
+- `Dockerfile` + `docker-compose.yml` - Docker deployment
 - `src/lib/types/` - Auto-generated TypeScript types (DO NOT EDIT)
 - `specs/types/` - Type-crafter YAML specifications (EDIT HERE for types)
   - `index.yaml` - Main spec file (top file with references)
@@ -44,6 +54,7 @@ This repository contains a **WORKING** bidirectional communication system betwee
   - `cli.yaml` - CLI module types
   - `terminal.yaml` - Terminal and WebSocket types
 - `ios/` - Swift iOS app (working, receiving notifications + interactive permission responses)
+- `android/` - Android app scaffold (Kotlin, WebView + FCM push notifications)
 
 ### Architecture Documentation (in `plans/` and `docs/`)
 
@@ -62,10 +73,13 @@ This repository contains a **WORKING** bidirectional communication system betwee
 - **Cloudflare Tunnel** - Secure public access to local server
 - **ws** - WebSocket server for terminal streaming and session events
 - **node-pty** - Pseudoterminal management for remote shell sessions
+- **better-sqlite3** - SQLite persistence for terminal state (`~/.shooter/shooter.db`)
 - **@xterm/xterm** - Terminal emulator UI in the browser
 - **chokidar** - File system watching for session changes
+- **firebase-admin** - Firebase Cloud Messaging for Android push notifications
 - **TypeScript** - Primary development language
 - **Swift/SwiftUI** - iOS application development
+- **Kotlin** - Android application development
 
 ## Implementation Phases
 
@@ -80,13 +94,16 @@ The system is designed to be built in four phases:
 
 ### SvelteKit Application
 
-- API routes: `/api/notify`, `/api/response`, `/api/webhook`, `/api/health`
+- API routes: `/api/notify`, `/api/response`, `/api/webhook`, `/api/health`, `/api/debug`
 - Terminal API routes: `/api/terminals`, `/api/terminals/[id]`, `/api/terminals/[id]/resize`, `/api/ws-ticket`, `/api/ws-status`
 - Session API route: `/api/sessions`
+- Device/config API routes: `/api/device-token`, `/api/qr-config`
 - APNs integration with JWT authentication (sandbox/production via `APNS_PRODUCTION` env var)
 - In-memory pending request store for bidirectional permission flow
 - Request validation and error handling
-- UI pages: `/terminals` (list), `/terminals/[id]` (live terminal), `/project` (project dashboard), `/session/[id]` (session viewer), `/config`
+- Navigation: top header bar (logo + status badge + gear icon for Settings), bottom tab bar (Projects + Terminals)
+- UI pages: `/` (home/projects list), `/terminals` (list), `/terminals/[id]` (live terminal), `/project` (project dashboard), `/session/[id]` (session viewer), `/config` (settings)
+- ChatView: shared Svelte rendering component used by both `/session/[id]` and `/terminals/[id]` pages to display conversation messages
 - WebSocket channels: `terminal` (PTY I/O, resize), `session` (live session updates), `events` (server-sent events)
 
 ### iOS Application
@@ -96,22 +113,29 @@ The system is designed to be built in four phases:
 - Response handling and server communication
 - Local notification history
 
-### Terminal Subsystem
+### Terminal Subsystem (Persistent)
 
-- **PTY Manager**: Creates and manages pseudoterminal sessions via node-pty, handles input/output/resize
-- **Session Watcher**: Monitors OpenCode/Claude session directories with chokidar, detects new and updated sessions
+Terminals survive server restarts via a holder-process architecture:
+
+- **PTY Holder** (`pty-holder.cjs`): Standalone detached Node.js process that owns a single PTY via node-pty. Forked with `detached: true` and `unref()`'d so it outlives the server. Communicates over a Unix domain socket (`/tmp/shooter-term-<id>.sock`) using ndjson. Maintains its own scrollback ring buffer (5000 lines). On PTY exit, writes a `.exit` sidecar file and stays alive for a 60-second grace period so the server can reconnect.
+- **Holder Client** (`holder-client.ts`): Connects PtyManager to a holder process over Unix socket. Handles the info+scrollback handshake on connect and streams output/exit events afterward.
+- **PTY Manager** (`pty-manager.ts`): Creates terminals (forks holder, waits for ready signal, connects via HolderClient), manages attach/detach of WebSocket clients, broadcasts output with backpressure, and runs session discovery polling. On server startup, calls `reconnectAll()` to recover persisted terminals from SQLite.
+- **Terminal Store** (`terminal-store.ts`): SQLite persistence (`~/.shooter/shooter.db`) for terminal metadata. Stores command, cwd, pid, holder pid, socket path, session file, status. Enables recovery after server restart. Cleans up records older than 24 hours.
+- **Session Watcher**: Monitors Claude Code JSONL session directories with chokidar, detects new and updated sessions
+- **OpenCode Watcher**: Monitors OpenCode sessions via SQLite database lookup
 - **WebSocket Server**: Runs alongside SvelteKit via custom `server.ts` entry point, handles upgrade requests with ticket-based auth, multiplexes terminal/session/events channels
 - **Ticket Store**: Short-lived auth tickets for WebSocket connections (avoids sending API keys over WS URL)
 - **Keepalive**: Ping/pong heartbeat to detect stale connections
 
-### Shooter Integration ✅ **WORKING**
+### Claude Code Integration (WORKING)
 
 - **Lifecycle Hooks**: Automatic detection of tool usage, user prompts, session events
 - **Unified Notifier**: Single `notifier.cjs` (Node.js) handles all hook events with async polling for bidirectional permissions
 - **Context-Aware Notifications**: Smart categorization (debug, feature, testing, learning)
 - **Bidirectional Permissions**: PermissionRequest hook blocks, sends interactive iOS notification, polls for Allow/Deny response
 - **Configuration**: `.claude/settings.json` + `notifier.cjs` in `.claude/hooks/`
-- **Environment Variables**: `SHOOTER_USE_LOCAL`, `SHOOTER_LOCAL_PORT`, `SHOOTER_API_URL`, `SHOOTER_PERMISSION_TIMEOUT`
+- **Hook Paths**: Relative paths (`.claude/hooks/notifier.cjs`) in `.claude/settings.json`, not absolute
+- **Environment Variables**: `SHOOTER_USE_LOCAL`, `SHOOTER_LOCAL_PORT`, `API_KEY`, `SHOOTER_PERMISSION_TIMEOUT`
 
 ## Security Requirements
 
@@ -132,9 +156,12 @@ The system is designed to be built in four phases:
 
 ## Environment Setup
 
-Required environment variables (set in `.env` for local dev):
+See `.env.example` for the full template. Required environment variables (set in `.env` for local dev):
 
-- `API_KEY` - Bearer token for hook → server auth
+- `API_KEY` - Shared auth key used by the server AND hooks (unified; not `SHOOTER_API_KEY`)
+- `PORT` - Server port (default: 3000)
+
+Optional (iOS push notifications):
 - `APNS_KEY` - APNs private key (.p8 contents)
 - `APNS_KEY_ID` - APNs key ID
 - `APNS_TEAM_ID` - Apple Team ID
@@ -142,10 +169,18 @@ Required environment variables (set in `.env` for local dev):
 - `APNS_PRODUCTION` - Set to `true` for TestFlight/App Store builds (default: sandbox)
 - `DEVICE_TOKEN` - Target iOS device token
 
+Optional (Android push notifications):
+- `FCM_PROJECT_ID` - Firebase project ID
+- `FCM_CLIENT_EMAIL` - Firebase service account email
+- `FCM_PRIVATE_KEY` - Firebase service account private key
+- `ANDROID_DEVICE_TOKEN` - Target Android device token
+- `DEVICE_PLATFORM` - Which platform to send to: `ios` or `android` (default: `ios`)
+
 You'll also need:
 
-- Apple Developer account with Push Notifications capability
-- Local machine running the server (`pnpm build && pnpm start`)
+- Apple Developer account with Push Notifications capability (for iOS)
+- Firebase project (for Android)
+- Local machine running the server (`pnpm setup` for first run, then `pnpm build && pnpm start`)
 - Cloudflare Tunnel for public HTTPS access
 
 ## Testing Strategy
@@ -160,16 +195,21 @@ The plans include comprehensive testing approaches:
 
 ## Deployment
 
-- SvelteKit app builds with adapter-node: `pnpm build && pnpm start` (runs custom `server.ts`)
+- **First-time setup**: `pnpm setup` runs interactive wizard (generates `.env`, configures hooks)
+- **Build and run**: `pnpm build && pnpm start` (adapter-node, runs custom `server.ts` on port 3000)
+- **Docker**: `docker-compose up` using `Dockerfile` and `docker-compose.yml`
+- **npm package**: Published as `shooter-cli` with `bin/shooter.cjs` entry point
+- **Install script**: `scripts/install.sh` for one-line setup
 - iOS app requires Xcode and device/simulator
+- Android app requires Android Studio
 - Cloudflare Tunnel provides public HTTPS + WSS access to the local server
 - Environment variables managed via `.env` file
 
 ## Known Limitations
 
-### In-Memory State
+### In-Memory State (Partial)
 
-The server uses in-memory stores for pending requests, PTY sessions, WebSocket connections, and auth tickets. This works because the app runs as a single long-lived Node.js process. If the server restarts, all terminal sessions and pending requests are lost.
+Terminal state is now persisted via PTY holder processes + SQLite and survives server restarts. However, pending permission requests, WebSocket connections, and auth tickets are still in-memory. If the server restarts, in-flight permission requests are lost (but terminals reconnect automatically).
 
 ### Hook Completion Timer
 

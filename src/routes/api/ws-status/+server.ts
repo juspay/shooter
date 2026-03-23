@@ -15,7 +15,7 @@ import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = ({ request }) => {
 	const authError = validateAuth(request);
-	if (authError) return authError;
+	if (authError) {return authError;}
 
 	return json({
 		connectedClients: getConnectedClientCount(),

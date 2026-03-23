@@ -7,7 +7,7 @@ import type { RequestHandler } from './$types';
 // POST /api/terminals/:id/resize — Resize terminal
 export const POST: RequestHandler = async ({ params, request }) => {
   const authError = validateAuth(request);
-  if (authError) return authError;
+  if (authError) {return authError;}
 
   let body: { cols?: number; rows?: number };
   try {

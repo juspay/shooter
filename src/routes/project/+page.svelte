@@ -2,7 +2,15 @@
   import type { ShooterConfig } from '$lib/types/config';
 
   import { page } from '$app/state';
-  import { Button, EmptyState, Icon } from '$lib/modules/client/common';
+  import {
+    Button,
+    EmptyState,
+    formatRelativeTime,
+    getCached,
+    Icon,
+    isShooterConfig,
+    setCache,
+  } from '$lib/modules/client/common';
   import { onDestroy, onMount } from 'svelte';
 
   interface Session {
@@ -40,32 +48,6 @@
   const visibleSessions = $derived(project ? project.sessions.slice(0, visibleCount) : []);
   const hasMore = $derived(project ? visibleCount < project.sessions.length : false);
 
-  // Cache helpers using sessionStorage
-  function getCached(key: string): unknown {
-    try {
-      const item = sessionStorage.getItem(key);
-      if (!item) {
-        return null;
-      }
-      const { data, timestamp } = JSON.parse(item);
-      // Cache valid for 30 seconds
-      if (Date.now() - timestamp > 30000) {
-        return null;
-      }
-      return data;
-    } catch {
-      return null;
-    }
-  }
-
-  function setCache(key: string, data: unknown): void {
-    try {
-      sessionStorage.setItem(key, JSON.stringify({ data, timestamp: Date.now() }));
-    } catch {
-      // sessionStorage full — silently ignore
-    }
-  }
-
   onMount(() => {
     loadConfiguration();
 
@@ -94,12 +76,6 @@
       pollTimer = null;
     }
   });
-
-  function isShooterConfig(value: unknown): value is ShooterConfig {
-    return (
-      typeof value === 'object' && value !== null && 'apiKey' in value && 'deviceToken' in value
-    );
-  }
 
   function loadConfiguration(): void {
     try {
@@ -163,22 +139,6 @@
 
   function loadMore(): void {
     visibleCount += PAGE_SIZE;
-  }
-
-  function formatRelativeTime(ts: string): string {
-    const diff = Date.now() - new Date(ts).getTime();
-    const mins = Math.floor(diff / 60000);
-    if (mins < 1) {
-      return 'just now';
-    }
-    if (mins < 60) {
-      return `${mins}m ago`;
-    }
-    const hrs = Math.floor(mins / 60);
-    if (hrs < 24) {
-      return `${hrs}h ago`;
-    }
-    return `${Math.floor(hrs / 24)}d ago`;
   }
 
   function formatDate(ts: string): string {
@@ -300,5 +260,13 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-3);
+  }
+
+  @media (max-width: 480px) {
+    .chat-session-header-top {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: var(--space-2);
+    }
   }
 </style>

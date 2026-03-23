@@ -4,6 +4,8 @@ import * as path from 'path';
 
 import type { ConversationMessage, MessagePart, ProjectGroup, SessionInfo } from './types';
 
+import { parseJsonlText } from './jsonl-parser';
+
 // Short hash for project IDs (8 chars from SHA-256)
 function shortHash(input: string): string {
   return crypto.createHash('sha256').update(input).digest('hex').slice(0, 8);
@@ -27,124 +29,8 @@ export function getSessionConversation(
 
   try {
     const raw = fs.readFileSync(jsonlPath, 'utf-8');
-    const lines = raw.split('\n').filter((line) => line.trim());
-
-    const messages: ConversationMessage[] = [];
-    // Map to group assistant entries by message.id
     const assistantTurns = new Map<string, { parts: MessagePart[]; timestamp: string }>();
-
-    for (const line of lines) {
-      try {
-        const entry = JSON.parse(line);
-        const entryType = entry.type;
-
-        if (entryType === 'user') {
-          const msg = entry.message;
-          if (!msg?.content) {
-            continue;
-          }
-
-          const parts: MessagePart[] = [];
-          const content = Array.isArray(msg.content) ? msg.content : [msg.content];
-
-          for (const block of content) {
-            if (typeof block === 'string') {
-              parts.push({ content: block, type: 'text' });
-            } else if (block.type === 'text') {
-              parts.push({ content: block.text || '', type: 'text' });
-            } else if (block.type === 'tool_result') {
-              // Tool result — extract output
-              let output = '';
-              if (typeof block.content === 'string') {
-                output = block.content;
-              } else if (Array.isArray(block.content)) {
-                output = block.content
-                  .filter((c: { type: string }) => c.type === 'text')
-                  .map((c: { text: string }) => c.text)
-                  .join('\n');
-              }
-              // Check toolUseResult for richer data
-              if (entry.toolUseResult?.content) {
-                const trc = entry.toolUseResult.content;
-                if (typeof trc === 'string') {
-                  output = trc;
-                } else if (Array.isArray(trc)) {
-                  output = trc
-                    .filter((c: { type: string }) => c.type === 'text')
-                    .map((c: { text: string }) => c.text)
-                    .join('\n');
-                }
-              }
-              parts.push({
-                isError: block.is_error || false,
-                output: output.slice(0, 2000), // Truncate large outputs
-                toolUseId: block.tool_use_id || '',
-                type: 'tool_result',
-              });
-            }
-          }
-
-          if (parts.length > 0 && parts.some((p) => p.type === 'text')) {
-            messages.push({
-              id: entry.uuid || `user-${messages.length}`,
-              parts: parts.filter((p) => p.type === 'text'), // Only text parts for user messages
-              role: 'user',
-              timestamp: entry.timestamp || '',
-            });
-          }
-
-          // Add tool results as separate entries
-          const toolResults = parts.filter((p) => p.type === 'tool_result');
-          if (toolResults.length > 0) {
-            // Attach to the previous assistant's tool_use
-            // These get rendered inline with tool cards
-            messages.push({
-              id: `tool-result-${entry.uuid || messages.length}`,
-              parts: toolResults,
-              role: 'system',
-              timestamp: entry.timestamp || '',
-            });
-          }
-        } else if (entryType === 'assistant') {
-          const msg = entry.message;
-          if (!msg?.content) {
-            continue;
-          }
-
-          const content = Array.isArray(msg.content) ? msg.content : [msg.content];
-          const msgId = msg.id || entry.uuid;
-
-          for (const block of content) {
-            const part = parseAssistantBlock(block);
-            if (!part) {
-              continue;
-            }
-
-            if (!assistantTurns.has(msgId)) {
-              assistantTurns.set(msgId, { parts: [], timestamp: entry.timestamp || '' });
-            }
-            assistantTurns.get(msgId)!.parts.push(part);
-          }
-
-          // If this entry has stop_reason, the turn is complete
-          if (msg.stop_reason) {
-            const turn = assistantTurns.get(msgId);
-            if (turn && turn.parts.length > 0) {
-              messages.push({
-                id: msgId,
-                parts: turn.parts,
-                role: 'assistant',
-                timestamp: turn.timestamp,
-              });
-              assistantTurns.delete(msgId);
-            }
-          }
-        }
-        // Skip progress, system, file-history-snapshot, queue-operation etc.
-      } catch {
-        // Skip malformed lines
-      }
-    }
+    const messages = parseJsonlText(raw, assistantTurns, 0);
 
     // Flush any remaining assistant turns
     for (const [msgId, turn] of assistantTurns) {
@@ -328,47 +214,63 @@ function listSessionsForProject(projectDir: string): SessionInfo[] {
         const filePath = path.join(projectDir, file);
         const stat = fs.statSync(filePath);
         let firstPrompt = 'Active Session';
+        let messageCount = 0;
         try {
           const content = fs.readFileSync(filePath, 'utf-8');
-          const firstUserLine = content.split('\n').find((line) => {
+          // Count user + assistant messages for the message count
+          const lines = content.split('\n');
+          for (const line of lines) {
+            if (!line.trim()) { continue; }
             try {
               const entry = JSON.parse(line);
-              if (entry.type !== 'user') {
-                return false;
+              if (entry.type === 'user' || entry.type === 'assistant') {
+                messageCount++;
               }
-              const msg = entry.message;
-              if (!msg?.content) {
-                return false;
-              }
-              const blocks = Array.isArray(msg.content) ? msg.content : [msg.content];
-              return blocks.some((b: unknown) => {
-                if (typeof b === 'string') {
-                  return b.trim().length > 0;
-                }
-                if (typeof b === 'object' && b !== null && 'type' in b && 'text' in b) {
-                  const tb = b as { text?: string; type: string };
-                  return tb.type === 'text' && tb.text?.trim();
-                }
-                return false;
-              });
             } catch {
-              return false;
+              // skip malformed lines
             }
-          });
-          if (firstUserLine) {
-            const entry = JSON.parse(firstUserLine);
-            const blocks = Array.isArray(entry.message.content)
-              ? entry.message.content
-              : [entry.message.content];
-            for (const b of blocks) {
-              if (typeof b === 'string' && b.trim()) {
-                firstPrompt = b.trim();
-                break;
+          }
+          // Find the first real user message (skip system caveats, commands, tool results)
+          for (const line of lines) {
+            if (!line.trim()) { continue; }
+            try {
+              const entry = JSON.parse(line);
+              if (entry.type !== 'user') { continue; }
+              const msg = entry.message;
+              if (!msg?.content) { continue; }
+
+              // Extract text from content (can be string or array of blocks)
+              let text = '';
+              if (typeof msg.content === 'string') {
+                text = msg.content.trim();
+              } else if (Array.isArray(msg.content)) {
+                for (const b of msg.content) {
+                  if (typeof b === 'string' && b.trim()) {
+                    text = b.trim();
+                    break;
+                  }
+                  if (typeof b === 'object' && b !== null && b.type === 'text' && b.text?.trim()) {
+                    text = b.text.trim();
+                    break;
+                  }
+                }
               }
-              if (b.type === 'text' && b.text?.trim()) {
-                firstPrompt = b.text.trim();
-                break;
+
+              if (!text) { continue; }
+
+              // Skip system-injected caveats and command outputs
+              if (text.startsWith('<local-command') ||
+                  text.startsWith('<command-name>') ||
+                  text.startsWith('<local-command-stdout>') ||
+                  text.startsWith('<system-reminder>') ||
+                  text.startsWith('<task-notification>')) {
+                continue;
               }
+
+              firstPrompt = text;
+              break;
+            } catch {
+              continue;
             }
           }
         } catch {
@@ -379,7 +281,7 @@ function listSessionsForProject(projectDir: string): SessionInfo[] {
           created: stat.birthtime.toISOString(),
           gitBranch: '',
           id: sessionId,
-          messageCount: 0,
+          messageCount,
           modified: stat.mtime.toISOString(),
           projectPath: '',
           source: 'claude-code' as const,
@@ -395,27 +297,5 @@ function listSessionsForProject(projectDir: string): SessionInfo[] {
   } catch (error) {
     console.error('[sessions] Failed to read sessions index:', error);
     return [];
-  }
-}
-
-function parseAssistantBlock(block: Record<string, unknown>): MessagePart | null {
-  if (!block || typeof block !== 'object') {
-    return null;
-  }
-
-  switch (block.type) {
-    case 'text':
-      return { content: (block.text as string) || '', type: 'text' };
-    case 'thinking':
-      return { content: (block.thinking as string) || '', type: 'thinking' };
-    case 'tool_use':
-      return {
-        id: (block.id as string) || '',
-        input: (block.input as Record<string, unknown>) || {},
-        toolName: (block.name as string) || 'Unknown',
-        type: 'tool_use',
-      };
-    default:
-      return null;
   }
 }

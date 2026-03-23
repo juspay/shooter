@@ -1,5 +1,5 @@
-import { validateAuth } from '$lib/modules/server/auth';
 import { cleanup, getDecision, setDecision } from '$lib/modules/server/apn/pending-requests';
+import { validateAuth } from '$lib/modules/server/auth';
 import { json } from '@sveltejs/kit';
 
 import type { RequestHandler } from './$types';
@@ -9,7 +9,7 @@ export const POST: RequestHandler = async ({ request }) => {
   cleanup();
 
   const authError = validateAuth(request);
-  if (authError) return authError;
+  if (authError) {return authError;}
 
   let body: { decision?: string; requestId?: string };
   try {
@@ -52,7 +52,7 @@ export const GET: RequestHandler = ({ request, url }) => {
   cleanup();
 
   const authErr = validateAuth(request);
-  if (authErr) return authErr;
+  if (authErr) {return authErr;}
 
   const requestId = url.searchParams.get('requestId');
   if (!requestId) {

@@ -4,6 +4,31 @@
 # and the real-time event bus for the mobile terminal access system
 
 Terminal:
+  # ─── Named Enum Types ──────────────────────────────────────────────
+
+  TerminalStatus:
+    type: string
+    enum:
+      - running
+      - exited
+      - orphaned
+    description: Lifecycle status of a terminal session
+
+  ToolExecutionStatus:
+    type: string
+    enum:
+      - running
+      - done
+      - error
+    description: Current execution status of a tool invocation
+
+  ToolResultStatus:
+    type: string
+    enum:
+      - done
+      - error
+    description: Whether a tool completed successfully or with an error
+
   # ─── REST API Types ────────────────────────────────────────────────
 
   ManagedTerminalInfo:
@@ -43,15 +68,20 @@ Terminal:
         nullable: true
         description: ISO 8601 timestamp when the process exited, or null if still running
       status:
-        type: string
-        enum:
-          - running
-          - exited
+        $ref: './specs/types/terminal.yaml#/Terminal/TerminalStatus'
         description: Current lifecycle status of the terminal
       exitCode:
         type: number
         nullable: true
         description: Process exit code (0 = success), or null if still running
+      holderPid:
+        type: number
+        nullable: true
+        description: PID of the PTY holder process, or null if not using holder architecture
+      socketPath:
+        type: string
+        nullable: true
+        description: Unix domain socket path for the holder process, or null if not applicable
 
   CreateTerminalRequest:
     type: object
@@ -367,11 +397,7 @@ Terminal:
             description: Tool input parameters
             additionalProperties: true
           status:
-            type: string
-            enum:
-              - running
-              - done
-              - error
+            $ref: './specs/types/terminal.yaml#/Terminal/ToolExecutionStatus'
             description: Current execution status of the tool
       - type: object
         description: Result from a completed tool invocation
@@ -391,10 +417,7 @@ Terminal:
             type: string
             description: Tool output text
           status:
-            type: string
-            enum:
-              - done
-              - error
+            $ref: './specs/types/terminal.yaml#/Terminal/ToolResultStatus'
             description: Whether the tool completed successfully
       - type: object
         description: AI thinking/reasoning block (extended thinking)
@@ -510,3 +533,181 @@ Terminal:
           code:
             type: number
             description: Process exit code
+
+  # ─── SQLite Persistence Types ─────────────────────────────────────
+
+  TerminalRecord:
+    type: object
+    description: Persisted terminal metadata stored in SQLite for recovery across server restarts
+    required:
+      - id
+      - command
+      - args
+      - cwd
+      - cols
+      - rows
+      - status
+      - createdAt
+    properties:
+      id:
+        type: string
+        description: Unique terminal identifier
+      command:
+        type: string
+        description: The command that was launched
+      args:
+        type: string
+        description: JSON-encoded array of command arguments
+      cwd:
+        type: string
+        description: Working directory the terminal was launched in
+      cols:
+        type: number
+        description: Terminal width in columns
+      rows:
+        type: number
+        description: Terminal height in rows
+      pid:
+        type: number
+        nullable: true
+        description: PTY child process ID
+      holderPid:
+        type: number
+        nullable: true
+        description: Holder process ID
+      socketPath:
+        type: string
+        nullable: true
+        description: Unix domain socket path for holder communication
+      sessionFile:
+        type: string
+        nullable: true
+        description: Claude Code JSONL session file path
+      opencodeSessionId:
+        type: string
+        nullable: true
+        description: OpenCode SQLite session ID
+      status:
+        $ref: './specs/types/terminal.yaml#/Terminal/TerminalStatus'
+        description: Terminal lifecycle status
+      exitCode:
+        type: number
+        nullable: true
+        description: Process exit code
+      createdAt:
+        type: string
+        description: ISO 8601 timestamp when the terminal was created
+      exitedAt:
+        type: string
+        nullable: true
+        description: ISO 8601 timestamp when the process exited
+
+  # ─── PTY Holder Protocol Types ────────────────────────────────────
+
+  HolderServerMessage:
+    description: Messages sent from server to PTY holder over Unix socket (ndjson)
+    oneOf:
+      - type: object
+        description: Write data to PTY stdin
+        required:
+          - type
+          - data
+        properties:
+          type:
+            type: string
+            const: input
+          data:
+            type: string
+            description: Raw input data to write to PTY
+      - type: object
+        description: Resize the PTY dimensions
+        required:
+          - type
+          - cols
+          - rows
+        properties:
+          type:
+            type: string
+            const: resize
+          cols:
+            type: number
+            description: New width in columns
+          rows:
+            type: number
+            description: New height in rows
+      - type: object
+        description: Send a signal to the PTY process
+        required:
+          - type
+        properties:
+          type:
+            type: string
+            const: kill
+          signal:
+            type: string
+            description: Signal name to send (default SIGTERM)
+
+  HolderClientMessage:
+    description: Messages sent from PTY holder to server over Unix socket (ndjson)
+    oneOf:
+      - type: object
+        description: Current holder state sent on connection
+        required:
+          - type
+          - pid
+          - exited
+        properties:
+          type:
+            type: string
+            const: info
+          pid:
+            type: number
+            description: PTY child process ID
+          exited:
+            type: boolean
+            description: Whether the PTY process has exited
+          exitCode:
+            type: number
+            nullable: true
+            description: Exit code if process has exited
+      - type: object
+        description: Full scrollback replay sent on connection
+        required:
+          - type
+          - data
+        properties:
+          type:
+            type: string
+            const: scrollback
+          data:
+            type: string
+            description: Full scrollback buffer content
+      - type: object
+        description: PTY output chunk during normal operation
+        required:
+          - type
+          - data
+        properties:
+          type:
+            type: string
+            const: output
+          data:
+            type: string
+            description: Raw PTY output data
+      - type: object
+        description: PTY process has exited
+        required:
+          - type
+          - code
+        properties:
+          type:
+            type: string
+            const: exit
+          code:
+            type: number
+            nullable: true
+            description: Process exit code
+          signal:
+            type: string
+            nullable: true
+            description: Signal that caused exit

@@ -17,7 +17,7 @@ const PONG_TIMEOUT_MS = 10_000;
 
 // ── Internal state ───────────────────────────────────────────────────
 
-let pingInterval: ReturnType<typeof setInterval> | null = null;
+let pingInterval: null | ReturnType<typeof setInterval> = null;
 
 /**
  * Track which connections have an outstanding pong we are waiting for.

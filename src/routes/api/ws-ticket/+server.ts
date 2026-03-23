@@ -65,7 +65,7 @@ setInterval(() => {
 
 export const POST: RequestHandler = async ({ request }) => {
 	const authError = validateAuth(request);
-	if (authError) return authError;
+	if (authError) {return authError;}
 
 	// Extract the API key for rate limiting
 	const apiKey = request.headers.get('authorization')!.substring(7);
@@ -80,7 +80,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	const ticket = generateTicket();
 
 	return json({
-		ticket,
 		expiresIn: 30,
+		ticket,
 	});
 };
