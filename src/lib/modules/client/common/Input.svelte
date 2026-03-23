@@ -27,10 +27,8 @@
   }: Props = $props();
   /* eslint-enable prefer-const */
 
-  function handleInput(event: Event): void {
-    const target = event.target as HTMLInputElement;
-    value = target.value;
-    onchange?.(target.value);
+  function handleInput(): void {
+    onchange?.(value);
   }
 </script>
 
@@ -39,7 +37,7 @@
   <input
     {id}
     {type}
-    {value}
+    bind:value
     {placeholder}
     {disabled}
     {autocomplete}

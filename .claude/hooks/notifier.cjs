@@ -33,20 +33,20 @@ const RUNTIME = IS_OPENCODE ? 'opencode' : 'claude-code';
 
 // Environment configuration
 const USE_LOCAL = process.env.SHOOTER_USE_LOCAL === 'true';
-const LOCAL_PORT = process.env.SHOOTER_LOCAL_PORT || '5173';
+const LOCAL_PORT = process.env.SHOOTER_LOCAL_PORT || '3000';
 const REMOTE_BASE_URL = process.env.SHOOTER_API_URL || '';
 const LOCAL_BASE_URL = `http://localhost:${LOCAL_PORT}`;
 const BASE_URL = USE_LOCAL ? LOCAL_BASE_URL : REMOTE_BASE_URL;
 const API_URL = `${BASE_URL}/api/notify`;
 
 // Authentication
-const API_KEY = process.env.SHOOTER_API_KEY;
+const API_KEY = process.env.API_KEY || process.env.SHOOTER_API_KEY;
 const DEVICE_TOKEN = process.env.SHOOTER_DEVICE_TOKEN || null;
 const AUTH_KEY = API_KEY || '';
 
 // Validate required environment variables ONLY for Claude Code CLI mode
 if (IS_CLAUDE_CODE && !API_KEY) {
-  console.error('SHOOTER_API_KEY environment variable is required');
+  console.error('API_KEY environment variable is required');
   process.exit(1);
 }
 
@@ -615,15 +615,26 @@ async function handlePermission(event) {
 
     let result;
     if (wsActive) {
-      // WebSocket clients connected — skip push notification, just poll for response
+      // WebSocket clients connected — skip push notification, but still register
+      // the pending request on the server so polling can find it.
       debugLog(`[Notifier] WebSocket clients connected, skipping push notification`);
       if (IS_CLAUDE_CODE) {
         console.error(`\n=== WEBSOCKET ACTIVE — SKIPPING PUSH [${requestId}] ===`);
         console.error(`Title: ${title}`);
         console.error(`Message: ${body}`);
-        console.error(`=== POLLING FOR RESPONSE VIA WEBSOCKET CHANNEL ===\n`);
+        console.error(`=== REGISTERING REQUEST & POLLING VIA WEBSOCKET CHANNEL ===\n`);
       }
-      result = await new Promise((resolve) => startPolling(requestId, resolve));
+
+      // POST to /api/notify with waitForResponse so the server creates a pending
+      // request entry. Without this, GET /api/response returns 404 every time.
+      result = await sendNotificationAndPoll(
+        title,
+        body,
+        'permission',
+        event.source,
+        requestId,
+        d
+      );
     } else {
       // No WebSocket clients — send push notification and poll
       result = await sendNotificationAndPoll(

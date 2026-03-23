@@ -2,7 +2,15 @@
   import type { ShooterConfig } from '$lib/types/config';
 
   import { goto } from '$app/navigation';
-  import { Button, EmptyState, Icon } from '$lib/modules/client/common';
+  import {
+    Button,
+    EmptyState,
+    formatRelativeTime,
+    getCached,
+    Icon,
+    isShooterConfig,
+    setCache,
+  } from '$lib/modules/client/common';
   import { onDestroy, onMount } from 'svelte';
 
   interface ProjectGroup {
@@ -23,32 +31,6 @@
   let pollTimer: null | ReturnType<typeof setInterval> = null;
   let hasMore = $state(false);
   let currentOffset = $state(0);
-
-  // Cache helpers using sessionStorage
-  function getCached(key: string): unknown {
-    try {
-      const item = sessionStorage.getItem(key);
-      if (!item) {
-        return null;
-      }
-      const { data, timestamp } = JSON.parse(item);
-      // Cache valid for 30 seconds
-      if (Date.now() - timestamp > 30000) {
-        return null;
-      }
-      return data;
-    } catch {
-      return null;
-    }
-  }
-
-  function setCache(key: string, data: unknown): void {
-    try {
-      sessionStorage.setItem(key, JSON.stringify({ data, timestamp: Date.now() }));
-    } catch {
-      // sessionStorage full — silently ignore
-    }
-  }
 
   onMount(() => {
     loadConfiguration();
@@ -76,12 +58,6 @@
       pollTimer = null;
     }
   });
-
-  function isShooterConfig(value: unknown): value is ShooterConfig {
-    return (
-      typeof value === 'object' && value !== null && 'apiKey' in value && 'deviceToken' in value
-    );
-  }
 
   function loadConfiguration(): void {
     try {
@@ -143,22 +119,6 @@
 
   async function loadMore(): Promise<void> {
     await fetchSessions(true);
-  }
-
-  function formatRelativeTime(ts: string): string {
-    const diff = Date.now() - new Date(ts).getTime();
-    const mins = Math.floor(diff / 60000);
-    if (mins < 1) {
-      return 'just now';
-    }
-    if (mins < 60) {
-      return `${mins}m ago`;
-    }
-    const hrs = Math.floor(mins / 60);
-    if (hrs < 24) {
-      return `${hrs}h ago`;
-    }
-    return `${Math.floor(hrs / 24)}d ago`;
   }
 
   async function forceRefresh(): Promise<void> {
@@ -288,7 +248,9 @@
       flex-direction: column;
       gap: var(--space-4);
     }
+  }
 
+  @media (max-width: 480px) {
     .page-actions {
       width: 100%;
     }

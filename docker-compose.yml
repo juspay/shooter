@@ -1,0 +1,13 @@
+services:
+  shooter:
+    build: .
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    volumes:
+      - shooter-data:/root/.shooter
+    restart: unless-stopped
+
+volumes:
+  shooter-data:

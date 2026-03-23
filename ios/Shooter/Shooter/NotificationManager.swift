@@ -5,23 +5,28 @@ import UIKit
 class NotificationManager: NSObject, ObservableObject {
     @Published var isAuthorized = false
     @Published var deviceToken: String?
-    @Published var lastNotificationMessage = ""
-    @Published var notifications: [NotificationItem] = []
     @Published var isConnected = false
-    @Published var lastUpdate: Date?
-    
-    private var serverUrl: String = AppConfig.defaultServerURL
-    private var apiKey: String = ""
-    
+
+    private var serverUrl: String {
+        UserDefaults.standard.string(forKey: "serverUrl") ?? AppConfig.defaultServerURL
+    }
+
+    /// API key is stored in the Keychain (C3 fix). Falls back to empty string.
+    private var apiKey: String {
+        KeychainHelper.read(key: "apiKey") ?? ""
+    }
+
     override init() {
         super.init()
+        // Migrate any plaintext API key left in UserDefaults
+        KeychainHelper.migrateApiKeyFromUserDefaults()
         UNUserNotificationCenter.current().delegate = self
         setupNotificationCategories()
         checkAuthorizationStatus()
-        loadStoredNotifications()
-        loadConfiguration()
     }
-    
+
+    // MARK: - Permission
+
     func requestPermission() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, error in
             DispatchQueue.main.async {
@@ -33,6 +38,8 @@ class NotificationManager: NSObject, ObservableObject {
             }
         }
     }
+
+    // MARK: - Notification Categories (Interactive Allow/Deny)
 
     private func setupNotificationCategories() {
         let allowAction = UNNotificationAction(
@@ -57,7 +64,9 @@ class NotificationManager: NSObject, ObservableObject {
         UNUserNotificationCenter.current().setNotificationCategories([permissionCategory])
         print("Registered notification categories: CLAUDE_PERMISSION (Allow/Deny)")
     }
-    
+
+    // MARK: - Authorization Status
+
     private func checkAuthorizationStatus() {
         UNUserNotificationCenter.current().getNotificationSettings { settings in
             DispatchQueue.main.async {
@@ -68,252 +77,91 @@ class NotificationManager: NSObject, ObservableObject {
             }
         }
     }
-    
+
     private func registerForRemoteNotifications() {
         DispatchQueue.main.async {
             UIApplication.shared.registerForRemoteNotifications()
         }
     }
-    
+
+    // MARK: - Device Token
+
     func setDeviceToken(_ tokenData: Data) {
         let token = tokenData.map { String(format: "%02.2hhx", $0) }.joined()
         DispatchQueue.main.async {
             self.deviceToken = token
             print("Device Token: \(token)")
+            self.registerTokenWithServer(token)
         }
     }
-    
-    func sendTestNotification() {
-        let content = UNMutableNotificationContent()
-        content.title = "Test Notification"
-        content.body = "This is a test notification from Claude Notifier"
-        content.sound = .default
-        
-        let request = UNNotificationRequest(
-            identifier: UUID().uuidString,
-            content: content,
-            trigger: UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
-        )
-        
-        UNUserNotificationCenter.current().add(request) { error in
-            if let error = error {
-                print("Failed to schedule test notification: \(error)")
-            }
-        }
-    }
-}
 
-// MARK: - UNUserNotificationCenterDelegate
-extension NotificationManager: UNUserNotificationCenterDelegate {
-    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
-        let userInfo = response.notification.request.content.userInfo
-        let actionIdentifier = response.actionIdentifier
-        let categoryIdentifier = response.notification.request.content.categoryIdentifier
-
-        // Handle interactive permission responses (Allow/Deny from notification)
-        if categoryIdentifier == AppConfig.Notifications.Categories.permission {
-            let requestId = userInfo["requestId"] as? String
-            var decision: String? = nil
-
-            switch actionIdentifier {
-            case AppConfig.Notifications.Actions.allow:
-                decision = "allow"
-            case AppConfig.Notifications.Actions.deny:
-                decision = "deny"
-            case UNNotificationDismissActionIdentifier:
-                // Dismissed — hook will timeout and fall through to local dialog
-                break
-            default:
-                // Tapped notification body (opened app) — no decision
-                break
-            }
-
-            if let decision = decision, let requestId = requestId {
-                sendPermissionResponse(requestId: requestId, decision: decision)
-            }
-        }
-
-        handleNotification(userInfo: userInfo)
-        completionHandler()
-    }
-    
-    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
-        let userInfo = notification.request.content.userInfo
-        handleNotification(userInfo: userInfo)
-        completionHandler([.banner, .sound, .badge])
-    }
-    
-    private func handleNotification(userInfo: [AnyHashable: Any]) {
-        print("Received notification: \(userInfo)")
-        
-        DispatchQueue.main.async {
-            // Create notification item from received data
-            let notification = self.createNotificationItem(from: userInfo)
-            self.addNotification(notification)
-            
-            // Update last notification message for backward compatibility
-            if let aps = userInfo["aps"] as? [String: Any],
-               let alert = aps["alert"] as? [String: Any],
-               let body = alert["body"] as? String {
-                self.lastNotificationMessage = "📱 \(body)"
-            } else if let message = userInfo["message"] as? String {
-                self.lastNotificationMessage = "📱 \(message)"
-            } else {
-                self.lastNotificationMessage = "📱 Received notification at \(Date().formatted())"
-            }
-        }
-    }
-    
-    // MARK: - Notification Management
-    
-    private func createNotificationItem(from userInfo: [AnyHashable: Any]) -> NotificationItem {
-        // Extract title and message
-        var title = "📱 SHOOTER Notification"
-        var message = ""
-        
-        if let aps = userInfo["aps"] as? [String: Any] {
-            if let alert = aps["alert"] as? [String: Any] {
-                title = alert["title"] as? String ?? title
-                message = alert["body"] as? String ?? ""
-            } else if let alertString = aps["alert"] as? String {
-                message = alertString
-            }
-        }
-        
-        // Extract custom data
-        let type: NotificationType
-        let metadata: [String: String] = [:]
-        
-        if let typeString = userInfo["type"] as? String,
-           let notificationType = NotificationType(rawValue: typeString) {
-            type = notificationType
-        } else {
-            type = .manualTest
-        }
-        
-        return NotificationItem(
-            title: title,
-            message: message,
-            timestamp: Date(),
-            type: type,
-            status: .delivered,
-            metadata: metadata
-        )
-    }
-    
-    private func addNotification(_ notification: NotificationItem) {
-        // Add to beginning of array (newest first)
-        notifications.insert(notification, at: 0)
-        
-        // Limit to last 50 notifications
-        if notifications.count > 50 {
-            notifications = Array(notifications.prefix(50))
-        }
-        
-        lastUpdate = Date()
-        saveNotifications()
-    }
-    
-    // MARK: - New Methods for Enhanced UI
-    
-    func autoSetupForDevelopment() {
-        // Check server connection if we have permission and device token
-        if isAuthorized, deviceToken != nil {
-            Task {
-                await checkServerConnection()
-            }
-        }
-        
-        // Load mock notifications for development
-        if notifications.isEmpty {
-            notifications = NotificationItem.mockNotifications
-            lastUpdate = Date()
-        }
-    }
-    
-    func refreshNotifications() async {
-        await checkServerConnection()
-        // In a real app, this would fetch notification history from the server
-        lastUpdate = Date()
-    }
-    
-    func updateConfiguration(serverUrl: String, apiKey: String) {
-        self.serverUrl = serverUrl
-        self.apiKey = apiKey
-        
-        // Save to UserDefaults
-        UserDefaults.standard.set(serverUrl, forKey: "serverUrl")
-        UserDefaults.standard.set(apiKey, forKey: "apiKey")
-    }
-    
-    func sendTestNotificationThroughServer(serverUrl: String, apiKey: String, completion: @escaping (Bool, String) -> Void) {
-        guard let token = deviceToken,
-              let url = URL(string: "\(serverUrl)/api/notify") else {
-            completion(false, "Invalid server URL or missing device token")
+    /// POST the device token to the server so APNs can target this device (M6 fix).
+    private func registerTokenWithServer(_ token: String) {
+        guard let url = URL(string: "\(serverUrl)/api/device-token") else { return }
+        guard !apiKey.isEmpty else {
+            print("Skipping token registration: no API key configured")
             return
         }
-        
+
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        
-        let body = [
-            "title": "🧪 SHOOTER: Configuration Test",
-            "message": "Test notification sent at \(Date().formatted(date: .omitted, time: .standard))",
+
+        let body: [String: Any] = [
             "deviceToken": token,
-            "data": [
-                "source": "config-test",
-                "timestamp": "\(Int(Date().timeIntervalSince1970))"
-            ]
-        ] as [String: Any]
-        
+            "platform": "ios",
+            "bundleId": AppConfig.App.bundleId
+        ]
+
         do {
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
         } catch {
-            completion(false, "Failed to encode request body: \(error.localizedDescription)")
+            print("Failed to encode device token body: \(error)")
             return
         }
-        
-        URLSession.shared.dataTask(with: request) { data, response, error in
+
+        URLSession.shared.dataTask(with: request) { _, response, error in
             if let error = error {
-                completion(false, "Network error: \(error.localizedDescription)")
+                print("Failed to register device token with server: \(error)")
                 return
             }
-            
             if let httpResponse = response as? HTTPURLResponse {
-                if httpResponse.statusCode == 200 {
-                    completion(true, "✅ Test notification sent successfully! Check your device.")
+                if (200...299).contains(httpResponse.statusCode) {
+                    print("Device token registered with server: HTTP \(httpResponse.statusCode)")
                 } else {
-                    completion(false, "❌ Server error: HTTP \(httpResponse.statusCode)")
+                    print("Device token registration FAILED: HTTP \(httpResponse.statusCode)")
                 }
-            } else {
-                completion(false, "❌ Invalid response from server")
             }
         }.resume()
     }
-    
-    @MainActor
-    private func checkServerConnection() async {
+
+    // MARK: - Server Health Check
+
+    @discardableResult
+    func checkServerConnection() async -> Bool {
         guard let url = URL(string: "\(serverUrl)/api/health") else {
-            isConnected = false
-            return
+            await MainActor.run { isConnected = false }
+            return false
         }
-        
+
         do {
             let (_, response) = try await URLSession.shared.data(from: url)
-            if let httpResponse = response as? HTTPURLResponse {
-                isConnected = httpResponse.statusCode == 200
-            } else {
-                isConnected = false
-            }
+            let connected = (response as? HTTPURLResponse)?.statusCode == 200
+            await MainActor.run { isConnected = connected }
+            return connected
         } catch {
-            isConnected = false
+            await MainActor.run { isConnected = false }
+            return false
         }
     }
-    
+
     // MARK: - Permission Response
 
+    /// Maximum retry attempts for permission responses.
+    private static let maxRetryAttempts = 3
+
+    /// Send a permission response with exponential backoff retry (H5 fix).
     private func sendPermissionResponse(requestId: String, decision: String) {
         guard let url = URL(string: "\(serverUrl)\(AppConfig.Endpoints.response)") else {
             print("Invalid server URL for permission response")
@@ -337,42 +185,88 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
             return
         }
 
-        URLSession.shared.dataTask(with: request) { data, response, error in
+        attemptPermissionResponse(request: request, decision: decision, attempt: 1)
+    }
+
+    private func attemptPermissionResponse(request: URLRequest, decision: String, attempt: Int) {
+        URLSession.shared.dataTask(with: request) { [weak self] _, response, error in
+            guard let self = self else { return }
+
             if let error = error {
-                print("Failed to send permission response: \(error)")
+                if attempt < Self.maxRetryAttempts {
+                    let delay = pow(2.0, Double(attempt)) // 2s, 4s, 8s
+                    print("Permission response attempt \(attempt) failed: \(error). Retrying in \(delay)s...")
+                    DispatchQueue.global().asyncAfter(deadline: .now() + delay) {
+                        self.attemptPermissionResponse(request: request, decision: decision, attempt: attempt + 1)
+                    }
+                } else {
+                    print("Permission response FAILED after \(Self.maxRetryAttempts) attempts: \(error)")
+                }
                 return
             }
+
             if let httpResponse = response as? HTTPURLResponse {
                 if (200...299).contains(httpResponse.statusCode) {
                     print("Permission response sent (\(decision)): HTTP \(httpResponse.statusCode)")
+                } else if attempt < Self.maxRetryAttempts {
+                    let delay = pow(2.0, Double(attempt))
+                    print("Permission response attempt \(attempt) got HTTP \(httpResponse.statusCode). Retrying in \(delay)s...")
+                    DispatchQueue.global().asyncAfter(deadline: .now() + delay) {
+                        self.attemptPermissionResponse(request: request, decision: decision, attempt: attempt + 1)
+                    }
                 } else {
-                    print("Permission response FAILED (\(decision)): HTTP \(httpResponse.statusCode)")
+                    print("Permission response FAILED after \(Self.maxRetryAttempts) attempts: HTTP \(httpResponse.statusCode)")
                 }
             }
         }.resume()
     }
+}
 
-    // MARK: - Persistence
-    
-    private func loadStoredNotifications() {
-        if let data = UserDefaults.standard.data(forKey: "storedNotifications"),
-           let decodedNotifications = try? JSONDecoder().decode([NotificationItem].self, from: data) {
-            notifications = decodedNotifications
+// MARK: - UNUserNotificationCenterDelegate
+
+extension NotificationManager: UNUserNotificationCenterDelegate {
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        let userInfo = response.notification.request.content.userInfo
+        let actionIdentifier = response.actionIdentifier
+        let categoryIdentifier = response.notification.request.content.categoryIdentifier
+
+        // Handle interactive permission responses (Allow/Deny from notification)
+        if categoryIdentifier == AppConfig.Notifications.Categories.permission {
+            let requestId = userInfo["requestId"] as? String
+            var decision: String? = nil
+
+            switch actionIdentifier {
+            case AppConfig.Notifications.Actions.allow:
+                decision = "allow"
+            case AppConfig.Notifications.Actions.deny:
+                decision = "deny"
+            case UNNotificationDismissActionIdentifier:
+                // Dismissed -- hook will timeout and fall through to local dialog
+                break
+            default:
+                // Tapped notification body (opened app) -- no decision
+                break
+            }
+
+            if let decision = decision, let requestId = requestId {
+                sendPermissionResponse(requestId: requestId, decision: decision)
+            }
         }
+
+        completionHandler()
     }
-    
-    private func saveNotifications() {
-        if let encoded = try? JSONEncoder().encode(notifications) {
-            UserDefaults.standard.set(encoded, forKey: "storedNotifications")
-        }
-    }
-    
-    private func loadConfiguration() {
-        if let savedServerUrl = UserDefaults.standard.string(forKey: "serverUrl") {
-            serverUrl = savedServerUrl
-        }
-        if let savedApiKey = UserDefaults.standard.string(forKey: "apiKey") {
-            apiKey = savedApiKey
-        }
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        // Show the banner even when the app is in the foreground
+        completionHandler([.banner, .sound, .badge])
     }
 }

@@ -7,12 +7,12 @@ import type { WebSocket } from 'ws';
 // ── Event types ─────────────────────────────────────────────────────
 
 export type ShooterEvent =
-  | { type: 'session-started'; sessionId: string; project: string; source: 'claude-code' | 'opencode' }
-  | { type: 'session-ended'; sessionId: string; summary: string }
-  | { type: 'permission-requested'; requestId: string; tool: string; input: Record<string, unknown> }
-  | { type: 'permission-resolved'; requestId: string; decision: 'allow' | 'deny' }
-  | { type: 'terminal-created'; terminalId: string; command: string }
-  | { type: 'terminal-exited'; terminalId: string; code: number | null };
+  | { code: null | number; terminalId: string; type: 'terminal-exited'; }
+  | { command: string; terminalId: string; type: 'terminal-created'; }
+  | { decision: 'allow' | 'deny'; requestId: string; type: 'permission-resolved'; }
+  | { input: Record<string, unknown>; requestId: string; tool: string; type: 'permission-requested'; }
+  | { project: string; sessionId: string; source: 'claude-code' | 'opencode'; type: 'session-started'; }
+  | { sessionId: string; summary: string; type: 'session-ended'; };
 
 // ── Connection tracking ─────────────────────────────────────────────
 
@@ -23,28 +23,6 @@ const eventsClients: Set<WebSocket> =
 (globalThis as Record<string, unknown>)[EVENTS_KEY] = eventsClients;
 
 // ── Handlers ────────────────────────────────────────────────────────
-
-/**
- * Handle a new WebSocket connection on /ws/events.
- * Adds the client to the events set, sends a welcome message,
- * and registers cleanup on close.
- */
-export function handleEventsConnection(ws: WebSocket): void {
-  eventsClients.add(ws);
-
-  ws.send(
-    JSON.stringify({
-      type: 'welcome',
-      channel: 'events',
-      clients: eventsClients.size,
-      timestamp: new Date().toISOString(),
-    })
-  );
-
-  ws.on('close', () => {
-    eventsClients.delete(ws);
-  });
-}
 
 /**
  * Broadcast a ShooterEvent to every connected events client.
@@ -70,4 +48,26 @@ export function broadcastEvent(event: ShooterEvent): void {
  */
 export function getEventsClientCount(): number {
   return eventsClients.size;
+}
+
+/**
+ * Handle a new WebSocket connection on /ws/events.
+ * Adds the client to the events set, sends a welcome message,
+ * and registers cleanup on close.
+ */
+export function handleEventsConnection(ws: WebSocket): void {
+  eventsClients.add(ws);
+
+  ws.send(
+    JSON.stringify({
+      channel: 'events',
+      clients: eventsClients.size,
+      timestamp: new Date().toISOString(),
+      type: 'welcome',
+    })
+  );
+
+  ws.on('close', () => {
+    eventsClients.delete(ws);
+  });
 }

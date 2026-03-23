@@ -6,3 +6,11 @@ export { default as Icon } from './Icon.svelte';
 export { default as Input } from './Input.svelte';
 export { default as StatusBadge } from './StatusBadge.svelte';
 export { default as Tag } from './Tag.svelte';
+
+// Shared client utilities
+export { getCached, setCache } from './cache';
+export { isShooterConfig } from './config-guard';
+export { renderMarkdown } from './markdown';
+export { hasScanner, isNativeBridge, scanQR } from './native-bridge';
+export { formatRelativeTime } from './time';
+export { getToolDescription } from './tool-title';

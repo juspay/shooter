@@ -1,48 +1,78 @@
 # Shooter
 
-**Mobile terminal access and push notifications for AI coding sessions.**
+**Mobile push notifications and remote terminal access for AI coding sessions.**
 
 [![SvelteKit](https://img.shields.io/badge/SvelteKit-FF3E00?logo=svelte&logoColor=white)](https://kit.svelte.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Node.js](https://img.shields.io/badge/Node.js_20+-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![WebSocket](https://img.shields.io/badge/WebSocket-010101?logo=socket.io&logoColor=white)](#websocket-channels)
-[![node-pty](https://img.shields.io/badge/node--pty-339933?logo=node.js&logoColor=white)](https://github.com/nicktaf/node-pty)
-[![xterm.js](https://img.shields.io/badge/xterm.js-000000?logo=windowsterminal&logoColor=white)](https://xtermjs.org/)
+[![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)](#docker)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ---
 
 ## What is Shooter?
 
-Shooter turns your phone into a remote control for AI coding sessions running on your dev machine. It provides a mobile-optimized web interface for launching and interacting with terminal sessions (shell, Claude Code, OpenCode), streaming real-time output over WebSocket, and viewing structured AI conversations in a chat format -- all accessible from anywhere through a Cloudflare Tunnel.
+Shooter turns your phone into a remote control for AI coding sessions running on your dev machine. It delivers push notifications to iOS and Android when Claude Code or OpenCode events occur -- tool usage, permission requests, session completions -- and lets you approve or deny permission prompts directly from a notification. You can also launch remote terminal sessions, stream output in real time, and browse structured AI conversation history, all from a mobile-optimized web interface accessible anywhere through a Cloudflare Tunnel.
 
-The system also delivers push notifications to an iOS app when coding events occur, such as tool usage or permission requests. You can approve or deny permission prompts directly from your phone, enabling fully hands-off AI coding workflows where the agent asks for permission and you respond from the couch.
+## Features
 
-Shooter runs as a single Node.js process on your dev machine. SvelteKit handles the web UI and REST API, a WebSocket server streams terminal I/O and session data, and node-pty manages pseudoterminal processes. Cloudflare Tunnel exposes the local server to the internet with TLS, so your phone connects securely without port forwarding.
-
-### Key Features
-
-- Launch terminal sessions (Shell, Claude Code, OpenCode) from your phone
-- Real-time terminal streaming via WebSocket with scrollback replay on reconnect
-- Structured Chat view for AI coding sessions (live JSONL tailing)
-- Push notifications for coding events (tool usage, permission requests)
-- Interactive permission allow/deny from iOS notifications
-- Session history browsing across all projects
-- Mobile-optimized dark theme UI with quick-access keys for special characters
+- **Push notifications** -- Real-time alerts for tool usage, permission requests, session starts/stops, errors, and task completions (iOS via APNs, Android via FCM)
+- **Bidirectional permissions** -- Approve or deny Claude Code permission prompts from your phone; the hook blocks until you respond
+- **Remote terminal** -- Launch shell, Claude Code, or OpenCode sessions from your phone with full xterm.js rendering
+- **Terminal persistence** -- PTY processes run in holder processes that survive server restarts; metadata persisted in SQLite
+- **Structured Chat view** -- AI conversations rendered as message bubbles with tool-use cards and thinking indicators, parsed live from JSONL session files
+- **Session browser** -- Browse coding session history across all projects
+- **QR code pairing** -- Scan a QR code from the `/config` page to connect mobile apps to the server
+- **WebSocket streaming** -- Three multiplexed channels: terminal I/O, session updates, and global events
+- **Quick keys** -- Mobile-optimized touch bar for Ctrl+C, Tab, arrow keys, Esc, and other special characters
+- **Claude Code hooks** -- Lifecycle hooks for 13 event types with context-aware notification categorization
+- **Docker support** -- Multi-stage Dockerfile with arm64 and amd64 support
 
 ---
 
-## Screenshots
+## Quick Start
 
-<!-- TODO: Add screenshots -->
+```bash
+git clone https://github.com/juspay/shooter.git
+cd shooter
+pnpm install
+pnpm setup        # interactive wizard: generates .env, builds, runs health check
+pnpm start        # start the server on http://localhost:3000
+```
 
-<!--
-Recommended screenshots:
-1. Terminal list (/terminals) - showing active and exited sessions with status badges
-2. Terminal view - Raw mode (/terminals/[id]) - xterm.js with quick keys bar
-3. Terminal view - Chat mode (/terminals/[id]?view=chat) - structured AI conversation
-4. Launch sheet - bottom sheet with session type presets and project picker
-5. Mobile view - full interface on iPhone viewport
-6. Session history (/project) - browsing past sessions across projects
--->
+Open [http://localhost:3000](http://localhost:3000) in your browser. Visit `/config` to enter your API key for the web UI.
+
+---
+
+## All Setup Methods
+
+| Method | Command | Notes |
+|--------|---------|-------|
+| Interactive wizard | `pnpm setup` | Recommended. Walks through env config, builds, and verifies. |
+| CLI | `npx shooter setup` | If installed globally via npm link |
+| One-command install | `curl -fsSL https://raw.githubusercontent.com/juspay/shooter/main/scripts/install.sh \| sh` | Clones to `~/.shooter`, installs deps, runs wizard |
+| Docker | `docker compose up -d` | See [Docker](#docker) |
+| Manual | See [Manual Setup](#manual-setup) | For advanced users |
+
+### Manual Setup
+
+```bash
+git clone https://github.com/juspay/shooter.git
+cd shooter
+pnpm install
+cp .env.example .env
+# Edit .env with your values (at minimum, set API_KEY)
+pnpm build
+pnpm start
+```
+
+The hook notifier reads `API_KEY` from the environment. Export it in your shell profile so hooks can authenticate with the server:
+
+```bash
+echo 'export API_KEY="your-api-key-here"' >> ~/.zshrc
+source ~/.zshrc
+```
 
 ---
 
@@ -53,22 +83,31 @@ Recommended screenshots:
 |  Dev Machine                                             |
 |                                                          |
 |  SvelteKit Server (adapter-node, port 3000)              |
-|    +-- REST API (terminals, sessions, notify, health)    |
-|    +-- WebSocket Server (ws)                             |
-|    +-- PTY Manager (node-pty)                            |
-|    +-- Session Watcher (chokidar)                        |
-|    +-- APNs Client (push notifications)                  |
+|    +-- REST API (/api/terminals, /api/notify, ...)       |
+|    +-- WebSocket Server (ws, noServer mode)              |
+|    +-- PTY Manager (node-pty + holder processes)         |
+|    +-- Terminal Store (SQLite persistence)                |
+|    +-- Session Watcher (chokidar file watching)          |
+|    +-- APNs Client (iOS push via @parse/node-apn)        |
+|    +-- FCM Client (Android push via firebase-admin)      |
 +------------------------------+---------------------------+
                                |
                      Cloudflare Tunnel
                    shooter.yourdomain.com
                                |
-+------------------------------+---------------------------+
-|  Phone                                                   |
-|    +-- Mobile Browser (terminal UI, chat view, controls) |
-|    +-- iOS App (push notifications, permission actions)  |
-+----------------------------------------------------------+
+        +----------------------+----------------------+
+        |                      |                      |
++-------+--------+   +--------+-------+   +----------+------+
+| Mobile Browser  |   | iOS App        |   | Android App     |
+| (web UI)        |   | (APNs push +   |   | (FCM push +     |
+| Terminal, Chat, |   |  permission    |   |  WebView)       |
+| Session viewer  |   |  responses)    |   |                 |
++-----------------+   +----------------+   +-----------------+
 ```
+
+**Server entry point:** `server.ts` creates an HTTP server wrapping the SvelteKit handler, attaches a WebSocket server in `noServer` mode, and handles upgrade requests with ticket-based authentication.
+
+**Terminal persistence:** PTY processes run inside separate holder processes (`pty-holder.cjs`) that survive server restarts. Terminal metadata (ID, PID, command, cwd) is persisted in SQLite so the server can reattach on restart.
 
 **Three WebSocket channels:**
 
@@ -78,271 +117,206 @@ Recommended screenshots:
 | Session stream | `/ws/session/:id` | Structured AI conversation updates |
 | Global events | `/ws/events` | Server broadcasts (new sessions, exits, permissions) |
 
-**REST API** handles terminal CRUD, session discovery, push notifications, WebSocket ticket generation, and health checks. All endpoints require Bearer token authentication.
+---
+
+## Configuration
+
+Copy `.env.example` to `.env` and fill in your values. The `pnpm setup` wizard handles this interactively.
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `API_KEY` | **Yes** | -- | Bearer token for authenticating all API and hook requests |
+| `PORT` | No | `3000` | HTTP server port |
+| `DEVICE_PLATFORM` | No | `ios` | Push notification target: `ios` or `android` |
+| `APNS_KEY` | No | -- | APNs private key (`.p8` file contents, newlines escaped as `\n`) |
+| `APNS_KEY_ID` | No | -- | 10-character APNs key identifier from Apple Developer portal |
+| `APNS_TEAM_ID` | No | -- | 10-character Apple Team ID |
+| `APNS_BUNDLE_ID` | No | -- | iOS app bundle identifier (must match Xcode project) |
+| `APNS_PRODUCTION` | No | `false` | Set `true` for TestFlight / App Store builds |
+| `DEVICE_TOKEN` | No | -- | Target iOS device token (64-character hex) |
+| `FCM_PROJECT_ID` | No | -- | Firebase project ID |
+| `FCM_CLIENT_EMAIL` | No | -- | Firebase service account email |
+| `FCM_PRIVATE_KEY` | No | -- | Firebase service account private key (PEM format) |
+| `ANDROID_DEVICE_TOKEN` | No | -- | Target Android FCM device token |
 
 ---
 
-## Prerequisites
+## iOS Setup
 
-- **Node.js 20+** (18+ minimum, 20+ recommended)
-- **pnpm** (npm and yarn are blocked by the project)
-- **macOS** (required for node-pty native bindings and launchd)
-- **Optional:** Apple Developer account (for push notifications to iOS)
-- **Optional:** Cloudflare account (for remote access via tunnel)
+### Prerequisites
+
+- macOS with Xcode installed
+- Apple Developer account with Push Notifications capability
+- Physical iOS device (push notifications do not work in the simulator)
+
+### APNs Key Setup
+
+1. Go to [Apple Developer > Keys](https://developer.apple.com/account/resources/authkeys/list) and create a new key with **Apple Push Notifications service (APNs)** enabled
+2. Download the `.p8` file
+3. Note the **Key ID** (10 characters) shown after creation
+4. Find your **Team ID** in [Membership Details](https://developer.apple.com/account/#/membership)
+
+Add these to your `.env`:
+
+```
+APNS_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
+APNS_KEY_ID=ABC123DEFG
+APNS_TEAM_ID=XYZ789KLMN
+APNS_BUNDLE_ID=com.yourcompany.shooter
+DEVICE_TOKEN=<64-char-hex-from-device>
+```
+
+### Building the iOS App
+
+```bash
+cd ios/Shooter
+open Shooter.xcodeproj
+```
+
+1. Select your signing team in **Signing & Capabilities**
+2. Ensure the **Push Notifications** capability is enabled
+3. Build and run on a physical device
+4. The device token is printed to the Xcode console on first launch
+
+For TestFlight or App Store builds, set `APNS_PRODUCTION=true` in your server `.env` to route through the production APNs gateway.
 
 ---
 
-## Quick Start
+## Android Setup
 
-### 1. Clone the repository
+### Prerequisites
 
-```bash
-git clone https://github.com/your-username/shooter.git
-cd shooter
+- Android Studio
+- Gradle 8.12+ (for generating the wrapper)
+- Firebase project with Cloud Messaging enabled
+
+### Firebase Setup
+
+1. Create a project in the [Firebase Console](https://console.firebase.google.com/)
+2. Add an Android app with application ID `com.shooter.android`
+3. Download `google-services.json` and place it in `android/app/`
+4. Go to **Project Settings > Service Accounts** and generate a new private key
+5. Copy `project_id`, `client_email`, and `private_key` from the downloaded JSON into your `.env`:
+
+```
+FCM_PROJECT_ID=your-firebase-project-id
+FCM_CLIENT_EMAIL=firebase-adminsdk-xxxxx@your-project.iam.gserviceaccount.com
+FCM_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----"
+ANDROID_DEVICE_TOKEN=<fcm-device-token>
+DEVICE_PLATFORM=android
 ```
 
-### 2. Install dependencies
+### Building the Android App
 
 ```bash
-pnpm install
+cd android
+chmod +x setup.sh
+./setup.sh              # generates Gradle wrapper
+./gradlew assembleDebug
 ```
 
-### 3. Rebuild node-pty native bindings
+The app targets SDK 35 (min SDK 26) and uses a WebView that connects to your Shooter server URL.
 
-node-pty includes a native `.node` binding that must be compiled for your system:
+---
 
-```bash
-npx node-gyp rebuild --directory=node_modules/.pnpm/node-pty@1.1.0/node_modules/node-pty
-```
+## Claude Code Hooks
 
-### 4. Configure environment variables
+Shooter integrates with Claude Code through lifecycle hooks defined in `.claude/settings.json`. A unified notifier script (`.claude/hooks/notifier.cjs`) handles all hook events.
+
+### Captured Events
+
+| Hook | Description |
+|------|-------------|
+| `PreToolUse` | Before a tool executes (file edit, bash command, etc.) |
+| `PostToolUse` | After a tool completes successfully |
+| `PostToolUseFailure` | After a tool fails |
+| `PermissionRequest` | Claude Code asks for permission -- **blocks until you respond** |
+| `SessionStart` | A new coding session begins |
+| `SessionEnd` | A coding session ends |
+| `Stop` | Claude Code stops execution |
+| `Notification` | General notification from Claude Code |
+| `SubagentStart` | A subagent is spawned |
+| `SubagentStop` | A subagent completes |
+| `UserPromptSubmit` | User submits a prompt |
+| `TeammateIdle` | A teammate agent becomes idle |
+| `TaskCompleted` | A task finishes |
+| `PreCompact` | Before context compaction |
+
+### Permission Flow
+
+1. Claude Code triggers `PermissionRequest` hook
+2. Notifier sends a push notification with the tool name and details to your phone
+3. You tap **Allow** or **Deny** on the interactive notification (iOS) or in the app
+4. Notifier polls `GET /api/response?requestId=...` until your decision arrives
+5. The hook returns the decision to Claude Code, which proceeds or aborts
+
+The `PermissionRequest` hook has a 180-second timeout in `.claude/settings.json`. The notifier's internal poll timeout is 120 seconds, providing a 60-second safety buffer.
+
+### Hook Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SHOOTER_USE_LOCAL` | -- | Set `true` to connect to local server instead of remote URL |
+| `SHOOTER_LOCAL_PORT` | `3000` | Local server port when using `SHOOTER_USE_LOCAL` |
+| `SHOOTER_API_URL` | -- | Remote server URL (when not using local) |
+| `SHOOTER_PERMISSION_TIMEOUT` | `120` | Seconds to wait for a permission response |
+| `API_KEY` | -- | Bearer token (must match the server's `API_KEY`) |
+
+---
+
+## Docker
+
+### Quick Start
 
 ```bash
 cp .env.example .env
+# Edit .env with your values
+docker compose up -d
 ```
 
-Edit `.env` with your values:
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `API_KEY` | Yes | Bearer token for authenticating all API requests |
-| `APNS_KEY` | No | APNs private key (.p8 contents, for push notifications) |
-| `APNS_KEY_ID` | No | APNs key identifier |
-| `APNS_TEAM_ID` | No | Apple Team ID |
-| `APNS_BUNDLE_ID` | No | iOS app bundle identifier |
-| `APNS_PRODUCTION` | No | Set `true` for TestFlight/App Store (default: `false` for sandbox) |
-| `DEVICE_TOKEN` | No | Target iOS device token (64-char hex) |
-
-### 5. Set the API key in your shell profile
-
-The Claude Code hook notifier needs the API key available as an environment variable:
+### Manual Build and Run
 
 ```bash
-echo 'export SHOOTER_API_KEY="your-api-key-here"' >> ~/.zshrc
-source ~/.zshrc
+docker build -t shooter .
+
+docker run -d \
+  --name shooter \
+  --env-file .env \
+  -p 3000:3000 \
+  -v shooter-data:/root/.shooter \
+  --restart unless-stopped \
+  shooter
 ```
 
-### 6. Build and start
+The multi-stage Dockerfile uses `node:20-slim` and includes build tools for `node-pty` and `better-sqlite3` native addons. SQLite data is persisted in the `shooter-data` volume. The `.env` file is injected at runtime and never baked into the image.
 
-```bash
-pnpm build
-pnpm start
-```
-
-### 7. Open in your browser
-
-Navigate to [http://localhost:3000](http://localhost:3000).
-
-### 8. Configure API key in Settings
-
-Visit `/config` in the browser and enter your API key. This is stored in the browser's local storage for authenticating REST and WebSocket requests from the UI.
-
----
-
-## Usage
-
-### Launching a terminal
-
-1. Navigate to `/terminals`
-2. Tap the **+ New Terminal** button
-3. Choose a preset (Claude Code, OpenCode, Shell) or configure a custom command
-4. Select a working directory from recent projects
-5. Tap **Launch Terminal**
-
-### Raw vs Chat view
-
-AI sessions (Claude Code, OpenCode) offer two view modes toggled from the top bar:
-
-- **Raw** -- Full xterm.js terminal showing all PTY output. Use this for complete control and visibility into everything the process outputs.
-- **Chat** -- Structured conversation view with message bubbles, tool usage cards, and thinking indicators. Parsed live from the session's JSONL file. This is the default on mobile viewports.
-
-### Quick Keys
-
-On mobile, a horizontal scrollable bar below the terminal provides keys that are difficult to type on a touch keyboard:
-
-`Ctrl+C` | `Tab` | `Up` | `Down` | `Esc` | `Ctrl+D` | `Ctrl+Z`
-
-### Killing and removing terminals
-
-- Tap the **Kill** button in the terminal view top bar to send SIGTERM to the process
-- Exited terminals remain visible for 1 hour (scrollback preserved), then are automatically cleaned up
-- Use `DELETE /api/terminals/:id` to remove a terminal immediately
-
----
-
-## Remote Access (Cloudflare Tunnel)
-
-Cloudflare Tunnel provides secure HTTPS and WSS access to your local Shooter server without opening ports on your router.
-
-### 1. Install cloudflared
-
-```bash
-brew install cloudflare/cloudflare/cloudflared
-cloudflared login
-```
-
-### 2. Create a tunnel
-
-```bash
-cloudflared tunnel create shooter
-```
-
-### 3. Configure the tunnel
-
-Create `~/.cloudflared/shooter-config.yml`:
+### docker-compose.yml
 
 ```yaml
-tunnel: <TUNNEL_ID>
-credentials-file: /Users/<you>/.cloudflared/<TUNNEL_ID>.json
+services:
+  shooter:
+    build: .
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    volumes:
+      - shooter-data:/root/.shooter
+    restart: unless-stopped
 
-ingress:
-  - hostname: shooter.yourdomain.com
-    service: http://localhost:3000
-    originRequest:
-      noTLSVerify: true
-      connectTimeout: 10s
-      tcpKeepAlive: 30s
-  - service: http_status:404
+volumes:
+  shooter-data:
 ```
-
-Add a DNS record for the tunnel:
-
-```bash
-cloudflared tunnel route dns shooter shooter.yourdomain.com
-```
-
-### 4. Run the tunnel
-
-```bash
-cloudflared tunnel --config ~/.cloudflared/shooter-config.yml run shooter
-```
-
-### 5. Open on your phone
-
-Navigate to `https://shooter.yourdomain.com` in your mobile browser.
-
----
-
-## Auto-Start (launchd)
-
-To keep the Shooter server running persistently (auto-restart on crash, start at login), use a macOS launchd plist.
-
-### 1. Generate the plist from the template
-
-The design spec includes a template at `docs/superpowers/specs/`. Adjust paths to match your system:
-
-```bash
-cat > ~/Library/LaunchAgents/com.shooter.server.plist << 'PLIST'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key>
-  <string>com.shooter.server</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>/usr/local/bin/npx</string>
-    <string>tsx</string>
-    <string>SHOOTER_DIR/server.ts</string>
-  </array>
-  <key>WorkingDirectory</key>
-  <string>SHOOTER_DIR</string>
-  <key>EnvironmentVariables</key>
-  <dict>
-    <key>PATH</key>
-    <string>/usr/local/bin:/usr/bin:/bin</string>
-    <key>NODE_ENV</key>
-    <string>production</string>
-  </dict>
-  <key>KeepAlive</key>
-  <true/>
-  <key>RunAtLoad</key>
-  <true/>
-  <key>StandardOutPath</key>
-  <string>/tmp/shooter.log</string>
-  <key>StandardErrorPath</key>
-  <string>/tmp/shooter.err</string>
-</dict>
-</plist>
-PLIST
-```
-
-Replace `SHOOTER_DIR` with your actual project path:
-
-```bash
-sed -i '' "s|SHOOTER_DIR|$(pwd)|g" ~/Library/LaunchAgents/com.shooter.server.plist
-```
-
-### 2. Load the service
-
-```bash
-launchctl load ~/Library/LaunchAgents/com.shooter.server.plist
-```
-
-### 3. Check logs
-
-```bash
-tail -f /tmp/shooter.log
-tail -f /tmp/shooter.err
-```
-
-To unload: `launchctl unload ~/Library/LaunchAgents/com.shooter.server.plist`
-
----
-
-## Push Notifications (iOS)
-
-Push notifications are optional and require an Apple Developer account.
-
-### APNs key setup
-
-1. In the Apple Developer portal, create an APNs authentication key (Keys > + > Apple Push Notifications service)
-2. Download the `.p8` file
-3. Copy the key contents into `APNS_KEY` in your `.env`
-4. Set `APNS_KEY_ID`, `APNS_TEAM_ID`, and `APNS_BUNDLE_ID`
-
-### iOS app
-
-The Swift iOS app lives in the `ios/` directory. Open `ios/Shooter/Shooter.xcodeproj` in Xcode, configure your signing team, and build to a device. The app registers for push notifications on launch and displays a notification history.
-
-For TestFlight or App Store builds, set `APNS_PRODUCTION=true` in your server's `.env` to route notifications through the production APNs gateway.
-
-### Hook notifier
-
-The file `.claude/hooks/notifier.cjs` is a Node.js script invoked by Claude Code lifecycle hooks. It sends push notifications to your phone when coding events occur (tool usage, session starts, permission requests). The notifier reads `SHOOTER_API_KEY` from the environment and posts to the Shooter server, which forwards to APNs.
-
-For bidirectional permissions, the `PermissionRequest` hook blocks and polls the server for an allow/deny response from the iOS app.
 
 ---
 
 ## API Reference
 
-All endpoints require the `Authorization: Bearer <API_KEY>` header unless noted otherwise.
+All endpoints require the `Authorization: Bearer <API_KEY>` header.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/api/health` | Health check, returns server status |
+| `GET` | `/api/health` | Health check with server status |
 | `GET` | `/api/terminals` | List all active and recently exited terminals |
 | `POST` | `/api/terminals` | Create a new terminal session |
 | `GET` | `/api/terminals/:id` | Get details for a specific terminal |
@@ -350,23 +324,30 @@ All endpoints require the `Authorization: Bearer <API_KEY>` header unless noted 
 | `POST` | `/api/terminals/:id/resize` | Resize a terminal (cols, rows) |
 | `POST` | `/api/ws-ticket` | Generate a short-lived WebSocket auth ticket |
 | `GET` | `/api/ws-status` | Get connected WebSocket client count |
-| `POST` | `/api/notify` | Send a push notification via APNs |
-| `POST` | `/api/response` | Submit a permission allow/deny response |
+| `POST` | `/api/notify` | Send a push notification via APNs or FCM |
+| `GET` | `/api/notify` | Check notification status and history |
+| `POST` | `/api/response` | Submit a permission allow/deny decision |
+| `GET` | `/api/response` | Poll for a pending permission decision |
 | `GET` | `/api/sessions` | List sessions across all projects |
+| `POST` | `/api/webhook` | Receive external webhook events |
+| `GET` | `/api/qr-config` | Generate QR code for mobile app pairing |
+| `POST` | `/api/device-token` | Register a device token (iOS or Android) |
+| `GET` | `/api/debug` | Debug information (APNs config, device token status) |
 
-### POST /api/terminals -- request body
+### WebSocket Authentication
 
-```json
-{
-  "command": "claude",
-  "args": ["--resume", "abc123"],
-  "cwd": "/Users/me/project",
-  "cols": 80,
-  "rows": 24
-}
+WebSocket connections use ticket-based auth. First call `POST /api/ws-ticket` with your Bearer token to receive a single-use ticket (valid 30 seconds), then connect with `?ticket=TICKET` in the query string.
+
+### Example: Create Terminal
+
+```bash
+curl -X POST http://localhost:3000/api/terminals \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"command": "claude", "cwd": "/Users/me/project", "cols": 80, "rows": 24}'
 ```
 
-### POST /api/terminals -- response
+Response:
 
 ```json
 {
@@ -382,23 +363,26 @@ All endpoints require the `Authorization: Bearer <API_KEY>` header unless noted 
 
 ---
 
-## WebSocket Channels
+## Development
 
-All WebSocket connections use ticket-based authentication. First call `POST /api/ws-ticket` with your Bearer token to receive a one-time ticket (valid for 30 seconds), then connect with `?ticket=TICKET` in the query string.
+```bash
+pnpm dev           # Vite dev server with hot reload (no WebSocket server)
+pnpm build         # Production build (outputs to build/)
+pnpm start         # Production server with WebSocket support (tsx server.ts)
+pnpm preview       # Preview production build via Vite
+pnpm check         # TypeScript type checking
+pnpm run gen:types # Generate types from YAML specs (specs/types/)
+pnpm lint          # ESLint
+pnpm lint:fix      # ESLint with auto-fix
+pnpm format        # Prettier formatting
+pnpm format:check  # Check formatting without writing
+```
 
-### Terminal I/O (`/ws/terminal/:id`)
+**Note:** `pnpm dev` runs the Vite dev server, which does not include the WebSocket server or PTY manager. For full functionality (terminal sessions, live streaming), use `pnpm build && pnpm start`.
 
-Raw PTY byte stream. Client sends `input`, `resize`, and `signal` messages. Server sends `output`, `exit`, `scrollback`, and `error` messages. Used by the xterm.js Raw view.
+### Type System
 
-### Session stream (`/ws/session/:id`)
-
-Structured conversation data for AI sessions. Server sends `history` on connect (all existing messages), then streams new `message`, `tool-use`, `tool-result`, and `thinking` entries as they appear in the session file. Client can send `send-input` (write to PTY stdin) and `cancel` (SIGINT).
-
-### Global events (`/ws/events`)
-
-Server-to-client broadcast channel. Emits `session-started`, `session-ended`, `permission-requested`, `terminal-created`, and `terminal-exited` events. Used by the terminal list page to update in real time.
-
-For the full WebSocket protocol specification, see [docs/superpowers/specs/2026-03-17-mobile-terminal-access-design.md](docs/superpowers/specs/2026-03-17-mobile-terminal-access-design.md).
+Types are auto-generated from YAML specifications in `specs/types/` using [type-crafter](https://github.com/nicktaf/type-crafter). Never edit files in `src/generated/types/` directly -- edit the YAML specs and run `pnpm run gen:types`.
 
 ---
 
@@ -406,23 +390,35 @@ For the full WebSocket protocol specification, see [docs/superpowers/specs/2026-
 
 ```
 shooter/
-  server.ts                        # Custom HTTP + WebSocket server entry point
-  .env.example                     # Environment variable template
+  server.ts                        # HTTP + WebSocket server entry point
   package.json                     # Dependencies and scripts (pnpm only)
+  Dockerfile                       # Multi-stage Docker build
+  docker-compose.yml               # Docker Compose config
+  .env.example                     # Environment variable template
   svelte.config.js                 # SvelteKit config (adapter-node)
   vite.config.ts                   # Vite config (node-pty external)
-  .claude/                         # Claude Code hooks and notifier
+  bin/
+    shooter.cjs                    # CLI entry point (shooter start|setup|help)
+  scripts/
+    setup.cjs                      # Interactive setup wizard
+    install.sh                     # One-command curl installer
+  .claude/
     hooks/notifier.cjs             # Unified hook notifier (Node.js)
-    settings.json                  # Hook configuration
+    settings.json                  # Hook configuration (13 event types)
   src/
+    generated/types/               # Auto-generated TypeScript types (DO NOT EDIT)
     lib/
       modules/
         server/
           apn/                     # APNs push notification service
           auth.ts                  # Shared authentication helper
+          cli/                     # CLI command utilities
           terminal/
             pty-manager.ts         # PTY lifecycle, scrollback, cleanup
-            session-watcher.ts     # File watcher for JSONL session files
+            pty-holder.cjs         # Standalone holder process for persistence
+            terminal-store.ts      # SQLite persistence for terminal metadata
+            session-watcher.ts     # JSONL file watcher (chokidar)
+            opencode-watcher.ts    # OpenCode session watcher
           ws/
             server.ts              # WebSocket upgrade routing
             terminal-handler.ts    # Terminal I/O channel
@@ -442,73 +438,78 @@ shooter/
             ConnectionStatus.svelte # Connection state indicator
             xterm-wrapper.ts       # Async xterm.js initialization
     routes/
-      api/                         # REST API endpoints
+      api/                         # REST API endpoints (17 endpoints)
       terminals/                   # Terminal list and detail pages
       project/                     # Project dashboard
       session/[id]/                # Session viewer
-      config/                      # Settings page
+      config/                      # Settings page with QR pairing
   specs/types/                     # Type-crafter YAML specifications
-  src/generated/types/             # Auto-generated TypeScript types (DO NOT EDIT)
   ios/Shooter/                     # Swift iOS app (Xcode project)
+  android/                         # Kotlin Android app (Gradle project)
   docs/                            # Documentation
   plans/                           # Architecture plans and roadmap
 ```
 
 ---
 
-## Development
+## Troubleshooting
 
-```bash
-# Start Vite dev server with hot reload
-pnpm dev
+### Server does not start
 
-# Build for production (outputs to build/)
-pnpm build
+- Verify Node.js 20+ is installed: `node --version`
+- Ensure pnpm is used (npm and yarn are blocked): `pnpm --version`
+- Check that `pnpm build` completed without errors before running `pnpm start`
+- Confirm `.env` exists and `API_KEY` is set
 
-# Run production server (custom server.ts with WebSocket support)
-pnpm start
+### WebSocket connections fail
 
-# Preview production build via Vite
-pnpm preview
+- `pnpm dev` does **not** run the WebSocket server. Use `pnpm build && pnpm start` for full functionality.
+- Ensure you are obtaining a ticket via `POST /api/ws-ticket` before connecting
+- Tickets expire after 30 seconds and are single-use
 
-# TypeScript type checking
-pnpm check
+### Push notifications not arriving
 
-# Generate types from YAML specs
-pnpm run gen:types
+- **iOS:** Verify `APNS_KEY`, `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_BUNDLE_ID`, and `DEVICE_TOKEN` are all set in `.env`
+- **iOS (TestFlight/App Store):** Set `APNS_PRODUCTION=true` -- sandbox tokens do not work with the production gateway and vice versa
+- **Android:** Ensure `google-services.json` is in `android/app/` and FCM credentials are in `.env`
+- Check `GET /api/debug` for APNs configuration status and device token validity
+- Check server logs for APNs or FCM error responses
 
-# Lint and format
-pnpm lint
-pnpm format
+### Hooks not sending notifications
 
-# Run all validation checks (format + lint + typecheck)
-pnpm run validate
-```
+- `API_KEY` must be exported in your shell environment, not just in `.env`: `export API_KEY="..."`
+- Verify the hooks are configured in `.claude/settings.json`
+- Test connectivity: `curl -H "Authorization: Bearer $API_KEY" http://localhost:3000/api/health`
 
-**Note:** `pnpm dev` runs the standard Vite dev server, which does not include the WebSocket server. For full functionality (terminal sessions, live streaming), use `pnpm build && pnpm start`.
+### Terminal sessions lost after restart
+
+- Terminal metadata is persisted in SQLite and PTY holder processes survive restarts, so running terminals are reattached automatically
+- In-memory state (WebSocket connections, auth tickets, pending permission requests) is lost on restart
+
+### node-pty build errors
+
+- Ensure Python 3, make, and a C++ compiler are installed
+- On macOS, install Xcode Command Line Tools: `xcode-select --install`
+- Try rebuilding: `pnpm rebuild node-pty`
+
+### Port already in use
+
+- Default port is 3000. Set `PORT=<number>` in `.env` to use a different port.
+- Check what is using the port: `lsof -i :3000`
 
 ---
 
 ## Security
 
-- **Command allowlist** -- Only `zsh`, `bash`, `sh`, `fish`, `claude`, and `opencode` can be launched as terminal commands. Arbitrary command execution is blocked.
-- **Ticket-based WebSocket auth** -- WebSocket connections use short-lived, single-use tickets (30-second expiry) obtained via an authenticated REST endpoint. Long-lived API keys never appear in WebSocket URLs.
-- **Bearer token on all REST endpoints** -- Every API request requires `Authorization: Bearer <API_KEY>`.
-- **Working directory validation** -- The `cwd` parameter is resolved through `realpathSync` to follow symlinks, then validated against the user's home directory. Symlink-based path traversal is blocked.
-- **No credentials in code** -- All secrets are loaded from `.env` at runtime. The `.env` file is gitignored.
-- **APNs JWT rotation** -- Apple Push Notification tokens are generated with short expiry and rotated automatically.
-
----
-
-## Known Limitations
-
-- **In-memory state** -- Terminal sessions, WebSocket connections, auth tickets, and pending permission requests are stored in memory. If the server restarts, all active terminals are lost.
-- **Single user** -- There is no multi-user authentication. The API key acts as a shared secret. Anyone with the key has full access.
-- **macOS only** -- node-pty native bindings and launchd integration are macOS-specific. The server may work on Linux with adjustments, but this is untested.
-- **OpenCode Chat view** -- Structured Chat view parsing is not yet supported for OpenCode sessions. OpenCode terminals work in Raw mode only.
+- **Command allowlist** -- Only `zsh`, `bash`, `sh`, `fish`, `claude`, and `opencode` can be launched as terminal commands
+- **Ticket-based WebSocket auth** -- Short-lived, single-use tickets (30-second expiry) keep API keys out of WebSocket URLs
+- **Bearer token on all REST endpoints** -- Every request requires `Authorization: Bearer <API_KEY>`
+- **Working directory validation** -- The `cwd` parameter is validated against the user's home directory; symlink traversal is blocked
+- **No credentials in code** -- All secrets loaded from `.env` at runtime; `.env` is gitignored
+- **APNs JWT rotation** -- Push notification tokens are generated with short expiry and rotated automatically
 
 ---
 
 ## License
 
-See [LICENSE](LICENSE).
+MIT

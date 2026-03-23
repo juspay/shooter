@@ -1,0 +1,17 @@
+node_modules
+.git
+build
+.svelte-kit
+ios
+android
+.claude/worktrees
+.env
+*.log
+*.err
+docs
+plans
+tests
+test
+*.plist
+*.plist.template
+vite.config.js.timestamp-*

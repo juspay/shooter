@@ -1,9 +1,8 @@
-import { realpathSync, statSync } from 'fs';
-import { basename } from 'path';
-
 import { validateAuth } from '$lib/modules/server/auth';
 import { ptyManager } from '$lib/modules/server/terminal/pty-manager.js';
 import { json } from '@sveltejs/kit';
+import { realpathSync, statSync } from 'fs';
+import { basename } from 'path';
 
 import type { RequestHandler } from './$types';
 
@@ -12,21 +11,20 @@ const ALLOWED_COMMANDS = ['zsh', 'bash', 'sh', 'fish', 'claude', 'opencode'];
 // GET /api/terminals — List all terminals (active + recently exited)
 export const GET: RequestHandler = ({ request }) => {
   const authError = validateAuth(request);
-  if (authError) return authError;
+  if (authError) {return authError;}
 
   try {
     const terminals = ptyManager.list().map(t => ({
-      id: t.id,
-      command: t.command,
       args: t.args,
+      clientCount: t.clients.size,
+      command: t.command,
+      createdAt: t.createdAt.toISOString(),
       cwd: t.cwd,
+      exitCode: t.exitCode,
+      exitedAt: t.exitedAt?.toISOString() ?? null,
+      id: t.id,
       pid: t.pid,
       status: t.status,
-      exitCode: t.exitCode,
-      createdAt: t.createdAt.toISOString(),
-      exitedAt: t.exitedAt?.toISOString() ?? null,
-      clientCount: t.clients.size,
-      lastOutput: t.scrollback.length > 0 ? t.scrollback[t.scrollback.length - 1] : null,
     }));
 
     return json({
@@ -43,15 +41,15 @@ export const GET: RequestHandler = ({ request }) => {
 // POST /api/terminals — Create a new terminal session
 export const POST: RequestHandler = async ({ request }) => {
   const authError = validateAuth(request);
-  if (authError) return authError;
+  if (authError) {return authError;}
 
-  let body: { command?: string; args?: string[]; cwd?: string; cols?: number; rows?: number };
+  let body: { args?: string[]; cols?: number; command?: string; cwd?: string; rows?: number };
   try {
     body = (await request.json()) as {
-      command?: string;
       args?: string[];
-      cwd?: string;
       cols?: number;
+      command?: string;
+      cwd?: string;
       rows?: number;
     };
   } catch {
@@ -59,7 +57,7 @@ export const POST: RequestHandler = async ({ request }) => {
   }
 
   try {
-    const { command, args, cwd, cols, rows } = body;
+    const { args, cols, command, cwd, rows } = body;
 
     if (!command) {
       return json({ error: 'command is required' }, { status: 400 });
@@ -110,7 +108,7 @@ export const POST: RequestHandler = async ({ request }) => {
       return json({ error: 'rows must be a positive number' }, { status: 400 });
     }
 
-    const terminal = ptyManager.create(
+    const terminal = await ptyManager.create(
       command,
       args ?? [],
       realCwd,
