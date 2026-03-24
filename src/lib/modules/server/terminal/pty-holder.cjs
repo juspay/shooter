@@ -32,6 +32,7 @@ const rows = parseInt(rowsStr, 10);
 const MAX_SCROLLBACK_LINES = 5000;
 const MAX_INPUT_BYTES = 65_536; // 64 KB — cap per-write to prevent memory abuse
 const GRACE_PERIOD_MS = 60_000; // 60 seconds after PTY exit before self-terminating
+const ACTIVITY_IDLE_MS = 5_000; // 5 seconds of no output → idle
 
 // ---------------------------------------------------------------------------
 // Scrollback ring buffer
@@ -70,20 +71,112 @@ try {
 }
 
 // ---------------------------------------------------------------------------
+// Shell hook injection for OSC 7
+// ---------------------------------------------------------------------------
+
+const os = require('os');
+const path = require('path');
+
+const OSC7_HOOK = `__shooter_osc7() { printf '\\033]7;file://%s%s\\033\\\\' "$(hostname)" "$PWD"; }`;
+
+const SHELL_COMMANDS = ['zsh', 'bash', 'sh', 'fish'];
+const commandBase = command.split('/').pop() || command;
+const ptyEnv = { ...process.env };
+
+// Clipboard image paste support: per-terminal clipboard directory
+const clipboardDir = path.join(os.tmpdir(), `shooter-clipboard-${id}`);
+try { fs.mkdirSync(clipboardDir, { recursive: true }); } catch { /* best effort */ }
+ptyEnv.SHOOTER_CLIPBOARD_DIR = clipboardDir;
+
+// Prepend clipboard shim scripts to PATH so tools find our xclip/wl-paste
+const shimsDir = path.resolve(__dirname, '..', 'scripts', 'clipboard-shims');
+// Also check relative to cwd for dev mode
+const shimsDir2 = path.resolve(process.cwd(), 'scripts', 'clipboard-shims');
+if (fs.existsSync(shimsDir)) {
+  ptyEnv.PATH = `${shimsDir}:${ptyEnv.PATH || ''}`;
+} else if (fs.existsSync(shimsDir2)) {
+  ptyEnv.PATH = `${shimsDir2}:${ptyEnv.PATH || ''}`;
+}
+
+let spawnCommand;
+let spawnArgs;
+
+if (SHELL_COMMANDS.includes(commandBase)) {
+  if (commandBase === 'zsh' || (commandBase === 'sh' && (process.env.SHELL || '').includes('zsh'))) {
+    // zsh: use ZDOTDIR with custom .zshrc
+    const zdotdir = path.join(os.tmpdir(), `shooter-zd-${id}`);
+    try {
+      fs.mkdirSync(zdotdir, { recursive: true });
+      const realRc = path.join(process.env.HOME || '', '.zshrc');
+      const rcContent = [
+        `[ -f "${realRc}" ] && source "${realRc}"`,
+        OSC7_HOOK,
+        `precmd_functions+=(__shooter_osc7)`,
+        '',
+      ].join('\n');
+      fs.writeFileSync(path.join(zdotdir, '.zshrc'), rcContent, 'utf8');
+      ptyEnv.ZDOTDIR = zdotdir;
+    } catch {
+      // Best effort — shell will work without the hook
+    }
+    spawnCommand = command;
+    spawnArgs = args;
+  } else if (commandBase === 'bash') {
+    // bash: use --rcfile
+    const rcPath = path.join(os.tmpdir(), `shooter-rc-${id}.sh`);
+    try {
+      const realRc = path.join(process.env.HOME || '', '.bashrc');
+      const rcContent = [
+        `[ -f "${realRc}" ] && source "${realRc}"`,
+        OSC7_HOOK,
+        `PROMPT_COMMAND="__shooter_osc7\${PROMPT_COMMAND:+;\$PROMPT_COMMAND}"`,
+        '',
+      ].join('\n');
+      fs.writeFileSync(rcPath, rcContent, 'utf8');
+    } catch {
+      // Best effort
+    }
+    spawnCommand = command;
+    spawnArgs = ['--rcfile', rcPath, ...args];
+  } else {
+    // sh/fish: no hook injection
+    spawnCommand = command;
+    spawnArgs = args;
+  }
+} else {
+  // Non-shell commands: wrap in login shell
+  spawnCommand = null;
+  spawnArgs = null;
+}
+
+// ---------------------------------------------------------------------------
 // Spawn PTY
 // ---------------------------------------------------------------------------
 
-const shell = process.env.SHELL || '/bin/zsh';
-const shellEscape = (arg) => `'${arg.replace(/'/g, "'\\''")}'`;
-const fullCommand = [command, ...args].map(shellEscape).join(' ');
+let ptyProcess;
 
-const ptyProcess = pty.spawn(shell, ['-l', '-c', fullCommand], {
-  cols,
-  rows,
-  cwd,
-  env: { ...process.env },
-  name: 'xterm-color',
-});
+if (spawnCommand) {
+  // Interactive shell: spawn directly for proper rc injection
+  ptyProcess = pty.spawn(spawnCommand, spawnArgs, {
+    cols,
+    rows,
+    cwd,
+    env: ptyEnv,
+    name: 'xterm-color',
+  });
+} else {
+  // Non-shell command: wrap in login shell as before
+  const shell = process.env.SHELL || '/bin/zsh';
+  const shellEscape = (arg) => `'${arg.replace(/'/g, "'\\''")}'`;
+  const fullCommand = [command, ...args].map(shellEscape).join(' ');
+  ptyProcess = pty.spawn(shell, ['-l', '-c', fullCommand], {
+    cols,
+    rows,
+    cwd,
+    env: ptyEnv,
+    name: 'xterm-color',
+  });
+}
 
 let exited = false;
 let exitCode = null;
@@ -111,11 +204,85 @@ function broadcast(msg) {
 }
 
 // ---------------------------------------------------------------------------
+// OSC 7 CWD parsing
+// ---------------------------------------------------------------------------
+
+// Matches: \x1b]7;file://hostname/path\x1b\\ or \x1b]7;file://hostname/path\x07
+const OSC7_RE = /\x1b\]7;file:\/\/[^/]*([^\x07\x1b]*)\x07|\x1b\]7;file:\/\/[^/]*([^\x07\x1b]*)\x1b\\/g;
+
+// Buffer for incomplete OSC 7 sequences split across data chunks
+let osc7PartialBuf = '';
+
+let currentCwd = cwd; // Initialize with launch cwd
+
+function parseOsc7(data) {
+  // Prepend any partial OSC 7 sequence from the previous chunk
+  const combined = osc7PartialBuf + data;
+  osc7PartialBuf = '';
+
+  // Check for an incomplete trailing OSC 7 sequence (starts with \x1b]7; but
+  // no terminator \x07 or \x1b\\ before end of data)
+  const lastEsc = combined.lastIndexOf('\x1b]7;');
+  if (lastEsc !== -1) {
+    const afterEsc = combined.slice(lastEsc);
+    if (!afterEsc.includes('\x07') && !afterEsc.includes('\x1b\\')) {
+      // Incomplete sequence — buffer it for the next chunk
+      osc7PartialBuf = afterEsc;
+      // Only parse the portion before the incomplete sequence
+      if (lastEsc === 0) return;
+    }
+  }
+
+  const toParse = osc7PartialBuf.length > 0 ? combined.slice(0, -osc7PartialBuf.length) : combined;
+
+  let match;
+  let lastPath = null;
+  OSC7_RE.lastIndex = 0;
+  while ((match = OSC7_RE.exec(toParse)) !== null) {
+    const rawPath = match[1] || match[2] || '';
+    let decoded;
+    try {
+      decoded = decodeURIComponent(rawPath);
+    } catch {
+      // Malformed percent-encoding — use the raw path as fallback
+      decoded = rawPath;
+    }
+    if (decoded) lastPath = decoded;
+  }
+  if (lastPath && lastPath !== currentCwd) {
+    currentCwd = lastPath;
+    broadcast({ type: 'cwd', path: currentCwd });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Activity tracking
+// ---------------------------------------------------------------------------
+
+let isActive = false;
+let activityTimer = null;
+
+function touchActivity() {
+  if (!isActive) {
+    isActive = true;
+    broadcast({ type: 'activity', active: true });
+  }
+  if (activityTimer) clearTimeout(activityTimer);
+  activityTimer = setTimeout(() => {
+    isActive = false;
+    activityTimer = null;
+    broadcast({ type: 'activity', active: false });
+  }, ACTIVITY_IDLE_MS);
+}
+
+// ---------------------------------------------------------------------------
 // PTY event handlers
 // ---------------------------------------------------------------------------
 
 ptyProcess.onData((data) => {
   pushScrollback(data);
+  touchActivity();
+  parseOsc7(data);
   broadcast({ type: 'output', data });
 });
 
@@ -148,8 +315,12 @@ ptyProcess.onExit(({ exitCode: code, signal }) => {
 const server = net.createServer((socket) => {
   clients.add(socket);
 
-  // On connect: send current state and scrollback
+  // On connect: send current state, activity, cwd, and scrollback
   send(socket, { type: 'info', pid: ptyProcess.pid, exited, exitCode });
+  send(socket, { type: 'activity', active: isActive });
+  if (currentCwd) {
+    send(socket, { type: 'cwd', path: currentCwd });
+  }
 
   const sb = getScrollback();
   if (sb.length > 0) {
@@ -293,6 +464,30 @@ function cleanupAndExit() {
     if (fs.existsSync(socketPath)) {
       fs.unlinkSync(socketPath);
     }
+  } catch {
+    // Best effort
+  }
+
+  // Clean up shell hook temp files
+  try {
+    const zdotdir = path.join(os.tmpdir(), `shooter-zd-${id}`);
+    const rcPath = path.join(os.tmpdir(), `shooter-rc-${id}.sh`);
+    if (fs.existsSync(path.join(zdotdir, '.zshrc'))) {
+      fs.unlinkSync(path.join(zdotdir, '.zshrc'));
+      fs.rmdirSync(zdotdir);
+    }
+    if (fs.existsSync(rcPath)) {
+      fs.unlinkSync(rcPath);
+    }
+  } catch {
+    // Best effort
+  }
+
+  // Clean up clipboard directory
+  try {
+    const clipImg = path.join(clipboardDir, 'image.png');
+    if (fs.existsSync(clipImg)) fs.unlinkSync(clipImg);
+    if (fs.existsSync(clipboardDir)) fs.rmdirSync(clipboardDir);
   } catch {
     // Best effort
   }

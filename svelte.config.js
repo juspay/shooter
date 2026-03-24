@@ -8,6 +8,9 @@ const config = {
     alias: {
       $generated: './src/generated',
     },
+    serviceWorker: {
+      register: false,
+    },
   },
   preprocess: vitePreprocess(),
 };

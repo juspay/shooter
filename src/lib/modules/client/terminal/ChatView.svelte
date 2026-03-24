@@ -5,6 +5,7 @@
     ToolUsePart,
   } from '$lib/modules/server/sessions/types';
 
+  import { Accordion, Avatar, Button, Input, Pill } from '@juspay/svelte-ui-components';
   import {
     getToolDescription,
     renderMarkdown,
@@ -104,7 +105,7 @@
   {#if showHeader}
     <div class="chatview-header">
       <div class="chatview-header-left">
-        <span class="badge-live">LIVE</span>
+        <Pill text="LIVE" classes="pill-live" />
         <span class="chatview-title">Session</span>
       </div>
       <div class="chatview-header-right">
@@ -119,12 +120,7 @@
               : 'Disconnected'}
         </span>
         {#if !sessionEnded && onCancel}
-          <button
-            class="chatview-cancel-btn"
-            onclick={() => { onCancel(); }}
-          >
-            Cancel
-          </button>
+          <Button classes="btn-danger btn-sm" onclick={() => { onCancel(); }} text="Cancel" />
         {/if}
       </div>
     </div>
@@ -154,11 +150,11 @@
               {/each}
               <div class="chat-timestamp">{formatTime(message.timestamp)}</div>
             </div>
-            <div class="chat-avatar chat-avatar-user">U</div>
+            <Avatar alt="User" name="User" size="small" classes="avatar-user" />
           </div>
         {:else if message.role === 'assistant'}
           <div class="chat-message chat-message-assistant">
-            <div class="chat-avatar chat-avatar-assistant">C</div>
+            <Avatar alt="Claude" name="Claude" size="small" classes="avatar-assistant" />
             <div>
               {#each message.parts as part, partIdx (partIdx)}
                 {#if part.type === 'text'}
@@ -179,12 +175,14 @@
                       tabindex="0"
                     >
                       <span class="chat-tool-chevron" class:expanded={isExpanded}>&#9654;</span>
-                      <span class="chat-tool-name" data-tool={part.toolName}>{part.toolName}</span>
+                      <Pill text={part.toolName} classes="pill-tool-name" />
                       <span class="chat-tool-description">{getToolDescriptionFromPart(part)}</span>
                     </div>
-                    {#if isExpanded}
-                      <div class="chat-tool-body">{formatInput(part.input)}</div>
-                    {/if}
+                    <Accordion expand={isExpanded}>
+                      {#if isExpanded}
+                        <div class="chat-tool-body">{formatInput(part.input)}</div>
+                      {/if}
+                    </Accordion>
                   </div>
                 {:else if part.type === 'thinking'}
                   {@const thinkId = `thinking-${message.id}`}
@@ -201,9 +199,11 @@
                     >
                       &#128173; Thinking... {isThinkExpanded ? '&#9660;' : '&#9654;'}
                     </div>
-                    {#if isThinkExpanded}
-                      <div class="chat-thinking-body">{@html renderMarkdown(part.content)}</div>
-                    {/if}
+                    <Accordion expand={isThinkExpanded}>
+                      {#if isThinkExpanded}
+                        <div class="chat-thinking-body">{@html renderMarkdown(part.content)}</div>
+                      {/if}
+                    </Accordion>
                   </div>
                 {/if}
               {/each}
@@ -227,19 +227,22 @@
                     tabindex="0"
                   >
                     <span class="chat-tool-chevron" class:expanded={isResultExpanded}>&#9654;</span>
-                    <span class="chat-tool-description">
-                      {part.isError ? '\u274C Tool Error' : '\u2705 Tool Result'}
-                    </span>
+                    <Pill
+                      text={part.isError ? '\u274C Tool Error' : '\u2705 Tool Result'}
+                      classes={part.isError ? 'pill-tool-error' : 'pill-tool-success'}
+                    />
                   </div>
-                  {#if isResultExpanded}
-                    <div
-                      class="chat-tool-result"
-                      class:chat-tool-result-success={!part.isError}
-                      class:chat-tool-result-error={part.isError}
-                    >
-                      {part.output}
-                    </div>
-                  {/if}
+                  <Accordion expand={isResultExpanded}>
+                    {#if isResultExpanded}
+                      <div
+                        class="chat-tool-result"
+                        class:chat-tool-result-success={!part.isError}
+                        class:chat-tool-result-error={part.isError}
+                      >
+                        {part.output}
+                      </div>
+                    {/if}
+                  </Accordion>
                 </div>
               </div>
             {:else if part.type === 'text'}
@@ -257,7 +260,7 @@
       <!-- Session ended indicator -->
       {#if sessionEnded}
         <div class="chatview-ended">
-          <span class="badge-ended">ENDED</span>
+          <Pill text="ENDED" classes="pill-badge-ended" />
           <span>Session has ended</span>
         </div>
       {/if}
@@ -267,19 +270,20 @@
   <!-- Input bar (if showInput is true) -->
   {#if showInput}
     <div class="chat-input-bar">
-      <input
-        type="text"
-        placeholder={sessionEnded ? 'Session ended' : 'Send a message...'}
-        disabled={sessionEnded || connectionState !== 'connected'}
+      <Input
         bind:value={inputText}
-        onkeydown={handleKeydown}
+        dataType="text"
+        placeholder={sessionEnded ? 'Session ended' : 'Send a message...'}
+        disable={sessionEnded || connectionState !== 'connected'}
+        onKeyDown={handleKeydown}
+        classes="chat-input-field"
       />
-      <button
+      <Button
+        classes="btn-primary btn-sm"
         disabled={sessionEnded || connectionState !== 'connected' || !inputText.trim()}
         onclick={handleSend}
-      >
-        Send
-      </button>
+        text="Send"
+      />
     </div>
   {/if}
 </div>
@@ -330,24 +334,10 @@
     flex-shrink: 0;
   }
 
-  .chatview-cancel-btn {
-    height: 32px;
-    padding: 0 var(--space-3, 0.75rem);
-    background: transparent;
-    border: 1px solid #ef4444;
-    border-radius: var(--radius-md, 6px);
-    color: #ef4444;
-    font-family: var(--font-sans);
-    font-size: var(--text-xs, 12px);
-    font-weight: 600;
-    cursor: pointer;
-    transition:
-      background var(--transition-fast, 150ms),
-      color var(--transition-fast, 150ms);
-  }
-
-  .chatview-cancel-btn:hover {
-    background: rgba(239, 68, 68, 0.15);
+  :global(.chat-input-field) {
+    --input-container-margin: 0;
+    --input-height: 40px;
+    flex: 1;
   }
 
   /* Scrollable chat area */

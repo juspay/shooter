@@ -1,0 +1,31 @@
+#!/bin/sh
+# Shooter xclip shim — reads clipboard image from SHOOTER_CLIPBOARD_DIR
+# Used by CLI tools that invoke xclip to read pasted images
+
+if [ -z "$SHOOTER_CLIPBOARD_DIR" ]; then
+  exit 1
+fi
+
+# Handle -selection clipboard -target TARGETS -o
+for arg in "$@"; do
+  if [ "$arg" = "TARGETS" ]; then
+    if [ -f "$SHOOTER_CLIPBOARD_DIR/image.png" ]; then
+      echo "image/png"
+      exit 0
+    fi
+    exit 1
+  fi
+done
+
+# Handle -selection clipboard -target image/png -o
+for arg in "$@"; do
+  if [ "$arg" = "image/png" ]; then
+    if [ -f "$SHOOTER_CLIPBOARD_DIR/image.png" ]; then
+      cat "$SHOOTER_CLIPBOARD_DIR/image.png"
+      exit 0
+    fi
+    exit 1
+  fi
+done
+
+exit 1

@@ -284,169 +284,8 @@ body {
   padding: var(--space-5);
 }
 
-/* Form Elements */
-.form-group {
-  margin-bottom: var(--space-5);
-}
-
-.form-group:last-child {
-  margin-bottom: 0;
-}
-
-.form-label {
-  display: block;
-  font-size: var(--text-sm);
-  font-weight: 400;
-  color: var(--text-secondary);
-  margin-bottom: var(--space-2);
-}
-
-.form-hint {
-  display: block;
-  font-size: var(--text-xs);
-  color: var(--text-tertiary);
-  margin-top: var(--space-2);
-  line-height: var(--leading-normal);
-}
-
-.input {
-  width: 100%;
-  height: 40px;
-  padding: 0 12px;
-  background: var(--background);
-  border: none;
-  border-radius: var(--radius-md);
-  box-shadow: var(--ds-gray-alpha-400) 0px 0px 0px 1px;
-  color: var(--text-primary);
-  font-size: var(--text-base);
-  font-family: var(--font-sans);
-  font-weight: 400;
-  transition: box-shadow var(--transition-fast);
-}
-
-.input:hover {
-  box-shadow:
-    var(--ds-gray-alpha-400) 0px 0px 0px 1px,
-    rgba(255, 255, 255, 0.06) 0px 0px 0px 4px;
-}
-
-.input:focus {
-  outline: none;
-  box-shadow: var(--text-primary) 0px 0px 0px 1px;
-}
-
-.input::placeholder {
-  color: var(--text-tertiary);
-}
-
-.input-sm {
-  height: 32px;
-  font-size: var(--text-base);
-}
-
-.input-lg {
-  height: 48px;
-  font-size: var(--text-lg);
-  border-radius: var(--radius-lg);
-}
-
-.input-mono {
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-}
-
-/* Buttons */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
-  height: 40px;
-  padding: 0 16px;
-  border-radius: var(--radius-md);
-  font-size: var(--text-base);
-  font-weight: 500;
-  font-family: var(--font-sans);
-  line-height: 20px;
-  border: none;
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  white-space: nowrap;
-}
-
-.btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn-primary {
-  background: var(--ds-gray-1000);
-  color: var(--ds-background-100);
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: #fff;
-}
-
-.btn-secondary {
-  background: var(--ds-background-100);
-  color: var(--ds-gray-1000);
-  box-shadow: var(--ds-gray-400) 0px 0px 0px 1px;
-}
-
-.btn-secondary:hover:not(:disabled) {
-  background: var(--ds-gray-100);
-}
-
-.btn-ghost {
-  background: transparent;
-  color: var(--ds-gray-1000);
-}
-
-.btn-ghost:hover:not(:disabled) {
-  background: var(--ds-gray-alpha-100);
-}
-
-.btn-danger {
-  background: #d93036;
-  color: #fff;
-}
-
-.btn-danger:hover:not(:disabled) {
-  background: #ff6166;
-}
-
-.btn-warning {
-  background: #ff990a;
-  color: var(--ds-background-100);
-}
-
-.btn-warning:hover:not(:disabled) {
-  background: #ffb224;
-}
-
-.btn-sm {
-  height: 32px;
-  padding: 0 10px;
-  font-size: var(--text-base);
-}
-
-.btn-lg {
-  height: 48px;
-  padding: 0 20px;
-  font-size: var(--text-lg);
-  border-radius: var(--radius-lg);
-}
-
-/* Button Spinner */
-.btn-spinner {
-  width: 14px;
-  height: 14px;
-  border: 1.5px solid transparent;
-  border-top-color: currentColor;
-  border-radius: 50%;
-  animation: spin 0.6s linear infinite;
-}
+/* Form elements and buttons now provided by @juspay/svelte-ui-components
+   (Button, Input) with theme vars in theme.css */
 
 /* Status Badge */
 .status-badge {
@@ -486,6 +325,9 @@ body {
 
 /* Empty State */
 .empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   text-align: center;
   padding: var(--space-16) var(--space-6);
 }
@@ -533,36 +375,7 @@ body {
   line-height: var(--leading-relaxed);
 }
 
-/* Alert/Result Cards */
-.alert {
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-md);
-  font-size: var(--text-sm);
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  line-height: var(--leading-normal);
-}
-
-.alert.success {
-  background: var(--ds-green-100);
-  color: var(--ds-green-900);
-}
-
-.alert.error {
-  background: var(--ds-red-100);
-  color: var(--ds-red-900);
-}
-
-.alert.warning {
-  background: var(--ds-amber-100);
-  color: var(--ds-amber-900);
-}
-
-.alert.info {
-  background: var(--ds-blue-100);
-  color: var(--ds-blue-900);
-}
+/* Alert now provided by Banner from @juspay/svelte-ui-components */
 
 /* List */
 .list {
@@ -588,40 +401,7 @@ body {
   background: var(--component-bg-hover);
 }
 
-/* Tags */
-.tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  height: 22px;
-  padding: 0 var(--space-2);
-  background: var(--component-bg-active);
-  border-radius: var(--radius-sm);
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
-}
-
-.tag.success {
-  background: var(--ds-green-100);
-  color: var(--ds-green-900);
-}
-
-.tag.error {
-  background: var(--ds-red-100);
-  color: var(--ds-red-900);
-}
-
-.tag.warning {
-  background: var(--ds-amber-100);
-  color: var(--ds-amber-900);
-}
-
-.tag.info {
-  background: var(--ds-blue-100);
-  color: var(--ds-blue-900);
-}
+/* Tags now provided by Pill from @juspay/svelte-ui-components */
 
 /* Code */
 .code {
@@ -721,7 +501,7 @@ body {
   }
 
   .logo-text {
-    display: none;
+    font-size: var(--text-sm);
   }
 
   .nav {
@@ -860,50 +640,7 @@ body {
   max-width: 100%;
 }
 
-.session-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: 20px;
-  font-size: 0.75rem;
-  font-weight: 500;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-.session-badge-active {
-  background: rgba(34, 197, 94, 0.12);
-  color: #22c55e;
-  border: 1px solid rgba(34, 197, 94, 0.25);
-}
-
-.session-badge-complete {
-  background: rgba(59, 130, 246, 0.12);
-  color: #60a5fa;
-  border: 1px solid rgba(59, 130, 246, 0.2);
-}
-
-.session-badge-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-}
-
-.session-badge-active .session-badge-dot {
-  animation: pulse-dot 2s ease-in-out infinite;
-}
-
-@keyframes pulse-dot {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.4;
-  }
-}
+/* Session badges now provided by Pill from @juspay/svelte-ui-components */
 
 .session-stats {
   display: flex;
@@ -1725,65 +1462,18 @@ body {
   }
 }
 
-/* ============================================
-   Skeleton Loading
-   ============================================ */
+/* Skeleton loading — minimal fallback for pages not yet migrated to Shimmer */
 
 .skeleton {
-  background: linear-gradient(90deg, #1a1a1a 25%, #252525 50%, #1a1a1a 75%);
+  background: linear-gradient(90deg, var(--bg-secondary, #1a1a2e) 25%, var(--bg-tertiary, #252540) 50%, var(--bg-secondary, #1a1a2e) 75%);
   background-size: 200% 100%;
-  animation: shimmer 1.5s ease-in-out infinite;
-  border-radius: var(--radius-md, 8px);
+  animation: skeleton-pulse 1.5s ease-in-out infinite;
+  border-radius: var(--radius-sm, 4px);
 }
 
-@keyframes shimmer {
-  0% {
-    background-position: 200% 0;
-  }
-  100% {
-    background-position: -200% 0;
-  }
-}
-
-.skeleton-card {
-  height: 120px;
-  border: 1px solid var(--border, #2a2a2a);
-  border-radius: var(--radius-lg, 12px);
-  margin-bottom: var(--space-3, 0.75rem);
-}
-
-@media (max-width: 768px) {
-  .skeleton-card {
-    height: 90px;
-  }
-}
-
-.skeleton-text {
-  height: 16px;
-  margin-bottom: 8px;
-  width: 60%;
-}
-
-.skeleton-text-short {
-  height: 14px;
-  width: 30%;
-  margin-bottom: 8px;
-}
-
-.skeleton-bubble {
-  height: 60px;
-  border-radius: var(--radius-lg, 12px);
-  margin-bottom: var(--space-3, 0.75rem);
-  max-width: 70%;
-}
-
-.skeleton-bubble-user {
-  align-self: flex-end;
-  margin-left: auto;
-}
-
-.skeleton-bubble-assistant {
-  align-self: flex-start;
+@keyframes skeleton-pulse {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 
 .loading-container {
@@ -1793,29 +1483,7 @@ body {
   padding: var(--space-4, 1rem) 0;
 }
 
-/* Source badges */
-.source-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 0.7rem;
-  font-weight: 600;
-  font-family: var(--font-mono, monospace);
-}
-
-.source-badge-claude {
-  background: rgba(249, 115, 22, 0.12);
-  color: #fb923c;
-  border: 1px solid rgba(249, 115, 22, 0.25);
-}
-
-.source-badge-opencode {
-  background: rgba(34, 197, 94, 0.12);
-  color: #22c55e;
-  border: 1px solid rgba(34, 197, 94, 0.25);
-}
+/* Source badges now provided by Pill from @juspay/svelte-ui-components */
 
 /* ============================================
    Terminal Feature

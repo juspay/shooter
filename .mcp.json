@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "svelte-ui-components": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@juspay/svelte-ui-components-mcp"]
+    }
+  }
+}

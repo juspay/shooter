@@ -2,8 +2,8 @@
   import type { ShooterConfig } from '$lib/types/config';
 
   import { goto } from '$app/navigation';
+  import { Button, Pill, Shimmer } from '@juspay/svelte-ui-components';
   import {
-    Button,
     EmptyState,
     formatRelativeTime,
     getCached,
@@ -18,10 +18,12 @@
     args: string[];
     command: string;
     createdAt: string;
+    currentCwd?: null | string;
     cwd: string;
     exitCode: null | number;
     exitedAt: null | string;
     id: string;
+    isActive?: boolean;
     lastOutput: null | string;
     pid: number;
     status: 'exited' | 'running';
@@ -157,13 +159,13 @@
 
   function getBadgeInfo(terminal: Terminal): { class: string; label: string } {
     if (terminal.status === 'exited') {
-      return { class: 'badge-ended', label: 'ENDED' };
+      return { class: 'pill-badge-ended', label: 'ENDED' };
     }
     const type = getTerminalType(terminal.command);
     if (type === 'ai') {
-      return { class: 'badge-ai', label: 'AI' };
+      return { class: 'pill-badge-ai', label: 'AI' };
     }
-    return { class: 'badge-shell', label: 'SHELL' };
+    return { class: 'pill-badge-shell', label: 'SHELL' };
   }
 
   function truncatePath(path: string, maxLen = 40): string {
@@ -237,13 +239,17 @@
         <p class="page-description">Active terminal sessions on this machine</p>
       </div>
       <div class="page-actions">
-        <Button variant="secondary" onclick={forceRefresh} disabled={loading}>
-          <Icon name="refresh" size={14} />
-          Refresh
+        <Button classes="btn-secondary" onclick={forceRefresh} disabled={loading}>
+          {#snippet children()}
+            <Icon name="refresh" size={14} />
+            Refresh
+          {/snippet}
         </Button>
-        <Button variant="primary" onclick={handleNewTerminal}>
-          <span class="plus-icon">+</span>
-          New Terminal
+        <Button classes="btn-primary" onclick={handleNewTerminal}>
+          {#snippet children()}
+            <span class="plus-icon">+</span>
+            New Terminal
+          {/snippet}
         </Button>
       </div>
     </div>
@@ -252,7 +258,7 @@
   {#if loading && terminals.length === 0}
     <div class="loading-container">
       {#each Array(4) as _, i (i)}
-        <div class="skeleton skeleton-card"></div>
+        <Shimmer classes="shimmer-card" />
       {/each}
     </div>
   {:else if !config?.apiKey}
@@ -261,7 +267,7 @@
       title="Configuration Required"
       description="Set up your API credentials to view terminal sessions"
     >
-      <Button variant="primary" onclick={navigateToConfig}>Configure Settings</Button>
+      <Button classes="btn-primary" onclick={navigateToConfig} text="Configure Settings" />
     </EmptyState>
   {:else if terminals.length === 0}
     <EmptyState
@@ -269,9 +275,11 @@
       title="No terminals"
       description="Launch a new terminal session to get started. Terminal sessions will appear here once created."
     >
-      <Button variant="primary" onclick={handleNewTerminal}>
-        <span class="plus-icon">+</span>
-        New Terminal
+      <Button classes="btn-primary" onclick={handleNewTerminal}>
+        {#snippet children()}
+          <span class="plus-icon">+</span>
+          New Terminal
+        {/snippet}
       </Button>
     </EmptyState>
   {:else}
@@ -283,16 +291,16 @@
           <div class="terminal-card-header">
             <div class="terminal-card-left">
               <span class="status-indicator status-running">
-                <span class="status-dot-pulse"></span>
+                <span class={terminal.isActive ? 'status-dot-active' : 'status-dot-idle'}></span>
               </span>
               <span class="terminal-command">{getCommandName(terminal.command)}</span>
-              <span class="terminal-badge {badge.class}">{badge.label}</span>
+              <Pill text={badge.label} classes={badge.class} />
             </div>
             <span class="terminal-time">{formatRelativeTime(terminal.createdAt)}</span>
           </div>
 
           <div class="terminal-card-meta">
-            <span class="terminal-cwd" title={terminal.cwd}>{truncatePath(terminal.cwd)}</span>
+            <span class="terminal-cwd" title={terminal.currentCwd || terminal.cwd}>{truncatePath(terminal.currentCwd || terminal.cwd)}</span>
             <span class="terminal-pid">PID {terminal.pid}</span>
           </div>
 
@@ -314,11 +322,9 @@
                 <span class="status-dot-static"></span>
               </span>
               <span class="terminal-command">{getCommandName(terminal.command)}</span>
-              <span class="terminal-badge {badge.class}">{badge.label}</span>
+              <Pill text={badge.label} classes={badge.class} />
               {#if terminal.exitCode !== null}
-                <span class="terminal-exit-code" class:exit-error={terminal.exitCode !== 0}>
-                  exit {terminal.exitCode}
-                </span>
+                <Pill text="exit {terminal.exitCode}" classes={terminal.exitCode !== 0 ? 'pill-exit-error' : 'pill-exit-ok'} />
               {/if}
             </div>
             <div class="terminal-card-right">
@@ -327,13 +333,11 @@
                   ? formatRelativeTime(terminal.exitedAt)
                   : formatRelativeTime(terminal.createdAt)}
               </span>
-              <button
-                class="terminal-remove-btn"
+              <Button
+                classes="btn-ghost btn-sm btn-remove"
                 onclick={(e) => removeTerminal(e, terminal.id)}
-                type="button"
-                aria-label="Remove terminal"
-                title="Remove terminal"
-              >&times;</button>
+                text="&times;"
+              />
             </div>
           </div>
 
@@ -465,12 +469,19 @@
     flex-shrink: 0;
   }
 
-  .status-dot-pulse {
+  .status-dot-active {
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: #22c55e;
-    animation: pulse-dot 2s ease-in-out infinite;
+    background: #4ade80;
+    animation: activity-pulse 600ms ease-in-out infinite;
+  }
+
+  .status-dot-idle {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--ds-gray-600);
   }
 
   .status-dot-static {
@@ -478,6 +489,11 @@
     height: 8px;
     border-radius: 50%;
     background: var(--ds-gray-600);
+  }
+
+  @keyframes activity-pulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.5); opacity: 0.7; }
   }
 
   /* Command name */
@@ -490,52 +506,6 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     max-width: 200px;
-  }
-
-  /* Type badges */
-  .terminal-badge {
-    display: inline-flex;
-    align-items: center;
-    padding: 2px 8px;
-    border-radius: var(--radius-sm);
-    font-size: 11px;
-    font-weight: 600;
-    font-family: var(--font-mono);
-    letter-spacing: 0.03em;
-    border: 1px solid;
-  }
-
-  .badge-ai {
-    background: rgba(139, 92, 246, 0.12);
-    color: #a78bfa;
-    border-color: rgba(139, 92, 246, 0.25);
-  }
-
-  .badge-shell {
-    background: rgba(34, 197, 94, 0.12);
-    color: #22c55e;
-    border-color: rgba(34, 197, 94, 0.25);
-  }
-
-  .badge-ended {
-    background: rgba(107, 114, 128, 0.12);
-    color: #9ca3af;
-    border-color: rgba(107, 114, 128, 0.25);
-  }
-
-  /* Exit code */
-  .terminal-exit-code {
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    color: var(--text-tertiary);
-    padding: 1px 6px;
-    border-radius: var(--radius-sm);
-    background: var(--ds-gray-alpha-100);
-  }
-
-  .terminal-exit-code.exit-error {
-    color: var(--ds-red-900);
-    background: var(--ds-red-100);
   }
 
   /* Time */
@@ -552,33 +522,6 @@
     align-items: center;
     gap: var(--space-2);
     flex-shrink: 0;
-  }
-
-  /* Remove button for exited terminals */
-  .terminal-remove-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
-    border-radius: var(--radius-sm);
-    border: 1px solid transparent;
-    background: transparent;
-    color: var(--text-tertiary);
-    font-size: 16px;
-    line-height: 1;
-    cursor: pointer;
-    transition:
-      background var(--transition-fast),
-      color var(--transition-fast),
-      border-color var(--transition-fast);
-    flex-shrink: 0;
-  }
-
-  .terminal-remove-btn:hover {
-    background: var(--ds-red-100);
-    color: var(--ds-red-900);
-    border-color: var(--ds-red-200, rgba(239, 68, 68, 0.25));
   }
 
   /* Meta row: cwd + pid */
@@ -661,9 +604,6 @@
 
     .page-actions :global(button) {
       width: 100%;
-    }
-
-    .page-actions :global(.btn) {
       flex: 1;
     }
 

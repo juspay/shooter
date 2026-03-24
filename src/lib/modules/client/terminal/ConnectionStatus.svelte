@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { Button } from '@juspay/svelte-ui-components';
+
   interface Props {
     onretry?: () => void;
     status: 'connected' | 'disconnected' | 'reconnecting';
@@ -19,7 +21,7 @@
   <span class="status-dot {status}"></span>
   <span class="status-label">{label}</span>
   {#if status === 'disconnected' && onretry}
-    <button class="retry-btn" onclick={onretry} type="button">Retry</button>
+    <Button classes="btn-ghost btn-sm btn-retry" onclick={onretry} text="Retry" />
   {/if}
 </div>
 
@@ -80,22 +82,13 @@
     white-space: nowrap;
   }
 
-  .retry-btn {
-    background: transparent;
-    border: 1px solid currentColor;
-    border-radius: var(--radius-sm);
-    color: inherit;
-    font-size: 12px;
-    font-weight: 500;
-    font-family: var(--font-sans);
-    padding: 2px 8px;
-    cursor: pointer;
-    transition: opacity var(--transition-fast);
+  :global(.btn-retry) {
+    --button-height: auto;
+    --button-padding: 2px 8px;
+    --button-font-size: 12px;
+    --button-border: 1px solid currentColor;
+    --button-text-color: inherit;
     margin-left: 2px;
-  }
-
-  .retry-btn:hover {
-    opacity: 0.8;
   }
 
   @media (max-width: 480px) {

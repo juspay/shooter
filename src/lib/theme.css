@@ -1,0 +1,529 @@
+/*
+ * Theme: Geist Dark → @juspay/svelte-ui-components
+ *
+ * Maps the project's Geist Design System dark-mode tokens
+ * to the CSS custom properties consumed by library components.
+ *
+ * This is the initial skeleton. Each component migration story
+ * will refine and extend the variables relevant to that component.
+ */
+
+:root {
+  /* ===== Button ===== */
+  --button-font-family: var(--font-sans);
+  --button-font-size: var(--text-sm);
+  --button-font-weight: 500;
+  --button-color: var(--ds-blue-700);
+  --button-text-color: #fff;
+  --button-padding: 8px 16px;
+  --button-border-radius: var(--radius-md);
+  --button-border: 1px solid transparent;
+  --button-hover-color: var(--ds-blue-900);
+  --button-hover-text-color: #fff;
+  --button-content-gap: 8px;
+
+  /* ===== Input ===== */
+  --input-background: var(--ds-gray-100);
+  --input-font-family: var(--font-sans);
+  --input-font-size: var(--text-base);
+  --input-font-weight: 400;
+  --input-radius: var(--radius-md);
+  --input-padding: 10px 12px;
+  --input-height: 40px;
+  --input-width: 100%;
+  --input-margin: 0;
+  --input-box-shadow: none;
+  --input-border: 1px solid var(--border);
+  --input-focus-border: 1px solid var(--ds-blue-700);
+  --input-text-color: var(--text-primary);
+  --input-placeholder-color: var(--text-tertiary);
+  --input-label-msg-text-color: var(--text-secondary);
+  --input-label-msg-text-size: var(--text-sm);
+  --input-label-msg-text-weight: 400;
+  --input-label-msg-margin: 0 0 var(--space-2) 0;
+  --input-error-msg-text-color: var(--ds-red-700);
+  --input-error-msg-text-size: var(--text-xs);
+  --input-info-msg-text-color: var(--text-tertiary);
+  --input-info-msg-text-size: var(--text-xs);
+  --input-info-msg-margin: var(--space-2) 0 0 0;
+  --input-container-margin: 0 0 var(--space-5) 0;
+
+  /* ===== Banner (replaces Alert) ===== */
+  --banner-background: var(--ds-gray-100);
+  --banner-color: var(--text-secondary);
+  --banner-font-family: var(--font-sans);
+  --banner-font-size: var(--text-sm);
+  --banner-font-weight: 500;
+  --banner-padding: 12px 16px;
+  --banner-gap: 10px;
+  --banner-justify-content: flex-start;
+  --banner-icon-size: 16px;
+  --banner-link-color: var(--ds-blue-900);
+  --banner-cursor: default;
+  --banner-position: relative;
+  --banner-z-index: auto;
+  --banner-dismiss-hover-background: var(--ds-gray-alpha-200);
+  --banner-dismiss-color: var(--text-tertiary);
+
+  /* ===== Pill (replaces Tag) ===== */
+  --pill-background: var(--ds-gray-300);
+  --pill-color: var(--text-secondary);
+  --pill-font-family: var(--font-sans);
+  --pill-font-size: var(--text-xs);
+  --pill-font-weight: 500;
+  --pill-padding: 4px 10px;
+  --pill-border-radius: var(--radius-full);
+  --pill-border: none;
+  --pill-hover-background: var(--ds-gray-400);
+  --pill-hover-color: var(--text-primary);
+
+  /* ===== Badge ===== */
+  --badge-background: var(--ds-gray-500);
+  --badge-color: #fff;
+  --badge-font-family: var(--font-sans);
+  --badge-font-size: var(--text-xs);
+  --badge-padding: 2px 6px;
+  --badge-border-radius: var(--radius-full);
+  --badge-border: none;
+  --badge-wrap-margin: 0;
+  --badge-wrap-padding: 0;
+  --badge-img-width: 24px;
+  --badge-img-height: 24px;
+  --badge-img-border-radius: var(--radius-sm);
+  --badge-img-icon-shadow: none;
+  --badge-min-width: 6px;
+  --badge-min-height: 6px;
+
+  /* ===== Tabs ===== */
+  --tabs-bar-background: transparent;
+  --tabs-bar-padding: 0;
+  --tabs-bar-gap: 0;
+  --tabs-bar-border-bottom: 1px solid var(--border);
+  --tabs-item-padding: 10px 16px;
+  --tabs-item-font-size: var(--text-sm);
+  --tabs-item-font-weight: 500;
+  --tabs-item-font-family: var(--font-sans);
+  --tabs-item-color: var(--text-tertiary);
+  --tabs-item-background: transparent;
+  --tabs-active-color: var(--text-primary);
+  --tabs-active-font-weight: 600;
+  --tabs-indicator-color: var(--ds-blue-700);
+  --tabs-indicator-height: 2px;
+  --tabs-hover-color: var(--text-secondary);
+  --tabs-hover-background: var(--ds-gray-alpha-100);
+  --tabs-transition: color 150ms ease, background 150ms ease;
+
+  /* ===== Sheet ===== */
+  --sheet-overlay-background: rgba(0, 0, 0, 0.6);
+  --sheet-background: var(--ds-gray-100);
+  --sheet-box-shadow: -4px 0 16px rgba(0, 0, 0, 0.3);
+  --sheet-border: none;
+  --sheet-header-padding: 16px 20px;
+  --sheet-header-background: var(--ds-gray-100);
+  --sheet-header-border-bottom: 1px solid var(--border);
+  --sheet-title-font-size: var(--text-lg);
+  --sheet-title-font-weight: 600;
+  --sheet-title-font-family: var(--font-sans);
+  --sheet-title-color: var(--text-primary);
+  --sheet-close-button-color: var(--text-tertiary);
+  --sheet-close-button-hover-background: var(--ds-gray-300);
+  --sheet-content-padding: 20px;
+  --sheet-footer-padding: 16px 20px;
+  --sheet-footer-background: var(--ds-gray-100);
+  --sheet-footer-border-top: 1px solid var(--border);
+
+  /* ===== Select ===== */
+  --select-bgcolor: var(--ds-gray-100);
+  --select-font-family: var(--font-sans);
+  --select-font-size: var(--text-base);
+  --select-radius: var(--radius-md);
+  --select-box-shadow: none;
+  --select-border: 1px solid var(--border);
+  --select-color: var(--text-primary);
+  --select-hover-color: var(--text-primary);
+  --select-hover-bgcolor: var(--ds-gray-200);
+  --item-padding: 10px 12px;
+  --item-background-color: var(--ds-gray-100);
+  --non-selected-hover-bg: var(--ds-gray-200);
+  --non-selected-hover-color: var(--text-primary);
+  --non-selected-item-bgcolor: var(--ds-gray-100);
+  --non-selected-item-color: var(--text-secondary);
+  --non-selected-items-border-radius: var(--radius-md);
+  --selected-item-background-color: var(--ds-gray-200);
+  --selected-item-padding: 10px 12px;
+  --selected-color: var(--text-primary);
+  --selected-hover-bg: var(--ds-gray-200);
+  --label-text-color: var(--text-secondary);
+  --label-text-size: var(--text-xs);
+  --label-text-weight: 500;
+
+  /* ===== Shimmer ===== */
+  --shimmer-background: var(--ds-gray-200);
+  --shimmer-highlight: rgba(255, 255, 255, 0.04);
+  --shimmer-border-radius: var(--radius-md);
+  --shimmer-duration: 1.5s;
+
+  /* ===== Avatar ===== */
+  --avatar-background: var(--ds-gray-300);
+  --avatar-text-color: var(--text-secondary);
+  --avatar-font-family: var(--font-sans);
+  --avatar-border: none;
+  --avatar-small-width: 28px;
+  --avatar-small-height: 28px;
+  --avatar-medium-width: 36px;
+  --avatar-medium-height: 36px;
+  --avatar-large-width: 48px;
+  --avatar-large-height: 48px;
+  --avatar-small-font-size: 11px;
+  --avatar-medium-font-size: 13px;
+  --avatar-large-font-size: 18px;
+
+  /* ===== Choicebox ===== */
+  --choicebox-background: var(--ds-gray-100);
+  --choicebox-border: 2px solid var(--border);
+  --choicebox-border-radius: var(--radius-lg);
+  --choicebox-padding: 16px;
+  --choicebox-gap: 12px;
+  --choicebox-hover-border-color: var(--border-hover);
+  --choicebox-hover-background: var(--ds-gray-200);
+  --choicebox-selected-border-color: var(--ds-blue-700);
+  --choicebox-selected-background: var(--ds-blue-100);
+  --choicebox-title-color: var(--text-primary);
+  --choicebox-title-font-size: var(--text-base);
+  --choicebox-title-font-weight: 500;
+  --choicebox-title-font-family: var(--font-sans);
+  --choicebox-description-color: var(--text-tertiary);
+  --choicebox-description-font-size: var(--text-sm);
+  --choicebox-indicator-border: 2px solid var(--ds-gray-500);
+  --choicebox-indicator-selected-color: var(--ds-blue-700);
+  --choicebox-focus-ring: 0 0 0 3px rgba(0, 112, 243, 0.2);
+
+  /* ===== Toast ===== */
+  --toast-font-family: var(--font-sans);
+  --toast-font-size: var(--text-sm);
+  --toast-border-radius: var(--radius-lg);
+  --toast-padding: 12px 16px;
+  --toast-background-color: var(--ds-gray-200);
+  --toast-z-index: 1000;
+  --toast-success-background-color: var(--ds-green-100);
+  --toast-success-text: var(--ds-green-900);
+  --toast-error-background-color: var(--ds-red-100);
+  --toast-error-text: var(--ds-red-900);
+  --toast-info-background-color: var(--ds-blue-100);
+  --toast-info-text: var(--ds-blue-900);
+  --toast-warn-background-color: var(--ds-amber-100);
+  --toast-warn-text: var(--ds-amber-900);
+
+  /* ===== Modal ===== */
+  --background-color: rgba(0, 0, 0, 0.6);
+  --modal-content-background-color: var(--ds-gray-100);
+  --modal-border-radius: var(--radius-xl);
+  --modal-scrollbar-width: none;
+  --modal-header-background-color: var(--ds-gray-100);
+  --modal-header-padding: 16px 20px;
+  --modal-header-border-bottom: 1px solid var(--border);
+  --modal-footer-background-color: var(--ds-gray-100);
+  --modal-footer-padding: 16px 20px;
+  --modal-footer-border-top: 1px solid var(--border);
+
+  /* ===== Avatar Variant Overrides ===== */
+  /* Defined here so library Avatar picks up dark-mode colors */
+
+  /* ===== Accordion ===== */
+  /* Accordion has minimal CSS vars — just expand + classes.
+     Theming is done on the wrapper you build around it. */
+}
+
+/* ===== Button Variant Classes ===== */
+/* Library Button has NO variant/size props. Use classes prop + CSS vars. */
+
+.btn-primary {
+  --button-color: var(--ds-gray-1000);
+  --button-text-color: var(--ds-background-100);
+  --button-border: 1px solid var(--ds-gray-1000);
+  --button-hover-color: #fff;
+  --button-hover-text-color: var(--ds-background-100);
+  --button-hover-border: 1px solid #fff;
+}
+
+.btn-secondary {
+  --button-color: var(--ds-background-100);
+  --button-text-color: var(--ds-gray-1000);
+  --button-border: 1px solid var(--ds-gray-400);
+  --button-hover-color: var(--ds-gray-100);
+  --button-hover-text-color: var(--ds-gray-1000);
+  --button-hover-border: 1px solid var(--ds-gray-400);
+}
+
+.btn-ghost {
+  --button-color: transparent;
+  --button-text-color: var(--ds-gray-1000);
+  --button-hover-color: var(--ds-gray-alpha-100);
+  --button-hover-text-color: var(--ds-gray-1000);
+}
+
+.btn-danger {
+  --button-color: #d93036;
+  --button-text-color: #fff;
+  --button-hover-color: #ff6166;
+  --button-hover-text-color: #fff;
+}
+
+.btn-warning {
+  --button-color: #ff990a;
+  --button-text-color: var(--ds-background-100);
+  --button-hover-color: #ffb224;
+  --button-hover-text-color: var(--ds-background-100);
+}
+
+.btn-sm {
+  --button-height: 32px;
+  --button-padding: 0 10px;
+  --button-font-size: var(--text-base);
+}
+
+.btn-lg {
+  --button-height: 48px;
+  --button-padding: 0 20px;
+  --button-font-size: var(--text-lg);
+  --button-border-radius: var(--radius-lg);
+}
+
+/* ===== Banner Variant Classes ===== */
+/* Library Banner has no variant prop. Use classes prop + CSS vars for type-specific styling. */
+
+.banner-alert {
+  border-radius: var(--radius-md);
+}
+
+.banner-success {
+  --banner-background: var(--ds-green-100);
+  --banner-color: var(--ds-green-900);
+  --banner-icon-color: var(--ds-green-900);
+
+  border-radius: var(--radius-md);
+}
+
+.banner-error {
+  --banner-background: var(--ds-red-100);
+  --banner-color: var(--ds-red-900);
+  --banner-icon-color: var(--ds-red-900);
+
+  border-radius: var(--radius-md);
+}
+
+.banner-warning {
+  --banner-background: var(--ds-amber-100);
+  --banner-color: var(--ds-amber-900);
+  --banner-icon-color: var(--ds-amber-900);
+
+  border-radius: var(--radius-md);
+}
+
+.banner-info {
+  --banner-background: var(--ds-blue-100);
+  --banner-color: var(--ds-blue-900);
+  --banner-icon-color: var(--ds-blue-900);
+
+  border-radius: var(--radius-md);
+}
+
+/* ===== Input Variant Classes ===== */
+
+.input-mono {
+  --input-font-family: var(--font-mono);
+  --input-font-size: var(--text-sm);
+}
+
+/* ===== Avatar Variant Classes ===== */
+
+.avatar-user {
+  --avatar-background: var(--ds-blue-100);
+  --avatar-text-color: var(--ds-blue-900);
+}
+
+.avatar-assistant {
+  --avatar-background: var(--ds-green-100);
+  --avatar-text-color: var(--ds-green-900);
+}
+
+.btn-remove {
+  --button-height: 24px;
+  --button-width: 24px;
+  --button-padding: 0;
+  --button-font-size: 16px;
+  --button-border-radius: var(--radius-sm);
+}
+
+/* ===== Pill Variant Classes ===== */
+
+.pill-session-time {
+  --pill-background: var(--ds-green-100);
+  --pill-color: var(--ds-green-900);
+  --pill-font-size: var(--text-xs);
+  --pill-padding: 4px 10px;
+  --pill-hover-background: var(--ds-green-100);
+  --pill-hover-color: var(--ds-green-900);
+  --pill-cursor: inherit;
+}
+
+.pill-tool-name {
+  --pill-background: var(--ds-gray-300);
+  --pill-color: var(--text-primary);
+  --pill-font-size: var(--text-xs);
+  --pill-font-family: var(--font-mono);
+  --pill-padding: 2px 8px;
+  --pill-hover-background: var(--ds-gray-300);
+  --pill-cursor: inherit;
+}
+
+.pill-tool-success {
+  --pill-background: var(--ds-green-100);
+  --pill-color: var(--ds-green-900);
+  --pill-font-size: var(--text-xs);
+  --pill-padding: 2px 8px;
+  --pill-hover-background: var(--ds-green-100);
+  --pill-cursor: inherit;
+}
+
+.pill-tool-error {
+  --pill-background: var(--ds-red-100);
+  --pill-color: var(--ds-red-900);
+  --pill-font-size: var(--text-xs);
+  --pill-padding: 2px 8px;
+  --pill-hover-background: var(--ds-red-100);
+  --pill-cursor: inherit;
+}
+
+.pill-live {
+  --pill-background: rgba(34, 197, 94, 0.15);
+  --pill-color: #22c55e;
+  --pill-border: 1px solid rgba(34, 197, 94, 0.3);
+  --pill-font-size: 0.7rem;
+  --pill-padding: 2px 10px;
+  --pill-hover-background: rgba(34, 197, 94, 0.15);
+  --pill-hover-color: #22c55e;
+  --pill-cursor: default;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.pill-badge-ai {
+  --pill-background: var(--ds-blue-100);
+  --pill-color: var(--ds-blue-900);
+  --pill-font-size: 9px;
+  --pill-padding: 2px 6px;
+  --pill-hover-background: var(--ds-blue-100);
+  --pill-cursor: inherit;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.pill-badge-shell {
+  --pill-background: var(--ds-gray-300);
+  --pill-color: var(--text-secondary);
+  --pill-font-size: 9px;
+  --pill-padding: 2px 6px;
+  --pill-hover-background: var(--ds-gray-300);
+  --pill-cursor: inherit;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.pill-badge-ended {
+  --pill-background: var(--ds-gray-alpha-200);
+  --pill-color: var(--text-tertiary);
+  --pill-font-size: 9px;
+  --pill-padding: 2px 6px;
+  --pill-hover-background: var(--ds-gray-alpha-200);
+  --pill-cursor: inherit;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.pill-exit-ok {
+  --pill-background: var(--ds-green-100);
+  --pill-color: var(--ds-green-900);
+  --pill-font-size: 10px;
+  --pill-font-family: var(--font-mono);
+  --pill-padding: 2px 6px;
+  --pill-hover-background: var(--ds-green-100);
+  --pill-cursor: inherit;
+}
+
+.pill-exit-error {
+  --pill-background: var(--ds-red-100);
+  --pill-color: var(--ds-red-900);
+  --pill-font-size: 10px;
+  --pill-font-family: var(--font-mono);
+  --pill-padding: 2px 6px;
+  --pill-hover-background: var(--ds-red-100);
+  --pill-cursor: inherit;
+}
+
+.pill-source-claude {
+  --pill-background: var(--ds-blue-100);
+  --pill-color: var(--ds-blue-900);
+  --pill-font-size: 10px;
+  --pill-padding: 2px 8px;
+  --pill-hover-background: var(--ds-blue-100);
+  --pill-hover-color: var(--ds-blue-900);
+  --pill-cursor: inherit;
+}
+
+.pill-source-opencode {
+  --pill-background: var(--ds-amber-100);
+  --pill-color: var(--ds-amber-900);
+  --pill-font-size: 10px;
+  --pill-padding: 2px 8px;
+  --pill-hover-background: var(--ds-amber-100);
+  --pill-hover-color: var(--ds-amber-900);
+  --pill-cursor: inherit;
+}
+
+/* ===== Shimmer Variant Classes ===== */
+
+.shimmer-header {
+  --shimmer-height: 80px;
+  --shimmer-border-radius: var(--radius-lg);
+  margin-bottom: 1rem;
+}
+
+.shimmer-card {
+  --shimmer-height: 120px;
+  --shimmer-border-radius: var(--radius-lg);
+}
+
+.shimmer-bubble {
+  --shimmer-height: 60px;
+  --shimmer-border-radius: var(--radius-lg);
+  margin-bottom: var(--space-3);
+}
+
+.shimmer-bubble-user {
+  --shimmer-width: 60%;
+  margin-left: auto;
+}
+
+.shimmer-bubble-assistant {
+  --shimmer-width: 75%;
+}
+
+.shimmer-bubble-user-short {
+  --shimmer-width: 50%;
+  margin-left: auto;
+}
+
+.shimmer-bubble-assistant-wide {
+  --shimmer-width: 80%;
+}
+
+.shimmer-bubble-assistant-short {
+  --shimmer-width: 40%;
+}
+
+@media (max-width: 768px) {
+  .shimmer-card {
+    --shimmer-height: 90px;
+  }
+}

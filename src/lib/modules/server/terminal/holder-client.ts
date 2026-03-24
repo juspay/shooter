@@ -24,10 +24,12 @@ interface ConnectResult {
 
 /** Messages received from the holder process. */
 type IncomingMessage =
+	| { active: boolean; type: 'activity'; }
 	| { code: null | number; signal: null | string; type: 'exit'; }
 	| { data: string; type: 'output'; }
 	| { data: string; type: 'scrollback'; }
-	| { exitCode: null | number; exited: boolean; pid: number; type: 'info'; };
+	| { exitCode: null | number; exited: boolean; pid: number; type: 'info'; }
+	| { path: string; type: 'cwd'; };
 
 // ── Connect Result ────────────────────────────────────────────────────
 
@@ -43,6 +45,8 @@ export class HolderClient {
 	connected = false;
 	pid = 0;
 
+	private activityCb: ((active: boolean) => void) | null = null;
+	private cwdCb: ((path: string) => void) | null = null;
 	private disconnectCb: (() => void) | null = null;
 	private exitCb: ((code: null | number) => void) | null = null;
 
@@ -60,6 +64,7 @@ export class HolderClient {
 			let settled = false;
 			let info: null | { exitCode: null | number; exited: boolean; pid: number; } = null;
 			let scrollback = '';
+			const pendingMessages: IncomingMessage[] = [];
 
 			const socket = net.createConnection(socketPath);
 			this.socket = socket;
@@ -89,40 +94,49 @@ export class HolderClient {
 
 					if (!settled) {
 						// During handshake, collect info + scrollback.
+						// Queue other messages (activity, cwd) to replay after settlement.
 						if (msg.type === 'info') {
 							info = { exitCode: msg.exitCode, exited: msg.exited, pid: msg.pid };
 							this.pid = msg.pid;
 						} else if (msg.type === 'scrollback') {
 							scrollback = msg.data;
+						} else {
+							// Queue activity/cwd/exit messages received during handshake
+							pendingMessages.push(msg);
 						}
 
 						// Handshake complete once we have info.
 						if (info !== null) {
-							if (msg.type === 'scrollback' || info.exited) {
-								// Got scrollback or PTY already exited — resolve immediately.
+							const settle = () => {
+								if (settled) return;
 								settled = true;
 								resolve({
-									exitCode: info.exitCode,
-									exited: info.exited,
-									pid: info.pid,
+									exitCode: info!.exitCode,
+									exited: info!.exited,
+									pid: info!.pid,
 									scrollback
 								});
-							} else if (msg.type === 'info') {
-								// Got info but no scrollback yet. The holder only sends
-								// scrollback if there IS data. Use a microtask to give
-								// scrollback a chance to arrive in the same data chunk,
-								// then resolve if it doesn't.
-								Promise.resolve().then(() => {
-									if (!settled) {
-										settled = true;
-										resolve({
-											exitCode: info!.exitCode,
-											exited: info!.exited,
-											pid: info!.pid,
-											scrollback
-										});
+								// Replay queued messages in the next macrotask so that
+								// callbacks registered after `await connect()` are wired
+								// before the replay fires.
+								const queued = [...pendingMessages];
+								pendingMessages.length = 0;
+								setTimeout(() => {
+									for (const pending of queued) {
+										this.handleMessage(pending);
 									}
-								});
+								}, 0);
+							};
+
+							if (msg.type === 'scrollback' || info.exited) {
+								// Got scrollback or PTY already exited — resolve immediately.
+								settle();
+							} else if (msg.type === 'info') {
+								// Got info but no scrollback yet. The holder sends
+								// scrollback right after info if there IS data. Wait
+								// 100ms to give scrollback time to arrive in a separate
+								// TCP frame before resolving with empty scrollback.
+								setTimeout(settle, 100);
 							}
 						}
 					} else {
@@ -179,6 +193,16 @@ export class HolderClient {
 		this.send(msg);
 	}
 
+	/** Register callback for activity state changes. */
+	onActivity(cb: (active: boolean) => void): void {
+		this.activityCb = cb;
+	}
+
+	/** Register callback for CWD changes. */
+	onCwd(cb: (path: string) => void): void {
+		this.cwdCb = cb;
+	}
+
 	/** Register callback for unexpected disconnect from holder. */
 	onDisconnect(cb: () => void): void {
 		this.disconnectCb = cb;
@@ -209,6 +233,18 @@ export class HolderClient {
 	/** Dispatch a post-handshake message from the holder. */
 	private handleMessage(msg: IncomingMessage): void {
 		switch (msg.type) {
+			case 'activity':
+				if (this.activityCb) {
+					this.activityCb(msg.active);
+				}
+				break;
+
+			case 'cwd':
+				if (this.cwdCb) {
+					this.cwdCb(msg.path);
+				}
+				break;
+
 			case 'exit':
 				if (this.exitCb) {
 					this.exitCb(msg.code);

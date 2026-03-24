@@ -2,8 +2,8 @@
   import type { ShooterConfig } from '$lib/types/config';
 
   import { goto } from '$app/navigation';
+  import { Button, Pill, Shimmer } from '@juspay/svelte-ui-components';
   import {
-    Button,
     EmptyState,
     formatRelativeTime,
     getCached,
@@ -149,9 +149,11 @@
         <p class="page-description">Claude Code sessions across all projects</p>
       </div>
       <div class="page-actions">
-        <Button variant="secondary" onclick={forceRefresh} disabled={loading}>
-          <Icon name="refresh" size={14} />
-          Refresh
+        <Button classes="btn-secondary" onclick={forceRefresh} disabled={loading}>
+          {#snippet children()}
+            <Icon name="refresh" size={14} />
+            Refresh
+          {/snippet}
         </Button>
       </div>
     </div>
@@ -160,7 +162,7 @@
   {#if loading && projects.length === 0}
     <div class="loading-container">
       {#each Array(5) as _, i (i)}
-        <div class="skeleton skeleton-card"></div>
+        <Shimmer classes="shimmer-card" />
       {/each}
     </div>
   {:else if !config?.apiKey}
@@ -169,7 +171,7 @@
       title="Configuration Required"
       description="Set up your API credentials to start tracking sessions"
     >
-      <Button variant="primary" onclick={navigateToConfig}>Configure Settings</Button>
+      <Button classes="btn-primary" onclick={navigateToConfig} text="Configure Settings" />
     </EmptyState>
   {:else if totalSessionCount() === 0}
     <EmptyState
@@ -186,20 +188,17 @@
               <h3 class="session-card-title">{project.name}</h3>
               <div class="session-card-subtitle">{project.fullPath}</div>
             </div>
-            <span class="session-badge session-badge-complete">
-              <span class="session-badge-dot"></span>
-              {formatRelativeTime(project.lastModified)}
-            </span>
+            <Pill text={formatRelativeTime(project.lastModified)} classes="pill-session-time" />
           </div>
           <div class="session-stats">
-            <span><strong>{project.sessionCount}</strong> sessions</span>
+            <span><strong>{project.sessionCount}</strong> {project.sessionCount === 1 ? 'session' : 'sessions'}</span>
           </div>
         </a>
       {/each}
     </div>
     {#if hasMore}
       <div style="text-align: center; padding: 1rem;">
-        <Button variant="secondary" onclick={loadMore}>Load More</Button>
+        <Button classes="btn-secondary" onclick={loadMore} text="Load More" />
       </div>
     {/if}
   {/if}
@@ -255,7 +254,7 @@
       width: 100%;
     }
 
-    .page-actions :global(.btn) {
+    .page-actions :global(button) {
       flex: 1;
     }
   }

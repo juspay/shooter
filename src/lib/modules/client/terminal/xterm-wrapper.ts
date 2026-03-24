@@ -11,12 +11,16 @@ interface TerminalInstance {
 }
 
 interface TerminalOptions {
+  apiKey?: string;
   container: HTMLElement;
   fontSize?: number;
   getTicket: () => Promise<string>;
+  onActivity?: (active: boolean) => void;
+  onCwd?: (path: string) => void;
   onDisconnect?: () => void;
   onExit?: (code: number) => void;
   onReconnect?: () => void;
+  terminalId?: string;
   wsUrl: string;
 }
 
@@ -67,6 +71,67 @@ export async function createTerminal(options: TerminalOptions): Promise<Terminal
   term.open(options.container);
   fitAddon.fit();
 
+  // Block browser-level Cmd/Ctrl shortcuts from reaching the PTY.
+  // Allow Ctrl+<letter> terminal signals (Ctrl+C/D/L/R/Z etc.) through.
+  const browserShortcuts = new Set(['s', 'w', 't', 'n', 'p', 'q', 'h', 'j', 'f', 'g', 'o', 'u']);
+  term.attachCustomKeyEventHandler((e) => {
+    // Cmd+key on Mac: block known browser shortcuts, allow the rest
+    if (e.metaKey) {
+      if (e.key === 'c' || e.key === 'v') { return true; } // allow copy/paste
+      if (browserShortcuts.has(e.key)) { return false; }    // block browser shortcuts
+      return true;
+    }
+    // Ctrl+key (non-Mac modifier): allow all through to PTY (Ctrl+C/D/L/R/Z etc.)
+    return true;
+  });
+
+  // Clipboard image paste interception
+  let pasteListener: ((e: ClipboardEvent) => void) | null = null;
+  if (options.terminalId && options.apiKey) {
+    const pasteTermId = options.terminalId;
+    const pasteApiKey = options.apiKey;
+
+    pasteListener = async (e: ClipboardEvent) => {
+      try {
+        if (!e.clipboardData) return;
+        const items = Array.from(e.clipboardData.items);
+        const imageItem = items.find(item => item.type.startsWith('image/'));
+        if (!imageItem) return; // No image — let normal paste proceed
+
+        e.preventDefault();
+        const blob = imageItem.getAsFile();
+        if (!blob) return;
+
+        // Read image as base64
+        const reader = new FileReader();
+        const base64 = await new Promise<string>((resolve, reject) => {
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+
+        // Upload to server
+        const res = await fetch(`/api/terminals/${pasteTermId}/paste-image`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${pasteApiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ image: base64 }),
+        });
+
+        // Send Ctrl+V (0x16) to PTY only after a successful upload
+        if (res.ok && ws?.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ data: '\x16', type: 'input' }));
+        }
+      } catch {
+        // Silent failure — don't break text paste
+      }
+    };
+
+    options.container.addEventListener('paste', pasteListener as EventListener);
+  }
+
   // WebSocket connection
   let ws: null | WebSocket = null;
   let reconnectTimer: null | ReturnType<typeof setTimeout> = null;
@@ -114,6 +179,10 @@ export async function createTerminal(options: TerminalOptions): Promise<Terminal
         options.onExit?.(msg.code);
       } else if (msg.type === 'output-dropped') {
         term.write(`\r\n\x1b[33m[${msg.bytes} bytes dropped]\x1b[0m\r\n`);
+      } else if (msg.type === 'activity') {
+        options.onActivity?.(msg.active);
+      } else if (msg.type === 'cwd') {
+        options.onCwd?.(msg.path);
       }
     };
 
@@ -149,6 +218,9 @@ export async function createTerminal(options: TerminalOptions): Promise<Terminal
   function dispose() {
     disposed = true;
     if (reconnectTimer) {clearTimeout(reconnectTimer);}
+    if (pasteListener) {
+      options.container.removeEventListener('paste', pasteListener as EventListener);
+    }
     resizeObserver.disconnect();
     ws?.close();
     term.dispose();

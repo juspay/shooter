@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { Button } from '@juspay/svelte-ui-components';
+
   interface Props {
     onKey: (key: string) => void;
   }
@@ -23,14 +25,11 @@
 
 <div class="quick-keys" role="toolbar" aria-label="Quick terminal keys">
   {#each keys as k (k.label)}
-    <button
-      class="quick-key"
+    <Button
+      classes="btn-quick-key"
       onclick={() => { onKey(k.escape); }}
-      type="button"
-      aria-label={k.label}
-    >
-      {k.label}
-    </button>
+      text={k.label}
+    />
   {/each}
 </div>
 
@@ -49,40 +48,24 @@
     display: none;
   }
 
-  .quick-key {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 44px;
+  :global(.btn-quick-key) {
+    --button-color: #1e293b;
+    --button-text-color: #94a3b8;
+    --button-border: 1px solid var(--ds-gray-400);
+    --button-hover-color: #334155;
+    --button-hover-text-color: #e2e8f0;
+    --button-hover-border: 1px solid var(--ds-gray-400);
+    --button-height: 44px;
+    --button-padding: 0 var(--space-3);
+    --button-border-radius: var(--radius-md);
+    --button-font-family: var(--font-mono);
+    --button-font-size: var(--text-xs);
     min-width: 52px;
-    padding: 0 var(--space-3);
-    border-radius: var(--radius-md);
-    background: #1e293b;
-    border: 1px solid var(--ds-gray-400);
-    color: #94a3b8;
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    font-weight: 500;
-    cursor: pointer;
-    white-space: nowrap;
     flex-shrink: 0;
-    transition:
-      background var(--transition-fast),
-      color var(--transition-fast);
+    white-space: nowrap;
     user-select: none;
     -webkit-user-select: none;
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
-  }
-
-  .quick-key:hover {
-    background: #334155;
-    color: #e2e8f0;
-  }
-
-  .quick-key:active {
-    background: #475569;
-    color: #f1f5f9;
-    transform: scale(0.96);
   }
 </style>

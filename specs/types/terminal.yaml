@@ -42,6 +42,8 @@ Terminal:
       - pid
       - createdAt
       - status
+      - isActive
+      - currentCwd
     properties:
       id:
         type: string
@@ -82,6 +84,13 @@ Terminal:
         type: string
         nullable: true
         description: Unix domain socket path for the holder process, or null if not applicable
+      isActive:
+        type: boolean
+        description: Whether the terminal is currently producing output (true) or idle (false)
+      currentCwd:
+        type: string
+        nullable: true
+        description: Current working directory detected via OSC 7, or null if not yet detected
 
   CreateTerminalRequest:
     type: object
@@ -711,3 +720,27 @@ Terminal:
             type: string
             nullable: true
             description: Signal that caused exit
+      - type: object
+        description: Terminal activity state change (active/idle)
+        required:
+          - type
+          - active
+        properties:
+          type:
+            type: string
+            const: activity
+          active:
+            type: boolean
+            description: Whether the terminal is currently producing output
+      - type: object
+        description: Current working directory change detected via OSC 7
+        required:
+          - type
+          - path
+        properties:
+          type:
+            type: string
+            const: cwd
+          path:
+            type: string
+            description: Absolute path of the new working directory

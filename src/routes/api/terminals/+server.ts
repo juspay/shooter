@@ -19,10 +19,12 @@ export const GET: RequestHandler = ({ request }) => {
       clientCount: t.clients.size,
       command: t.command,
       createdAt: t.createdAt.toISOString(),
+      currentCwd: t.currentCwd,
       cwd: t.cwd,
       exitCode: t.exitCode,
       exitedAt: t.exitedAt?.toISOString() ?? null,
       id: t.id,
+      isActive: t.isActive,
       pid: t.pid,
       status: t.status,
     }));

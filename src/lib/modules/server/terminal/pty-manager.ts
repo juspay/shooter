@@ -21,11 +21,13 @@ interface ManagedTerminal {
   cols: number;
   command: string;
   createdAt: Date;
+  currentCwd: null | string;
   cwd: string;
   exitCode: null | number;
   exitedAt: Date | null;
   holderPid: number;
   id: string;
+  isActive: boolean;
   openCodeNoopCb: ((messages: import('../sessions/types').ConversationMessage[]) => void) | null;
   openCodeSessionId: null | string;
   outputBuffers: Map<WebSocket, OutputBuffer>;
@@ -199,10 +201,12 @@ class PtyManager {
       command,
       createdAt: now,
       cwd,
+      currentCwd: null,
       exitCode: connectResult.exitCode,
       exitedAt: null,
       holderPid,
       id,
+      isActive: false,
       openCodeNoopCb: null,
       openCodeSessionId: null,
       outputBuffers: new Map(),
@@ -217,41 +221,8 @@ class PtyManager {
       watcherOffset: 0,
     };
 
-    // Wire up output broadcasting from HolderClient
-    client.onOutput((data: string) => {
-      this.appendScrollback(terminal, data);
-      this.broadcastOutput(terminal, data);
-    });
-
-    // Wire up exit handling from HolderClient
-    client.onExit((exitCode: null | number) => {
-      terminal.status = 'exited';
-      terminal.exitCode = exitCode;
-      terminal.exitedAt = new Date();
-
-      // Persist exit state to SQLite
-      terminalStore.markExited(terminal.id, exitCode);
-
-      // Notify all connected WS clients of the exit
-      const exitMsg = JSON.stringify({
-        code: exitCode,
-        signal: null,
-        type: 'exit',
-      });
-      for (const ws of terminal.clients) {
-        this.safeSend(ws, exitMsg);
-      }
-    });
-
-    // Handle unexpected disconnect from holder (holder crash)
-    client.onDisconnect(() => {
-      if (terminal.status === 'running') {
-        console.warn(`[pty-manager] Holder disconnected unexpectedly for terminal ${id}`);
-        terminal.status = 'exited';
-        terminal.exitedAt = new Date();
-        terminalStore.markOrphaned(terminal.id);
-      }
-    });
+    // Wire up all HolderClient callbacks
+    this.wireHolderCallbacks(client, terminal);
 
     // Persist to SQLite
     terminalStore.insert({
@@ -515,10 +486,17 @@ class PtyManager {
   private appendScrollback(terminal: ManagedTerminal, data: string): void {
     terminal.scrollback += data;
 
-    // Trim from midpoint when we exceed the byte cap
+    // Trim at newline boundary when we exceed the byte cap
+    // (avoids corrupting multi-byte UTF-8 chars or VT escape sequences)
     if (Buffer.byteLength(terminal.scrollback, 'utf8') > MAX_SCROLLBACK_BYTES) {
       const mid = Math.floor(terminal.scrollback.length / 2);
-      terminal.scrollback = terminal.scrollback.slice(mid);
+      const newlineIdx = terminal.scrollback.indexOf('\n', mid);
+      if (newlineIdx !== -1) {
+        terminal.scrollback = terminal.scrollback.slice(newlineIdx + 1);
+      } else {
+        // No newline found after midpoint — discard the first half entirely
+        terminal.scrollback = terminal.scrollback.slice(mid);
+      }
     }
   }
 
@@ -736,11 +714,13 @@ class PtyManager {
       cols: record.cols,
       command: record.command,
       createdAt: new Date(record.createdAt),
+      currentCwd: null,
       cwd: record.cwd,
       exitCode: connectResult.exitCode,
       exitedAt: record.exitedAt ? new Date(record.exitedAt) : null,
       holderPid: record.holderPid ?? 0,
       id: record.id,
+      isActive: false,
       openCodeNoopCb: null,
       openCodeSessionId: record.opencodeSessionId ?? null,
       outputBuffers: new Map(),
@@ -761,38 +741,8 @@ class PtyManager {
       terminalStore.markExited(record.id, connectResult.exitCode);
     }
 
-    // Wire up output broadcasting
-    client.onOutput((data: string) => {
-      this.appendScrollback(terminal, data);
-      this.broadcastOutput(terminal, data);
-    });
-
-    // Wire up exit handling
-    client.onExit((exitCode: null | number) => {
-      terminal.status = 'exited';
-      terminal.exitCode = exitCode;
-      terminal.exitedAt = new Date();
-      terminalStore.markExited(terminal.id, exitCode);
-
-      const exitMsg = JSON.stringify({
-        code: exitCode,
-        signal: null,
-        type: 'exit',
-      });
-      for (const ws of terminal.clients) {
-        this.safeSend(ws, exitMsg);
-      }
-    });
-
-    // Handle unexpected disconnect from holder
-    client.onDisconnect(() => {
-      if (terminal.status === 'running') {
-        console.warn(`[pty-manager] Holder disconnected unexpectedly for terminal ${record.id}`);
-        terminal.status = 'exited';
-        terminal.exitedAt = new Date();
-        terminalStore.markOrphaned(terminal.id);
-      }
-    });
+    // Wire up all HolderClient callbacks
+    this.wireHolderCallbacks(client, terminal);
 
     // Re-attach session watchers
     if (terminal.sessionFile) {
@@ -821,6 +771,55 @@ class PtyManager {
       `[pty-manager] Reconnected terminal ${record.id} (pid=${connectResult.pid}, ` +
         `holder=${record.holderPid}, status=${terminal.status})`
     );
+  }
+
+  /** Wire up all HolderClient callbacks (activity, CWD, output, exit, disconnect). */
+  private wireHolderCallbacks(client: HolderClient, terminal: ManagedTerminal): void {
+    client.onActivity((active: boolean) => {
+      terminal.isActive = active;
+      const msg = JSON.stringify({ active, type: 'activity' });
+      for (const ws of terminal.clients) {
+        this.safeSend(ws, msg);
+      }
+    });
+
+    client.onCwd((path: string) => {
+      terminal.currentCwd = path;
+      const msg = JSON.stringify({ path, type: 'cwd' });
+      for (const ws of terminal.clients) {
+        this.safeSend(ws, msg);
+      }
+    });
+
+    client.onOutput((data: string) => {
+      this.appendScrollback(terminal, data);
+      this.broadcastOutput(terminal, data);
+    });
+
+    client.onExit((exitCode: null | number) => {
+      terminal.status = 'exited';
+      terminal.exitCode = exitCode;
+      terminal.exitedAt = new Date();
+      terminalStore.markExited(terminal.id, exitCode);
+
+      const exitMsg = JSON.stringify({
+        code: exitCode,
+        signal: null,
+        type: 'exit',
+      });
+      for (const ws of terminal.clients) {
+        this.safeSend(ws, exitMsg);
+      }
+    });
+
+    client.onDisconnect(() => {
+      if (terminal.status === 'running') {
+        console.warn(`[pty-manager] Holder disconnected unexpectedly for terminal ${terminal.id}`);
+        terminal.status = 'exited';
+        terminal.exitedAt = new Date();
+        terminalStore.markOrphaned(terminal.id);
+      }
+    });
   }
 
   /** Safely send a message to a WebSocket, returning false on failure. */
@@ -990,9 +989,14 @@ function resolveHolderPath(): string {
   if (process.env.SHOOTER_HOLDER_PATH) {
     return process.env.SHOOTER_HOLDER_PATH;
   }
-  // In dev: src/lib/modules/server/terminal/pty-holder.cjs
-  // In prod: build/pty-holder.cjs (copied by postbuild script)
-  return path.join(__dirname, 'pty-holder.cjs');
+  // In dev: __dirname is src/lib/modules/server/terminal/ → pty-holder.cjs is co-located
+  // In prod: __dirname is build/server/chunks/ → pty-holder.cjs is at build/ (copied by postbuild)
+  const colocated = path.join(__dirname, 'pty-holder.cjs');
+  if (existsSync(colocated)) {
+    return colocated;
+  }
+  // Walk up from build/server/chunks/ to build/
+  return path.resolve(__dirname, '..', '..', 'pty-holder.cjs');
 }
 
 // ---------------------------------------------------------------------------

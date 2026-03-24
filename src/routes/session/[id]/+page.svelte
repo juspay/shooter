@@ -8,6 +8,7 @@
 
   import { browser } from '$app/environment';
   import { page } from '$app/state';
+  import { Banner, Pill, Shimmer } from '@juspay/svelte-ui-components';
   import {
     EmptyState,
     getCached,
@@ -316,13 +317,13 @@
 <main class="main session-page-main">
   {#if loading && messages.length === 0}
     <div class="loading-container">
-      <div class="skeleton" style="height: 80px; margin-bottom: 1rem;"></div>
+      <Shimmer classes="shimmer-header" />
       <div class="chat-container">
-        <div class="skeleton skeleton-bubble skeleton-bubble-user" style="width: 60%;"></div>
-        <div class="skeleton skeleton-bubble skeleton-bubble-assistant" style="width: 75%;"></div>
-        <div class="skeleton skeleton-bubble skeleton-bubble-user" style="width: 50%;"></div>
-        <div class="skeleton skeleton-bubble skeleton-bubble-assistant" style="width: 80%;"></div>
-        <div class="skeleton skeleton-bubble skeleton-bubble-assistant" style="width: 40%;"></div>
+        <Shimmer classes="shimmer-bubble shimmer-bubble-user" />
+        <Shimmer classes="shimmer-bubble shimmer-bubble-assistant" />
+        <Shimmer classes="shimmer-bubble shimmer-bubble-user-short" />
+        <Shimmer classes="shimmer-bubble shimmer-bubble-assistant-wide" />
+        <Shimmer classes="shimmer-bubble shimmer-bubble-assistant-short" />
       </div>
     </div>
   {:else if error}
@@ -359,10 +360,7 @@
       <div class="chat-session-title-row">
         <h1 class="chat-session-title">{session.title}</h1>
         {#if isSessionActive}
-          <span class="live-badge">
-            <span class="live-badge-dot"></span>
-            LIVE
-          </span>
+          <Pill text="LIVE" classes="pill-live" />
         {/if}
       </div>
       <div class="chat-session-meta">
@@ -372,7 +370,7 @@
         <span class="chat-session-meta-item">&#128197; {formatDate(session.created)}</span>
       </div>
       {#if connectionState === 'disconnected' && isSessionActive}
-        <div class="live-paused-banner">Live updates paused</div>
+        <Banner text="Live updates paused" classes="banner-warning" />
       {/if}
     </div>
 
@@ -423,58 +421,14 @@
     gap: 0.5rem;
   }
 
-  /* LIVE badge — green pulsing */
-  .live-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 2px 10px;
-    border-radius: 20px;
-    font-size: 0.7rem;
-    font-weight: 700;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    background: rgba(34, 197, 94, 0.15);
-    color: #22c55e;
-    border: 1px solid rgba(34, 197, 94, 0.3);
-    white-space: nowrap;
-    flex-shrink: 0;
-  }
-
-  .live-badge-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: #22c55e;
-    animation: live-pulse 2s ease-in-out infinite;
-  }
-
-  @keyframes live-pulse {
-    0%, 100% {
-      opacity: 1;
-      box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4);
-    }
-    50% {
-      opacity: 0.6;
-      box-shadow: 0 0 0 4px rgba(34, 197, 94, 0);
-    }
-  }
-
   /* Connection status row */
   .live-connection-row {
     display: flex;
     align-items: center;
   }
 
-  /* Live updates paused banner */
-  .live-paused-banner {
+  /* Paused banner override */
+  :global(.banner-warning) {
     margin-top: 0.5rem;
-    padding: 4px 10px;
-    border-radius: 6px;
-    font-size: 0.75rem;
-    color: #f59e0b;
-    background: rgba(245, 158, 11, 0.1);
-    border: 1px solid rgba(245, 158, 11, 0.2);
-    text-align: center;
   }
 </style>

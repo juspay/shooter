@@ -91,6 +91,8 @@ export type HolderClientMessage =
     |       CHolderClientMessage2
     |       CHolderClientMessage3
     |       CHolderClientMessage4
+    |       CHolderClientMessage5
+    |       CHolderClientMessage6
   ;
 
 /**
@@ -183,6 +185,42 @@ export interface HolderClientMessage4 {
   type: string;
   }
 
+/**
+ * @type { HolderClientMessage5 }
+ * @description Terminal activity state change (active/idle)
+ */
+export interface HolderClientMessage5 {
+  /**
+   * @description Whether the terminal is currently producing output
+   * @type { boolean }
+   * @memberof HolderClientMessage5
+  */
+  active: boolean;
+  /**
+   * @type { string }
+   * @memberof HolderClientMessage5
+  */
+  type: string;
+}
+
+/**
+ * @type { HolderClientMessage6 }
+ * @description Current working directory change detected via OSC 7
+ */
+export interface HolderClientMessage6 {
+  /**
+   * @description Absolute path of the new working directory
+   * @type { string }
+   * @memberof HolderClientMessage6
+  */
+  path: string;
+  /**
+   * @type { string }
+   * @memberof HolderClientMessage6
+  */
+  type: string;
+}
+
 export type HolderServerMessage =
   |       CHolderServerMessage1
     |       CHolderServerMessage2
@@ -206,6 +244,7 @@ export interface HolderServerMessage1 {
   */
   type: string;
 }
+
 
 /**
  * @type { HolderServerMessage2 }
@@ -274,6 +313,12 @@ export interface ManagedTerminalInfo {
   */
   createdAt: string;
   /**
+   * @description Current working directory detected via OSC 7, or null if not yet detected
+   * @type { string }
+   * @memberof ManagedTerminalInfo
+  */
+  currentCwd: null | string;
+  /**
    * @description Working directory the terminal was launched in
    * @type { string }
    * @memberof ManagedTerminalInfo
@@ -291,19 +336,25 @@ export interface ManagedTerminalInfo {
    * @memberof ManagedTerminalInfo
   */
   exitedAt: null | string;
-  /**
+    /**
    * @description PID of the PTY holder process, or null if not using holder architecture
    * @type { number }
    * @memberof ManagedTerminalInfo
   */
   holderPid: null | number;
-    /**
+  /**
    * @description Unique terminal identifier (e.g. "term_a1b2c3")
    * @type { string }
    * @memberof ManagedTerminalInfo
   */
   id: string;
-  /**
+    /**
+   * @description Whether the terminal is currently producing output (true) or idle (false)
+   * @type { boolean }
+   * @memberof ManagedTerminalInfo
+  */
+  isActive: boolean | null;
+    /**
    * @description OS process ID of the terminal process
    * @type { number }
    * @memberof ManagedTerminalInfo
@@ -544,6 +595,8 @@ export interface WsEvent2 {
   }
 
 
+
+
 /**
  * @type { WsEvent3 }
  * @description A permission request is awaiting approval
@@ -579,7 +632,6 @@ export interface WsEvent3 {
  * @description Tool input that requires approval
  */
 export type WsEvent3Input = Record<string, unknown>;
-
 
 
 
@@ -781,7 +833,6 @@ export interface WsSessionOutput3 {
 }
 
 
-
 /**
  * @type { WsSessionOutput3Input }
  * @description Tool input parameters
@@ -819,6 +870,8 @@ export interface WsSessionOutput4 {
 }
 
 
+
+
 /**
  * @type { WsSessionOutput5 }
  * @description AI thinking/reasoning block (extended thinking)
@@ -848,7 +901,6 @@ export interface WsSessionOutput6 {
   */
   type: string;
 }
-
 
 
 
@@ -1081,10 +1133,26 @@ export class CHolderClientMessageHolderClientMessage3 {
 }
 
 
-
 export class CHolderClientMessageHolderClientMessage4 {
   data: HolderClientMessage4;
   constructor(data: HolderClientMessage4) {
+    this.data = data;
+  }
+}
+
+export class CHolderClientMessageHolderClientMessage5 {
+  data: HolderClientMessage5;
+  constructor(data: HolderClientMessage5) {
+    this.data = data;
+  }
+}
+
+
+
+
+export class CHolderClientMessageHolderClientMessage6 {
+  data: HolderClientMessage6;
+  constructor(data: HolderClientMessage6) {
     this.data = data;
   }
 }
@@ -1095,6 +1163,7 @@ export class CHolderServerMessageHolderServerMessage1 {
     this.data = data;
   }
 }
+
 
 
 export class CHolderServerMessageHolderServerMessage2 {
@@ -1110,7 +1179,6 @@ export class CHolderServerMessageHolderServerMessage3 {
     this.data = data;
   }
 }
-
 
 
 
@@ -1177,7 +1245,6 @@ export class CWsSessionMessageWsSessionMessage3 {
 }
 
 
-
 export class CWsSessionOutputWsSessionOutput1 {
   data: WsSessionOutput1;
   constructor(data: WsSessionOutput1) {
@@ -1191,6 +1258,7 @@ export class CWsSessionOutputWsSessionOutput2 {
     this.data = data;
   }
 }
+
 
 
 
@@ -1209,6 +1277,7 @@ export class CWsSessionOutputWsSessionOutput4 {
 }
 
 
+
 export class CWsSessionOutputWsSessionOutput5 {
   data: WsSessionOutput5;
   constructor(data: WsSessionOutput5) {
@@ -1222,7 +1291,6 @@ export class CWsSessionOutputWsSessionOutput6 {
     this.data = data;
   }
 }
-
 
 
 
@@ -1240,8 +1308,6 @@ export class CWsTerminalMessageWsTerminalMessage2 {
   }
 }
 
-
-
 export class CWsTerminalMessageWsTerminalMessage3 {
   data: WsTerminalMessage3;
   constructor(data: WsTerminalMessage3) {
@@ -1256,14 +1322,13 @@ export class CWsTerminalOutputWsTerminalOutput1 {
   }
 }
 
-
-
 export class CWsTerminalOutputWsTerminalOutput2 {
   data: WsTerminalOutput2;
   constructor(data: WsTerminalOutput2) {
     this.data = data;
   }
 }
+
 
 export class CWsTerminalOutputWsTerminalOutput3 {
   data: WsTerminalOutput3;
@@ -1278,6 +1343,8 @@ export class CWsTerminalOutputWsTerminalOutput4 {
     this.data = data;
   }
 }
+
+
 
 export function _decodeRoleEnum(rawInput: unknown): RoleEnum | undefined {
   switch (rawInput) {
@@ -1297,7 +1364,6 @@ export function _decodeTerminalStatus(rawInput: unknown): TerminalStatus | undef
   }
   return;
 }
-
 
 export function _decodeToolExecutionStatus(rawInput: unknown): ToolExecutionStatus | undefined {
   switch (rawInput) {
@@ -1336,6 +1402,8 @@ export function decodeCHolderClientMessage2(rawInput: unknown) {
   return new CHolderClientMessageHolderClientMessage2(result);
 }
 
+
+
 export function decodeCHolderClientMessage3(rawInput: unknown) {
   const result = decodeHolderClientMessage3(rawInput);
   if (result === null) {
@@ -1350,6 +1418,24 @@ export function decodeCHolderClientMessage4(rawInput: unknown) {
     return null;
   }
   return new CHolderClientMessageHolderClientMessage4(result);
+}
+
+
+
+export function decodeCHolderClientMessage5(rawInput: unknown) {
+  const result = decodeHolderClientMessage5(rawInput);
+  if (result === null) {
+    return null;
+  }
+  return new CHolderClientMessageHolderClientMessage5(result);
+}
+
+export function decodeCHolderClientMessage6(rawInput: unknown) {
+  const result = decodeHolderClientMessage6(rawInput);
+  if (result === null) {
+    return null;
+  }
+  return new CHolderClientMessageHolderClientMessage6(result);
 }
 
 
@@ -1469,7 +1555,6 @@ export function decodeCWsEvent3(rawInput: unknown) {
 }
 
 
-
 export function decodeCWsEvent4(rawInput: unknown) {
   const result = decodeWsEvent4(rawInput);
   if (result === null) {
@@ -1485,6 +1570,7 @@ export function decodeCWsEvent5(rawInput: unknown) {
   }
   return new CWsEventWsEvent5(result);
 }
+
 
 
 
@@ -1523,6 +1609,7 @@ export function decodeCWsSessionOutput1(rawInput: unknown) {
 }
 
 
+
 export function decodeCWsSessionOutput2(rawInput: unknown) {
   const result = decodeWsSessionOutput2(rawInput);
   if (result === null) {
@@ -1538,7 +1625,6 @@ export function decodeCWsSessionOutput3(rawInput: unknown) {
   }
   return new CWsSessionOutputWsSessionOutput3(result);
 }
-
 
 
 
@@ -1575,8 +1661,6 @@ export function decodeCWsTerminalMessage1(rawInput: unknown) {
   }
   return new CWsTerminalMessageWsTerminalMessage1(result);
 }
-
-
 
 export function decodeCWsTerminalMessage2(rawInput: unknown) {
   const result = decodeWsTerminalMessage2(rawInput);
@@ -1630,6 +1714,8 @@ export function decodeCWsTerminalOutput4(rawInput: unknown) {
   return new CWsTerminalOutputWsTerminalOutput4(result);
 }
 
+
+
 export function decodeHolderClientMessage(rawInput: unknown): HolderClientMessage | null {
   const result: HolderClientMessage | null =
     decodeCHolderClientMessage1(rawInput)
@@ -1639,6 +1725,10 @@ export function decodeHolderClientMessage(rawInput: unknown): HolderClientMessag
       decodeCHolderClientMessage3(rawInput)
 ??
       decodeCHolderClientMessage4(rawInput)
+??
+      decodeCHolderClientMessage5(rawInput)
+??
+      decodeCHolderClientMessage6(rawInput)
 
   ;
   return result;
@@ -1735,6 +1825,47 @@ export function decodeHolderClientMessage4(rawInput: unknown): HolderClientMessa
   return null;
 }
 
+export function decodeHolderClientMessage5(rawInput: unknown): HolderClientMessage5 | null {
+  if (isJSON(rawInput)) {
+    const decodedType = decodeString(rawInput.type);
+    const decodedActive = decodeBoolean(rawInput.active);
+
+    if (
+      decodedType === null ||
+      decodedActive === null
+    ) {
+      return null;
+    }
+
+    return {
+      active: decodedActive,
+      type: decodedType
+    };
+  }
+  return null;
+}
+
+
+export function decodeHolderClientMessage6(rawInput: unknown): HolderClientMessage6 | null {
+  if (isJSON(rawInput)) {
+    const decodedType = decodeString(rawInput.type);
+    const decodedPath = decodeString(rawInput.path);
+
+    if (
+      decodedType === null ||
+      decodedPath === null
+    ) {
+      return null;
+    }
+
+    return {
+      path: decodedPath,
+      type: decodedType
+    };
+  }
+  return null;
+}
+
 export function decodeHolderServerMessage(rawInput: unknown): HolderServerMessage | null {
   const result: HolderServerMessage | null =
     decodeCHolderServerMessage1(rawInput)
@@ -1746,7 +1877,6 @@ export function decodeHolderServerMessage(rawInput: unknown): HolderServerMessag
   ;
   return result;
 }
-
 
 
 export function decodeHolderServerMessage1(rawInput: unknown): HolderServerMessage1 | null {
@@ -1794,6 +1924,7 @@ export function decodeHolderServerMessage2(rawInput: unknown): HolderServerMessa
 
 
 
+
 export function decodeHolderServerMessage3(rawInput: unknown): HolderServerMessage3 | null {
   if (isJSON(rawInput)) {
     const decodedType = decodeString(rawInput.type);
@@ -1826,6 +1957,8 @@ export function decodeManagedTerminalInfo(rawInput: unknown): ManagedTerminalInf
     const decodedExitCode = decodeNumber(rawInput.exitCode);
     const decodedHolderPid = decodeNumber(rawInput.holderPid);
     const decodedSocketPath = decodeString(rawInput.socketPath);
+    const decodedIsActive = decodeBoolean(rawInput.isActive);
+    const decodedCurrentCwd = decodeString(rawInput.currentCwd);
 
     if (
       decodedId === null ||
@@ -1843,11 +1976,13 @@ export function decodeManagedTerminalInfo(rawInput: unknown): ManagedTerminalInf
       args: decodedArgs,
       command: decodedCommand,
       createdAt: decodedCreatedAt,
+      currentCwd: decodedCurrentCwd,
       cwd: decodedCwd,
       exitCode: decodedExitCode,
       exitedAt: decodedExitedAt,
       holderPid: decodedHolderPid,
       id: decodedId,
+      isActive: decodedIsActive,
       pid: decodedPid,
       socketPath: decodedSocketPath,
       status: decodedStatus
@@ -1886,6 +2021,7 @@ export function decodeTerminalListResponse(rawInput: unknown): null | TerminalLi
   }
   return null;
 }
+
 
 
 export function decodeTerminalRecord(rawInput: unknown): null | TerminalRecord {
@@ -1951,6 +2087,7 @@ export function decodeTerminalStatus(rawInput: unknown): null | TerminalStatus {
 }
 
 
+
 export function decodeToolExecutionStatus(rawInput: unknown): null | ToolExecutionStatus {
   switch (rawInput) {
     case 'done':
@@ -1969,7 +2106,6 @@ export function decodeToolResultStatus(rawInput: unknown): null | ToolResultStat
   }
   return null;
 }
-
 
 
 
@@ -2066,7 +2202,6 @@ export function decodeWsEvent3(rawInput: unknown): null | WsEvent3 {
 }
 
 
-
 export function decodeWsEvent3Input(rawInput: unknown): null | WsEvent3Input {
   if (isJSON(rawInput)) {
 
@@ -2100,6 +2235,7 @@ export function decodeWsEvent4(rawInput: unknown): null | WsEvent4 {
   }
   return null;
 }
+
 
 
 
@@ -2218,6 +2354,7 @@ export function decodeWsSessionOutput(rawInput: unknown): null | WsSessionOutput
 }
 
 
+
 export function decodeWsSessionOutput1(rawInput: unknown): null | WsSessionOutput1 {
   if (isJSON(rawInput)) {
     const decodedType = decodeString(rawInput.type);
@@ -2263,7 +2400,6 @@ export function decodeWsSessionOutput2(rawInput: unknown): null | WsSessionOutpu
   }
   return null;
 }
-
 
 
 
