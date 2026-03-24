@@ -8,10 +8,14 @@
   import { browser } from '$app/environment';
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
+  import { Button, Input, Pill, Tabs } from '@juspay/svelte-ui-components';
   import { EmptyState } from '$lib/modules/client/common';
   import ChatView from '$lib/modules/client/terminal/ChatView.svelte';
   import ConnectionStatus from '$lib/modules/client/terminal/ConnectionStatus.svelte';
+  import { createShortcutManager, modLabel } from '$lib/modules/client/terminal/keyboard-shortcuts';
+  import CommandPalette from '$lib/modules/client/terminal/CommandPalette.svelte';
   import QuickKeys from '$lib/modules/client/terminal/QuickKeys.svelte';
+  import ShortcutsHelp from '$lib/modules/client/terminal/ShortcutsHelp.svelte';
   import { onDestroy, onMount } from 'svelte';
 
   // ------- Interfaces -------
@@ -41,6 +45,8 @@
   let error = $state<null | string>(null);
   let killing = $state(false);
   let removing = $state(false);
+  let isActive = $state(false);
+  let currentCwd = $state<null | string>(null);
   let viewMode = $state<'chat' | 'raw'>('raw');
   let connectionStatus = $state<'connected' | 'disconnected' | 'reconnecting'>('disconnected');
   let inputText = $state('');
@@ -53,6 +59,9 @@
 
   // WebSocket and terminal instance refs (not reactive)
   let termInstance: null | { dispose: () => void; sendInput: (data: string) => void; term: { cols: number; rows: number }; } = null;
+  let shortcutManager: null | { destroy: () => void } = null;
+  let showShortcutsHelp = $state(false);
+  let showCommandPalette = $state(false);
   let sessionWs: null | WebSocket = null;
   let disposed = false;
 
@@ -65,9 +74,48 @@
   const isRunning = $derived(terminal?.status === 'running');
   const commandName = $derived(terminal?.command.split('/').pop() || 'terminal');
   const badgeLabel = $derived(isAI ? 'AI' : 'SHELL');
-  const badgeClass = $derived(isAI ? 'badge-ai' : 'badge-shell');
+  const badgeClass = $derived(isAI ? 'pill-badge-ai' : 'pill-badge-shell');
+  const tabItems = ['Raw', 'Chat'];
+  const tabActiveIndex = $derived(viewMode === 'raw' ? 0 : 1);
+  const displayCwd = $derived(shortenPath(currentCwd || terminal?.cwd || ''));
+  const paletteCommands = $derived.by(() => {
+    const cmds = [
+      { label: 'Go to Home', action: () => void goto('/') },
+      { label: 'Go to Terminals', action: () => void goto('/terminals') },
+      { label: 'Go to Settings', action: () => void goto('/config') },
+      { label: 'Show keyboard shortcuts', action: () => { showShortcutsHelp = true; } },
+    ];
+    if (isRunning) {
+      cmds.push({ label: 'Kill terminal', action: () => void killTerminal() });
+    }
+    return cmds;
+  });
 
   // ------- Helpers -------
+
+  function shortenPath(p: string): string {
+    if (!p) return '';
+    const home = typeof window !== 'undefined' ? '' : '';
+    let display = p;
+    // Replace home prefix with ~
+    if (typeof navigator !== 'undefined') {
+      // Best effort home detection from path
+      const parts = p.split('/');
+      if (parts.length >= 3 && parts[1] === 'Users') {
+        display = '~/' + parts.slice(3).join('/');
+      } else if (parts.length >= 3 && parts[1] === 'home') {
+        display = '~/' + parts.slice(3).join('/');
+      }
+    }
+    // Show last 2 segments if too long
+    if (display.length > 30) {
+      const segs = display.split('/');
+      if (segs.length > 2) {
+        return '.../' + segs.slice(-2).join('/');
+      }
+    }
+    return display || home;
+  }
 
   function getConfig(): null | { apiKey: string } {
     try {
@@ -189,9 +237,17 @@
       if (disposed || !termContainer) {return;}
 
       const instance = await createTerminal({
+        apiKey: getConfig()?.apiKey,
         container: termContainer,
         fontSize: window.innerWidth < 768 ? 12 : 14,
         getTicket,
+        terminalId: terminalId,
+        onActivity: (active: boolean) => {
+          if (!disposed) {isActive = active;}
+        },
+        onCwd: (path: string) => {
+          if (!disposed) {currentCwd = path;}
+        },
         onDisconnect: () => {
           if (!disposed) {connectionStatus = 'reconnecting';}
         },
@@ -470,6 +526,12 @@
   onMount(async () => {
     await fetchTerminal();
 
+    // Set up keyboard shortcuts
+    shortcutManager = createShortcutManager({
+      onCommandPalette: () => { showCommandPalette = !showCommandPalette; },
+      onHelp: () => { showShortcutsHelp = !showShortcutsHelp; },
+    });
+
     if (!terminal || error) {return;}
 
     // Default view: Chat on mobile for AI sessions, Raw on desktop
@@ -495,6 +557,7 @@
     disposed = true;
     disposeRawTerminal();
     disconnectSessionWs();
+    shortcutManager?.destroy();
   });
 </script>
 
@@ -529,62 +592,50 @@
       <div class="term-topbar-left">
         <a href="/terminals" class="term-back" aria-label="Back to terminals">&larr;</a>
         <span class="term-command-name">{commandName}</span>
-        <span class="term-type-badge {badgeClass}">{badgeLabel}</span>
+        <Pill text={badgeLabel} classes={badgeClass} />
+        {#if isRunning}
+          <span class="activity-dot {isActive ? 'activity-active' : 'activity-idle'}" title={isActive ? 'Active' : 'Idle'}></span>
+        {/if}
+        {#if displayCwd}
+          <span class="term-cwd" title={currentCwd || terminal?.cwd || ''}>{displayCwd}</span>
+        {/if}
         <ConnectionStatus status={connectionStatus} onretry={handleRetry} />
       </div>
 
       <div class="term-topbar-right">
         {#if isAI}
-          <div class="term-toggle" role="radiogroup" aria-label="View mode">
-            <button
-              class="term-toggle-btn"
-              class:active={viewMode === 'raw'}
-              onclick={() => { setViewMode('raw'); }}
-              type="button"
-              role="radio"
-              aria-checked={viewMode === 'raw'}
-            >
-              Raw
-            </button>
-            <button
-              class="term-toggle-btn"
-              class:active={viewMode === 'chat'}
-              onclick={() => { setViewMode('chat'); }}
-              type="button"
-              role="radio"
-              aria-checked={viewMode === 'chat'}
-            >
-              Chat
-            </button>
-          </div>
+          <Tabs
+            items={tabItems}
+            activeIndex={tabActiveIndex}
+            onchange={(index) => setViewMode(index === 0 ? 'raw' : 'chat')}
+            classes="term-tabs"
+          />
         {/if}
 
+        <button
+          class="term-shortcuts-btn"
+          onclick={() => { showShortcutsHelp = !showShortcutsHelp; }}
+          type="button"
+          title="{modLabel}+/ for shortcuts"
+          aria-label="Keyboard shortcuts"
+        >?</button>
+
         {#if isRunning}
-          <button
-            class="term-kill-btn"
+          <Button
+            classes="btn-danger btn-sm"
             onclick={killTerminal}
             disabled={killing}
-            type="button"
-            aria-label="Kill terminal"
-          >
-            {#if killing}
-              <span class="btn-spinner"></span>
-            {/if}
-            Kill
-          </button>
+            showLoader={killing}
+            text="Kill"
+          />
         {:else}
-          <button
-            class="term-remove-btn"
+          <Button
+            classes="btn-secondary btn-sm"
             onclick={removeTerminal}
             disabled={removing}
-            type="button"
-            aria-label="Remove terminal"
-          >
-            {#if removing}
-              <span class="btn-spinner"></span>
-            {/if}
-            Remove
-          </button>
+            showLoader={removing}
+            text="Remove"
+          />
         {/if}
       </div>
     </div>
@@ -599,27 +650,19 @@
       <div class="term-input-area">
         <QuickKeys onKey={handleQuickKey} />
         <div class="term-input-bar">
-          <input
-            class="term-input"
-            type="text"
+          <Input
             bind:value={inputText}
-            bind:this={inputRef}
-            onkeydown={handleInputKeydown}
+            dataType="text"
             placeholder="Type command..."
-            autocomplete="off"
-            autocapitalize="off"
-            autocorrect="off"
-            spellcheck="false"
+            classes="input-mono term-input-field"
+            onKeyDown={handleInputKeydown}
           />
-          <button
-            class="term-send-btn"
+          <Button
+            classes="btn-primary btn-send"
             onclick={handleRawInput}
             disabled={!inputText.trim()}
-            type="button"
-            aria-label="Send"
-          >
-            &crarr;
-          </button>
+            text="&crarr;"
+          />
         </div>
       </div>
     {/if}
@@ -641,14 +684,15 @@
       <div class="term-exited-bar">
         <span>Process exited</span>
         {#if terminal.exitCode !== null}
-          <span class="term-exit-code" class:exit-err={terminal.exitCode !== 0}>
-            code {terminal.exitCode}
-          </span>
+          <Pill text="code {terminal.exitCode}" classes={terminal.exitCode !== 0 ? 'pill-exit-error' : 'pill-exit-ok'} />
         {/if}
       </div>
     {/if}
   </div>
 {/if}
+
+<ShortcutsHelp open={showShortcutsHelp} onClose={() => { showShortcutsHelp = false; }} />
+<CommandPalette open={showCommandPalette} commands={paletteCommands} onClose={() => { showCommandPalette = false; }} />
 
 <style>
   /* ============================================
@@ -658,8 +702,8 @@
   .term-page {
     display: flex;
     flex-direction: column;
-    height: calc(100vh - var(--header-height));
-    height: calc(100dvh - var(--header-height));
+    height: calc(100vh - var(--header-height) - 64px);
+    height: calc(100dvh - var(--header-height) - 64px);
     overflow: hidden;
     background: var(--ds-background-200);
   }
@@ -726,126 +770,74 @@
     text-overflow: ellipsis;
   }
 
-  /* Type badge (reuse from terminals list) */
-  .term-type-badge {
-    display: inline-flex;
-    align-items: center;
-    padding: 2px 8px;
-    border-radius: var(--radius-sm);
-    font-size: 11px;
-    font-weight: 600;
-    font-family: var(--font-mono);
-    letter-spacing: 0.03em;
-    border: 1px solid;
-    flex-shrink: 0;
-  }
-
-  .badge-ai {
-    background: rgba(139, 92, 246, 0.12);
-    color: #a78bfa;
-    border-color: rgba(139, 92, 246, 0.25);
-  }
-
-  .badge-shell {
-    background: rgba(34, 197, 94, 0.12);
-    color: #22c55e;
-    border-color: rgba(34, 197, 94, 0.25);
-  }
-
-  /* Raw/Chat toggle */
-  .term-toggle {
-    display: flex;
-    background: var(--ds-gray-200);
+  /* Tabs compact override for term topbar */
+  :global(.term-tabs) {
+    --tabs-bar-border-bottom: none;
+    --tabs-bar-background: var(--ds-gray-200);
+    --tabs-bar-padding: 2px;
+    --tabs-item-padding: 6px 12px;
+    --tabs-item-font-size: var(--text-xs);
+    --tabs-indicator-height: 0;
+    --tabs-active-color: var(--text-primary);
+    --tabs-item-color: var(--text-tertiary);
     border-radius: var(--radius-md);
     border: 1px solid var(--ds-gray-400);
     overflow: hidden;
   }
 
-  .term-toggle-btn {
-    min-height: 36px;
-    padding: 6px 12px;
+  /* Shortcuts button */
+  .term-shortcuts-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
     background: transparent;
-    border: none;
     color: var(--text-tertiary);
-    font-size: var(--text-xs);
-    font-weight: 500;
-    font-family: var(--font-sans);
-    cursor: pointer;
-    transition:
-      background var(--transition-fast),
-      color var(--transition-fast);
-  }
-
-  .term-toggle-btn:hover {
-    color: var(--text-secondary);
-  }
-
-  .term-toggle-btn.active {
-    background: var(--ds-gray-400);
-    color: var(--text-primary);
-  }
-
-  /* Kill button */
-  .term-kill-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: var(--space-1);
-    min-height: 44px;
-    padding: 0 12px;
-    border-radius: var(--radius-md);
-    background: #d93036;
-    color: #fff;
-    border: none;
-    font-size: var(--text-xs);
+    font-size: 14px;
     font-weight: 600;
-    font-family: var(--font-sans);
     cursor: pointer;
-    transition:
-      background var(--transition-fast),
-      opacity var(--transition-fast);
     flex-shrink: 0;
   }
 
-  .term-kill-btn:hover:not(:disabled) {
-    background: #ff6166;
-  }
-
-  .term-kill-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  /* Remove button for exited terminals */
-  .term-remove-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: var(--space-1);
-    min-height: 44px;
-    padding: 0 12px;
-    border-radius: var(--radius-md);
-    background: var(--ds-gray-400);
+  .term-shortcuts-btn:hover {
+    background: var(--component-bg-hover);
     color: var(--text-primary);
-    border: none;
-    font-size: var(--text-xs);
-    font-weight: 600;
-    font-family: var(--font-sans);
-    cursor: pointer;
-    transition:
-      background var(--transition-fast),
-      opacity var(--transition-fast);
+  }
+
+  /* CWD display */
+  .term-cwd {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-tertiary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 200px;
+  }
+
+  /* Activity indicator */
+  .activity-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
     flex-shrink: 0;
   }
 
-  .term-remove-btn:hover:not(:disabled) {
-    background: var(--ds-red-100);
-    color: var(--ds-red-900);
+  .activity-active {
+    background: #4ade80;
+    animation: activity-pulse 600ms ease-in-out infinite;
   }
 
-  .term-remove-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
+  .activity-idle {
+    background: var(--ds-gray-600);
+  }
+
+  @keyframes activity-pulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.5); opacity: 0.7; }
   }
 
   /* ============================================
@@ -906,53 +898,18 @@
     padding: var(--space-2) var(--space-3);
   }
 
-  .term-input {
+  :global(.term-input-field) {
+    --input-container-margin: 0;
+    --input-height: 44px;
     flex: 1;
-    height: 44px;
-    padding: 0 var(--space-3);
-    background: var(--ds-gray-100);
-    border: 1px solid var(--ds-gray-400);
-    border-radius: var(--radius-md);
-    color: var(--text-primary);
-    font-size: var(--text-base);
-    font-family: var(--font-mono);
-    transition: border-color var(--transition-fast);
   }
 
-  .term-input:focus {
-    outline: none;
-    border-color: var(--text-primary);
-  }
-
-  .term-input::placeholder {
-    color: var(--text-tertiary);
-  }
-
-  .term-send-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 44px;
-    height: 44px;
-    border-radius: var(--radius-md);
-    background: var(--ds-gray-1000);
-    color: var(--ds-background-100);
-    border: none;
-    font-size: 18px;
-    cursor: pointer;
+  :global(.btn-send) {
+    --button-height: 44px;
+    --button-width: 44px;
+    --button-padding: 0;
+    --button-font-size: 18px;
     flex-shrink: 0;
-    transition:
-      background var(--transition-fast),
-      opacity var(--transition-fast);
-  }
-
-  .term-send-btn:hover:not(:disabled) {
-    background: #fff;
-  }
-
-  .term-send-btn:disabled {
-    opacity: 0.3;
-    cursor: not-allowed;
   }
 
   /* ============================================
@@ -973,19 +930,6 @@
     flex-shrink: 0;
   }
 
-  .term-exit-code {
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    padding: 1px 6px;
-    border-radius: var(--radius-sm);
-    background: var(--ds-gray-alpha-100);
-    color: var(--text-secondary);
-  }
-
-  .term-exit-code.exit-err {
-    color: var(--ds-red-900);
-    background: var(--ds-red-100);
-  }
 
   /* ============================================
      Responsive
@@ -1000,10 +944,6 @@
     .term-command-name {
       font-size: var(--text-sm);
       max-width: 100px;
-    }
-
-    .term-input {
-      font-size: var(--text-sm);
     }
   }
 
@@ -1020,17 +960,6 @@
 
     .term-topbar-right {
       flex-shrink: 1;
-    }
-
-    .term-kill-btn {
-      padding: 0 6px;
-      font-size: 11px;
-      height: 28px;
-    }
-
-    .term-badge {
-      font-size: 10px;
-      padding: 1px 6px;
     }
   }
 </style>

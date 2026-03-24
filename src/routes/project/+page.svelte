@@ -2,8 +2,8 @@
   import type { ShooterConfig } from '$lib/types/config';
 
   import { page } from '$app/state';
+  import { Button, Pill, Shimmer } from '@juspay/svelte-ui-components';
   import {
-    Button,
     EmptyState,
     formatRelativeTime,
     getCached,
@@ -166,9 +166,9 @@
 <main class="main">
   {#if loading && !project}
     <div class="loading-container">
-      <div class="skeleton" style="height: 80px; margin-bottom: 1rem;"></div>
+      <Shimmer classes="shimmer-header" />
       {#each Array(4) as _, i (i)}
-        <div class="skeleton skeleton-card"></div>
+        <Shimmer classes="shimmer-card" />
       {/each}
     </div>
   {:else if !project}
@@ -187,9 +187,11 @@
     <div class="chat-session-header">
       <div class="chat-session-header-top">
         <a href="/" class="back-link">&#8592; Back to Projects</a>
-        <Button variant="secondary" onclick={forceRefresh} disabled={loading}>
-          <Icon name="refresh" size={14} />
-          Refresh
+        <Button classes="btn-secondary" onclick={forceRefresh} disabled={loading}>
+          {#snippet children()}
+            <Icon name="refresh" size={14} />
+            Refresh
+          {/snippet}
         </Button>
       </div>
       <h1 class="chat-session-title">{project.name}</h1>
@@ -216,17 +218,17 @@
                   <div class="session-card-subtitle">{truncate(session.summary, 80)}</div>
                 {/if}
               </div>
-              <span class="session-badge session-badge-complete">
-                <span class="session-badge-dot"></span>
-                {formatRelativeTime(session.modified)}
-              </span>
+              <Pill text={formatRelativeTime(session.modified)} classes="pill-session-time" />
             </div>
             <div class="session-stats">
               <span><strong>{session.messageCount}</strong> messages</span>
+              {#if session.gitBranch}
+                <Pill text="🌿 {session.gitBranch}" classes="pill-git-branch" />
+              {/if}
               {#if session.source === 'opencode'}
-                <span class="source-badge source-badge-opencode">OpenCode</span>
+                <Pill text="OpenCode" classes="pill-source-opencode" />
               {:else}
-                <span class="source-badge source-badge-claude">Claude Code</span>
+                <Pill text="Claude Code" classes="pill-source-claude" />
               {/if}
             </div>
             <div class="session-duration">Created {formatDate(session.created)}</div>
@@ -235,9 +237,9 @@
       </div>
       {#if hasMore}
         <div style="text-align: center; padding: 1rem;">
-          <Button variant="secondary" onclick={loadMore}>
-            Load More ({project.sessions.length - visibleCount} remaining)
-          </Button>
+          <Button classes="btn-secondary" onclick={loadMore}
+            text={`Load More (${project.sessions.length - visibleCount} remaining)`}
+          />
         </div>
       {/if}
     {/if}

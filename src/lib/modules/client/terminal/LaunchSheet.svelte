@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Banner, Button, Choicebox, Input, Select } from '@juspay/svelte-ui-components';
   import { onMount } from 'svelte';
 
   interface Props {
@@ -172,7 +173,7 @@
 
 {#if open}
   <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-  <div class="overlay" onclick={handleBackdropClick}>
+  <div class="overlay" role="presentation" onclick={handleBackdropClick}>
     <div class="sheet" role="dialog" aria-label="New Terminal">
       <div class="handle-bar">
         <div class="handle"></div>
@@ -184,68 +185,60 @@
         <span class="section-label">Quick Launch</span>
         <div class="preset-grid">
           {#each presets as preset, i (preset.label)}
-            <button
-              class="preset-card"
-              class:selected={selectedPreset === i}
-              style="--preset-border: {preset.border}; --preset-bg: {preset.bg};"
-              onclick={() => { selectPreset(i); }}
+            <Choicebox
+              mode="radio"
+              selected={selectedPreset === i}
+              onclick={() => selectPreset(i)}
+              classes="preset-choice"
             >
-              <span class="preset-label">{preset.label}</span>
-            </button>
+              {preset.label}
+            </Choicebox>
           {/each}
         </div>
       </div>
 
       <div class="section">
-        <label for="launch-cwd" class="section-label">Working Directory</label>
-        <select id="launch-cwd" class="select-field" bind:value={selectedCwd}>
-          {#if projectPaths.length === 0}
-            <option value="">No recent projects</option>
-          {:else}
-            {#each projectPaths as path (path)}
-              <option value={path}>{path}</option>
-            {/each}
-          {/if}
-        </select>
+        <span class="section-label">Working Directory</span>
+        <Select
+          items={projectPaths.length > 0 ? projectPaths.map((p) => ({ id: p, label: p })) : [{ id: '', label: 'No recent projects' }]}
+          value={selectedCwd ? [selectedCwd] : (projectPaths.length > 0 ? [projectPaths[0]] : [''])}
+          placeholder="Select a project"
+          onchange={(value) => { selectedCwd = value[0] || ''; }}
+          classes="launch-select"
+        />
         <div class="custom-cwd-group">
-          <label for="launch-custom-cwd" class="section-label-inline">Or enter a custom path</label>
-          <input
-            id="launch-custom-cwd"
-            type="text"
-            class="text-field"
-            placeholder="/path/to/project"
+          <Input
+            label="Or enter a custom path"
             bind:value={customCwd}
+            dataType="text"
+            placeholder="/path/to/project"
+            classes="input-mono launch-input"
           />
         </div>
       </div>
 
       {#if isCustom()}
         <div class="section">
-          <label for="launch-custom-cmd" class="section-label">Custom Command</label>
-          <input
-            id="launch-custom-cmd"
-            type="text"
-            class="text-field"
-            placeholder="e.g. node server.js"
+          <Input
+            label="Custom Command"
             bind:value={customCommand}
+            dataType="text"
+            placeholder="e.g. node server.js"
+            classes="input-mono launch-input"
           />
         </div>
       {/if}
 
-      <button
-        class="launch-btn"
+      <Button
+        classes="btn-launch"
         disabled={launching || (!isCustom() ? false : !customCommand.trim())}
         onclick={handleLaunch}
-      >
-        {#if launching}
-          Launching...
-        {:else}
-          Launch Terminal
-        {/if}
-      </button>
+        showLoader={launching}
+        text={launching ? 'Launching...' : 'Launch Terminal'}
+      />
 
       {#if launchError}
-        <div class="launch-error">{launchError}</div>
+        <Banner text={launchError} classes="banner-error launch-error-banner" />
       {/if}
     </div>
   </div>
@@ -354,127 +347,40 @@
     gap: var(--space-2);
   }
 
-  .preset-card {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: var(--space-3) var(--space-2);
-    border-radius: var(--radius-lg);
-    border: 1px solid var(--border);
-    background: transparent;
-    color: var(--text-primary);
-    font-size: var(--text-sm);
-    font-family: var(--font-sans);
-    cursor: pointer;
-    transition:
-      border-color var(--transition-fast),
-      background var(--transition-fast);
-    min-height: 48px;
-  }
-
-  .preset-card:hover:not(.selected) {
-    border-color: var(--preset-border);
-    background: var(--preset-bg);
-  }
-
-  .preset-card.selected {
-    border-color: var(--preset-border);
-    border-width: 2px;
-    background: var(--preset-bg);
-    box-shadow: 0 0 0 1px var(--preset-border);
-    font-weight: 600;
-  }
-
-  .preset-label {
-    font-weight: 500;
-  }
-
-  .select-field {
-    width: 100%;
-    padding: var(--space-2) var(--space-3);
-    border-radius: var(--radius-md);
-    border: 1px solid var(--border);
-    background: var(--ds-gray-200);
-    color: var(--text-primary);
-    font-size: var(--text-sm);
-    font-family: var(--font-sans);
-    cursor: pointer;
-    min-height: 44px;
-  }
-
-  .select-field:focus {
-    outline: none;
-    border-color: var(--ds-green-700);
+  :global(.preset-choice) {
+    --choicebox-padding: var(--space-3) var(--space-2);
+    --choicebox-min-height: 48px;
+    --choicebox-title-font-size: var(--text-sm);
+    --choicebox-title-font-weight: 500;
+    --choicebox-indicator-size: 16px;
+    --choicebox-radio-inner-size: 8px;
   }
 
   .custom-cwd-group {
     margin-top: var(--space-2);
   }
 
-  .section-label-inline {
-    display: block;
-    font-size: var(--text-xs);
-    font-weight: 500;
-    color: var(--text-tertiary);
-    margin-bottom: var(--space-1);
+  :global(.launch-select) {
+    --select-height: 44px;
+    margin-bottom: var(--space-2);
   }
 
-  .text-field {
-    width: 100%;
-    padding: var(--space-2) var(--space-3);
-    border-radius: var(--radius-md);
-    border: 1px solid var(--border);
-    background: var(--ds-gray-200);
-    color: var(--text-primary);
-    font-size: var(--text-sm);
-    font-family: var(--font-mono);
-    min-height: 44px;
+  :global(.launch-input) {
+    --input-container-margin: 0;
   }
 
-  .text-field::placeholder {
-    color: var(--text-tertiary);
-  }
-
-  .text-field:focus {
-    outline: none;
-    border-color: var(--ds-green-700);
-  }
-
-  .launch-btn {
-    width: 100%;
-    padding: var(--space-3);
-    border-radius: var(--radius-lg);
-    border: none;
-    background: var(--ds-green-700);
-    color: #fff;
-    font-size: var(--text-base);
-    font-weight: 600;
-    font-family: var(--font-sans);
-    cursor: pointer;
-    min-height: 48px;
-    transition:
-      opacity var(--transition-fast),
-      background var(--transition-fast);
+  :global(.btn-launch) {
+    --button-color: var(--ds-green-700);
+    --button-text-color: #fff;
+    --button-hover-color: var(--ds-green-900);
+    --button-hover-text-color: #fff;
+    --button-border-radius: var(--radius-lg);
+    --button-height: 48px;
+    --button-width: 100%;
     margin-top: var(--space-2);
   }
 
-  .launch-btn:hover:not(:disabled) {
-    background: var(--ds-green-900);
-  }
-
-  .launch-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .launch-error {
-    margin-top: var(--space-3, 12px);
-    padding: var(--space-3, 12px);
-    background: rgba(239, 68, 68, 0.1);
-    border: 1px solid rgba(239, 68, 68, 0.3);
-    border-radius: var(--radius-md, 8px);
-    color: #ef4444;
-    font-size: 13px;
-    text-align: center;
+  :global(.launch-error-banner) {
+    margin-top: var(--space-3);
   }
 </style>

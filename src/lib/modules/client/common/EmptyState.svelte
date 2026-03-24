@@ -15,6 +15,7 @@
       | 'play'
       | 'refresh'
       | 'settings'
+      | 'terminal'
       | 'tool'
       | 'x-circle';
     title: string;

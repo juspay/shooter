@@ -3,7 +3,8 @@
 
   import { browser } from '$app/environment';
   import { goto } from '$app/navigation';
-  import { Alert, Button, Card, hasScanner, Icon, Input, isShooterConfig, scanQR } from '$lib/modules/client/common';
+  import { Banner, Button, Input } from '@juspay/svelte-ui-components';
+  import { Card, hasScanner, Icon, isShooterConfig, scanQR } from '$lib/modules/client/common';
   import { onMount } from 'svelte';
 
   let serverUrl = $state('');
@@ -205,10 +206,6 @@
       if (response.ok) {
         result = 'Configuration saved successfully';
         statusType = 'success';
-
-        setTimeout(() => {
-          void goto('/');
-        }, 1500);
       } else {
         result = 'Configuration saved but system health check failed';
         statusType = 'warning';
@@ -279,6 +276,7 @@
   function clearConfiguration(): void {
     if (browser) {
       localStorage.removeItem('shooter_config');
+      serverUrl = typeof window !== 'undefined' ? window.location.origin : '';
       apiKey = '';
       deviceToken = '';
       result = 'Configuration cleared';
@@ -308,57 +306,63 @@
       <section class="settings-section">
         <Card title="Server Configuration" description="Configure server connection and credentials">
           <Input
-            id="serverUrl"
+            name="serverUrl"
             label="Server URL"
             bind:value={serverUrl}
-            type="text"
+            dataType="text"
             placeholder="https://shooter.breezehq.dev"
-            hint="Base URL of your Shooter server. Apps will reload with this URL on next launch."
+            infoMessage="Base URL of your Shooter server. Apps will reload with this URL on next launch."
           />
 
           <Input
-            id="apiKey"
+            name="apiKey"
             label="API Key"
             bind:value={apiKey}
-            type="password"
+            dataType="password"
             placeholder="Enter your API key"
-            hint="Required for sending notifications"
+            infoMessage="Required for sending notifications"
           />
 
           <Input
-            id="deviceToken"
+            name="deviceToken"
             label="Device Token"
             bind:value={deviceToken}
-            type="text"
+            dataType="text"
             placeholder={isNativeApp ? 'Waiting for token...' : '64-character hex string'}
-            hint={isNativeApp && deviceToken ? 'Auto-detected from app' : 'Device token from app registration'}
-            mono={true}
+            infoMessage={isNativeApp && deviceToken ? 'Auto-detected from app' : 'Device token from app registration'}
+            classes="input-mono"
           />
         </Card>
 
         {#if result}
-          <Alert message={result} type={statusType || 'info'} />
+          {@const bannerIcon = statusType === 'success' ? 'check-circle' : statusType === 'error' ? 'x-circle' : 'alert-triangle'}
+          <Banner text={result} classes="banner-{statusType || 'info'}">
+            {#snippet icon()}
+              <Icon name={bannerIcon} size={16} />
+            {/snippet}
+          </Banner>
         {/if}
 
         <div class="button-group">
           <Button
-            variant="secondary"
+            classes="btn-secondary"
             onclick={testConfiguration}
             disabled={loading || !apiKey.trim()}
           >
-            {#if !loading}
-              <Icon name="play" size={14} />
-            {/if}
-            Test Connection
+            {#snippet children()}
+              {#if !loading}
+                <Icon name="play" size={14} />
+              {/if}
+              Test Connection
+            {/snippet}
           </Button>
           <Button
-            variant="primary"
+            classes="btn-primary"
             onclick={saveConfiguration}
             disabled={loading || !apiKey.trim()}
-            {loading}
-          >
-            Save Changes
-          </Button>
+            showLoader={loading}
+            text="Save Changes"
+          />
         </div>
       </section>
 
@@ -396,9 +400,9 @@
                 Scan the QR code shown on your server's settings page to auto-configure
                 the connection.
               </p>
-              <Button variant="secondary" size="sm" onclick={handleScanQR} disabled={scanLoading}>
-                {scanLoading ? 'Scanning...' : 'Scan QR Code'}
-              </Button>
+              <Button classes="btn-secondary btn-sm" onclick={handleScanQR} disabled={scanLoading}
+                text={scanLoading ? 'Scanning...' : 'Scan QR Code'}
+              />
             {:else}
               {#if qrDataUrl}
                 <div class="qr-container">
@@ -424,18 +428,18 @@
                   it to auto-configure the connection.
                 </p>
               {/if}
-              <Button variant="secondary" size="sm" onclick={fetchQrCode} disabled={qrLoading || !apiKey.trim()}>
-                {qrDataUrl ? 'Regenerate QR Code' : 'Generate QR Code'}
-              </Button>
+              <Button classes="btn-secondary btn-sm" onclick={fetchQrCode} disabled={qrLoading || !apiKey.trim()}
+                text={qrDataUrl ? 'Regenerate QR Code' : 'Generate QR Code'}
+              />
             {/if}
           </div>
         </Card>
 
         <Card title="Danger Zone">
           <p class="danger-description">Clear all saved configuration data from this device.</p>
-          <Button variant="danger" size="sm" onclick={clearConfiguration}>
-            Clear Configuration
-          </Button>
+          <Button classes="btn-danger btn-sm" onclick={clearConfiguration}
+            text="Clear Configuration"
+          />
         </Card>
       </aside>
     </div>
@@ -446,6 +450,7 @@
   .settings-container {
     max-width: 900px;
     margin: 0 auto;
+    padding-bottom: 80px;
   }
 
   .page-header {
@@ -624,7 +629,8 @@
       flex-direction: column;
     }
 
-    .button-group :global(.btn) {
+    .button-group :global(button),
+    .button-group :global(.button-container) {
       width: 100%;
     }
   }
