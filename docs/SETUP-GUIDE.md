@@ -58,7 +58,7 @@ The wizard generates your `.env` file, offers to export `API_KEY` into your shel
 | **Wizard** (`pnpm setup`) | First-time setup, guided experience | Current clone | Node 20+, pnpm | Prompted interactively |
 | **curl installer** (`curl \| sh`) | Fresh machines, one command | `~/.shooter/` | Node 20+, git | Runs wizard after clone |
 | **Docker** (`docker compose up`) | Isolated, reproducible environments | Container | Docker, Docker Compose | Via `.env` file |
-| **npm global** (`npm i -g shooter-cli`) | Using `shooter` as a CLI from anywhere | Global `node_modules` | Node 20+, npm | Via `.env` in working dir |
+| **npm global** (`npm i -g @juspay/shooter`) | Using `shooter` as a CLI from anywhere | Global `node_modules` | Node 20+, npm | Via `.env` in working dir |
 | **Manual** | Power users, custom layouts | Wherever you choose | Node 20+, pnpm | Edit `.env` by hand |
 
 All methods produce the same running server. Choose whichever fits your workflow.
@@ -105,7 +105,7 @@ If any required field is left blank, it re-prompts until a valid value is provid
 ## 4. One-Line Install (`curl | sh`)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/juspay/shooter/main/scripts/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/juspay/shooter/release/scripts/install.sh | sh
 ```
 
 ### What it does
@@ -209,12 +209,12 @@ docker compose run -e PORT=4000 -e APNS_PRODUCTION=true shooter
 
 ## 6. npm Global Install
 
-The package is published as `shooter-cli` with a `bin` entry pointing to `bin/shooter.cjs`.
+The package is published as `@juspay/shooter` with a `bin` entry pointing to `bin/shooter.cjs`.
 
 ### Install globally
 
 ```bash
-npm install -g shooter-cli
+npm install -g @juspay/shooter
 ```
 
 ### Commands available
@@ -240,8 +240,8 @@ It inherits your stdio so you see logs directly, sets `SHOOTER_PKG_ROOT` so the 
 ### Using npx (without global install)
 
 ```bash
-npx shooter-cli start
-npx shooter-cli setup
+npx @juspay/shooter start
+npx @juspay/shooter setup
 ```
 
 ---
@@ -717,7 +717,7 @@ launchctl kickstart -k gui/$(id -u)/com.shooter.server
 If Shooter is installed to `~/.shooter/`, re-run the installer and choose option 1 (Update):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/juspay/shooter/main/scripts/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/juspay/shooter/release/scripts/install.sh | sh
 # Choose: 1) Update
 ```
 
@@ -726,7 +726,7 @@ This runs `git pull --rebase`, reinstalls dependencies, and rebuilds.
 ### From npm global
 
 ```bash
-npm update -g shooter-cli
+npm update -g @juspay/shooter
 ```
 
 ### Docker

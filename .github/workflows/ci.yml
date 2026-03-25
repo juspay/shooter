@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [release]
+  pull_request:
+    branches: [release]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PNPM
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: SvelteKit Sync
+        run: pnpm exec svelte-kit sync
+
+      - name: Run linting
+        run: npx eslint src/ --ignore-pattern 'src/generated/**' --max-warnings=300
+        continue-on-error: true
+
+      - name: Build package
+        run: pnpm run build
+
+  build-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PNPM
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm i
+
+      - name: SvelteKit Sync
+        run: pnpm exec svelte-kit sync
+
+      - name: Build package
+        run: pnpm run build
+
+      - name: Verify package contents
+        run: pnpm pack --dry-run

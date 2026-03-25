@@ -50,8 +50,8 @@ Open [http://localhost:3000](http://localhost:3000) in your browser. Visit `/con
 | Method | Command | Notes |
 |--------|---------|-------|
 | Interactive wizard | `pnpm setup` | Recommended. Walks through env config, builds, and verifies. |
-| CLI | `npx shooter setup` | If installed globally via npm link |
-| One-command install | `curl -fsSL https://raw.githubusercontent.com/juspay/shooter/main/scripts/install.sh \| sh` | Clones to `~/.shooter`, installs deps, runs wizard |
+| CLI (npx) | `npx @juspay/shooter setup` | No clone needed -- runs the setup wizard directly from npm |
+| One-command install | `curl -fsSL https://raw.githubusercontent.com/juspay/shooter/release/scripts/install.sh \| sh` | Clones to `~/.shooter`, installs deps, runs wizard |
 | Docker | `docker compose up -d` | See [Docker](#docker) |
 | Manual | See [Manual Setup](#manual-setup) | For advanced users |
 

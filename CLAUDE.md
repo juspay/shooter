@@ -198,7 +198,7 @@ The plans include comprehensive testing approaches:
 - **First-time setup**: `pnpm setup` runs interactive wizard (generates `.env`, configures hooks)
 - **Build and run**: `pnpm build && pnpm start` (adapter-node, runs custom `server.ts` on port 3000)
 - **Docker**: `docker-compose up` using `Dockerfile` and `docker-compose.yml`
-- **npm package**: Published as `shooter-cli` with `bin/shooter.cjs` entry point
+- **npm package**: Published as `@juspay/shooter` with `bin/shooter.cjs` entry point
 - **Install script**: `scripts/install.sh` for one-line setup
 - iOS app requires Xcode and device/simulator
 - Android app requires Android Studio

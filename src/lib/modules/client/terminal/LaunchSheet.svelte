@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Banner, Button, Choicebox, Input, Select } from '@juspay/svelte-ui-components';
+  import { Banner, Button, Choicebox, Input, Select, Sheet } from '@juspay/svelte-ui-components';
   import { onMount } from 'svelte';
 
   interface Props {
@@ -21,47 +21,20 @@
 
   interface Preset {
     args: string[];
-    bg: string;
-    border: string;
     command: string;
     label: string;
   }
 
-  const { apiKey, onClose, onLaunch, open }: Props = $props();
+  let { apiKey, onClose, onLaunch, open = $bindable() }: Props = $props();
 
   const presets: Preset[] = [
-    {
-      args: [],
-      bg: 'rgba(167,139,250,0.1)',
-      border: 'rgba(167,139,250,0.5)',
-      command: 'claude',
-      label: 'Claude Code',
-    },
-    {
-      args: [],
-      bg: 'rgba(56,189,248,0.1)',
-      border: 'rgba(56,189,248,0.5)',
-      command: 'opencode',
-      label: 'OpenCode',
-    },
-    {
-      args: [],
-      bg: 'rgba(34,197,94,0.1)',
-      border: 'rgba(34,197,94,0.5)',
-      command: 'zsh',
-      label: 'Shell / zsh',
-    },
-    {
-      args: [],
-      bg: 'rgba(245,158,11,0.1)',
-      border: 'rgba(245,158,11,0.5)',
-      command: 'bash',
-      label: 'Bash',
-    },
+    { args: [], command: 'claude', label: 'Claude Code' },
+    { args: [], command: 'opencode', label: 'OpenCode' },
+    { args: [], command: 'zsh', label: 'Shell / zsh' },
+    { args: [], command: 'bash', label: 'Bash' },
   ];
 
   let selectedPreset = $state<number>(0);
-  let customCommand = $state('');
   let projectPaths = $state<string[]>([]);
   let selectedCwd = $state('');
   let customCwd = $state('');
@@ -95,29 +68,18 @@
     selectedPreset = index;
   }
 
-  function isCustom(): boolean {
-    return presets[selectedPreset].command === '';
-  }
-
   function getCommand(): string {
-    if (isCustom()) {return customCommand.trim().split(/\s+/)[0] || '';}
     return presets[selectedPreset].command;
   }
 
   function getArgs(): string[] {
-    if (isCustom()) {
-      const parts = customCommand.trim().split(/\s+/);
-      return parts.slice(1);
-    }
     return presets[selectedPreset].args;
   }
 
   function getEffectiveCwd(): string {
-    // Custom path takes priority over dropdown selection
     const custom = customCwd.trim();
     if (custom) {return custom;}
     if (selectedCwd) {return selectedCwd;}
-    // Safe fallback when no projects exist and no custom path entered
     return '/tmp';
   }
 
@@ -149,38 +111,23 @@
 
       const result: TerminalResponse = await response.json();
       onLaunch(result);
-    } catch (error) {
+    } catch {
       launchError = 'Network error — is the server running?';
     } finally {
       launching = false;
     }
   }
-
-  function handleBackdropClick(event: MouseEvent): void {
-    if (event.target === event.currentTarget) {
-      onClose();
-    }
-  }
-
-  function handleKeydown(event: KeyboardEvent): void {
-    if (event.key === 'Escape') {
-      onClose();
-    }
-  }
 </script>
 
-<svelte:window onkeydown={handleKeydown} />
-
-{#if open}
-  <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-  <div class="overlay" role="presentation" onclick={handleBackdropClick}>
-    <div class="sheet" role="dialog" aria-label="New Terminal">
-      <div class="handle-bar">
-        <div class="handle"></div>
-      </div>
-
-      <h2 class="sheet-title">New Terminal</h2>
-
+<Sheet
+  bind:open
+  title="New Terminal"
+  side="bottom"
+  onclose={onClose}
+  classes="launch-sheet"
+>
+  {#snippet content()}
+    <div class="launch-form">
       <div class="section">
         <span class="section-label">Quick Launch</span>
         <div class="preset-grid">
@@ -217,21 +164,9 @@
         </div>
       </div>
 
-      {#if isCustom()}
-        <div class="section">
-          <Input
-            label="Custom Command"
-            bind:value={customCommand}
-            dataType="text"
-            placeholder="e.g. node server.js"
-            classes="input-mono launch-input"
-          />
-        </div>
-      {/if}
-
       <Button
         classes="btn-launch"
-        disabled={launching || (!isCustom() ? false : !customCommand.trim())}
+        disabled={launching}
         onclick={handleLaunch}
         showLoader={launching}
         text={launching ? 'Launching...' : 'Launch Terminal'}
@@ -241,94 +176,47 @@
         <Banner text={launchError} classes="banner-error launch-error-banner" />
       {/if}
     </div>
-  </div>
-{/if}
+  {/snippet}
+</Sheet>
 
 <style>
-  .overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.6);
-    z-index: 200;
-    display: flex;
-    align-items: flex-end;
-    justify-content: center;
+  :global(.launch-sheet) {
+    --sheet-background: var(--ds-gray-100);
+    --sheet-overlay-background: rgba(0, 0, 0, 0.6);
+    --sheet-overlay-z-index: 200;
+    --sheet-z-index: 201;
+    --sheet-height: auto;
+    --sheet-max-height: 90vh;
+    --sheet-box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.3);
+    --sheet-header-padding: var(--space-4) var(--space-5);
+    --sheet-header-background: var(--ds-gray-100);
+    --sheet-header-border-bottom: none;
+    --sheet-title-font-size: var(--text-xl);
+    --sheet-title-font-weight: 600;
+    --sheet-title-color: var(--text-primary);
+    --sheet-content-padding: 0 var(--space-5) calc(var(--space-8, 32px) + env(safe-area-inset-bottom, 0px));
+    --sheet-close-button-color: var(--text-secondary);
+    --sheet-close-button-hover-background: var(--component-bg-hover);
+    --sheet-border: none;
   }
 
-  .sheet {
-    background: var(--ds-gray-100);
-    border-top-left-radius: var(--radius-xl);
-    border-top-right-radius: var(--radius-xl);
-    width: 100%;
-    max-height: 90vh;
-    overflow-y: auto;
-    padding: var(--space-4) var(--space-5) calc(var(--space-8, 32px) + env(safe-area-inset-bottom, 0px));
-    animation: slideUp 0.25s ease;
-  }
-
-  @keyframes slideUp {
-    from {
-      transform: translateY(100%);
-    }
-    to {
-      transform: translateY(0);
-    }
-  }
-
-  /* Desktop: centered modal */
+  /* Desktop: max width */
   @media (min-width: 768px) {
-    .overlay {
-      align-items: center;
-    }
-
-    .sheet {
-      max-width: 480px;
-      border-radius: var(--radius-xl);
-      animation: fadeScale 0.2s ease;
-    }
-
-    @keyframes fadeScale {
-      from {
-        opacity: 0;
-        transform: scale(0.96);
-      }
-      to {
-        opacity: 1;
-        transform: scale(1);
-      }
+    :global(.launch-sheet) {
+      --sheet-max-width: 480px;
     }
   }
 
-  .handle-bar {
+  .launch-form {
     display: flex;
-    justify-content: center;
-    padding-bottom: var(--space-3);
-  }
-
-  .handle {
-    width: 36px;
-    height: 4px;
-    border-radius: var(--radius-full);
-    background: var(--ds-gray-500);
-  }
-
-  /* Hide handle bar on desktop */
-  @media (min-width: 768px) {
-    .handle-bar {
-      display: none;
-    }
-  }
-
-  .sheet-title {
-    font-size: var(--text-xl);
-    font-weight: 600;
-    color: var(--text-primary);
-    margin-bottom: var(--space-5);
-    letter-spacing: var(--tracking-tight);
+    flex-direction: column;
+    gap: var(--space-4);
   }
 
   .section {
-    margin-bottom: var(--space-4);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
   }
 
   .section-label {
@@ -338,7 +226,6 @@
     color: var(--text-secondary);
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    margin-bottom: var(--space-2);
   }
 
   .preset-grid {
@@ -362,7 +249,6 @@
 
   :global(.launch-select) {
     --select-height: 44px;
-    margin-bottom: var(--space-2);
   }
 
   :global(.launch-input) {

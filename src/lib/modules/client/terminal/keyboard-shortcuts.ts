@@ -20,7 +20,6 @@ export interface ShortcutAction {
 }
 
 interface ShortcutManagerOptions {
-  onCommandPalette?: () => void;
   onHelp: () => void;
 }
 
@@ -44,14 +43,6 @@ export function createShortcutManager(options: ShortcutManagerOptions) {
     // Don't intercept when a text input or the terminal is focused
     if (isTextInputFocused()) { return; }
 
-    // Cmd+K — command palette
-    if (e.key === 'k' && !e.shiftKey) {
-      e.preventDefault();
-      e.stopPropagation();
-      options.onCommandPalette?.();
-      return;
-    }
-
     // Cmd+/ — show help overlay
     if (e.key === '/') {
       e.preventDefault();
@@ -74,6 +65,6 @@ export function createShortcutManager(options: ShortcutManagerOptions) {
 export function getShortcutList(): { description: string; keys: string }[] {
   return [
     { description: 'Command palette', keys: `${modLabel}+K` },
-    { description: 'Show keyboard shortcuts', keys: `${modLabel}+/` },
+    { description: 'Keyboard shortcuts', keys: `${modLabel}+/` },
   ];
 }
