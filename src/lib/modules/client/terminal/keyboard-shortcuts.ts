@@ -23,18 +23,6 @@ interface ShortcutManagerOptions {
   onHelp: () => void;
 }
 
-/** Returns true when focus is inside a text input, textarea, or contenteditable. */
-function isTextInputFocused(): boolean {
-  const el = document.activeElement;
-  if (!el) { return false; }
-  const tag = el.tagName;
-  if (tag === 'INPUT' || tag === 'TEXTAREA') { return true; }
-  if ((el as HTMLElement).isContentEditable) { return true; }
-  // xterm's terminal container
-  if (el.closest('.xterm')) { return true; }
-  return false;
-}
-
 export function createShortcutManager(options: ShortcutManagerOptions) {
   function handler(e: KeyboardEvent) {
     const mod = isMac ? e.metaKey : e.ctrlKey;
@@ -67,4 +55,16 @@ export function getShortcutList(): { description: string; keys: string }[] {
     { description: 'Command palette', keys: `${modLabel}+K` },
     { description: 'Keyboard shortcuts', keys: `${modLabel}+/` },
   ];
+}
+
+/** Returns true when focus is inside a text input, textarea, or contenteditable. */
+function isTextInputFocused(): boolean {
+  const el = document.activeElement;
+  if (!el) { return false; }
+  const tag = el.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA') { return true; }
+  if ((el as HTMLElement).isContentEditable) { return true; }
+  // xterm's terminal container
+  if (el.closest('.xterm')) { return true; }
+  return false;
 }

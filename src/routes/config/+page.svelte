@@ -2,9 +2,8 @@
   import type { ShooterConfig } from '$lib/types/config';
 
   import { browser } from '$app/environment';
-  import { goto } from '$app/navigation';
-  import { Banner, Button, Input, Stepper } from '@juspay/svelte-ui-components';
   import { Card, hasScanner, Icon, isShooterConfig, scanQR } from '$lib/modules/client/common';
+  import { Banner, Button, Input, Stepper } from '@juspay/svelte-ui-components';
   import { onMount } from 'svelte';
 
   let serverUrl = $state('');
@@ -19,7 +18,7 @@
   let qrLoading = $state(false);
   let qrError = $state('');
   let canScan = $state(false);
-  let bridgeCheckDone = $state(false);
+  let _bridgeCheckDone = $state(false);
   let scanLoading = $state(false);
 
   async function fetchQrCode(): Promise<void> {
@@ -88,18 +87,18 @@
     }
   }
 
-  function getNativeBridge(): {
+  function getNativeBridge(): null | {
     getConfig(): string;
-    saveConfig(json: string): void;
     getFcmToken(): string;
     getPlatform(): string;
-  } | null {
+    saveConfig(json: string): void;
+  } {
     if (typeof window !== 'undefined' && 'ShooterBridge' in window) {
       return (window as Record<string, unknown>).ShooterBridge as {
         getConfig(): string;
-        saveConfig(json: string): void;
         getFcmToken(): string;
         getPlatform(): string;
+        saveConfig(json: string): void;
       };
     }
     return null;
@@ -157,7 +156,7 @@
       }
 
       canScan = hasScanner();
-      bridgeCheckDone = true;
+      _bridgeCheckDone = true;
 
       // The native bridge may be injected after SvelteKit hydration.
       // Re-check periodically for a short window to catch late injection.
@@ -169,7 +168,7 @@
           }
         }, 200);
         // Stop checking after 3 seconds
-        setTimeout(() => clearInterval(recheckInterval), 3000);
+        setTimeout(() => { clearInterval(recheckInterval); }, 3000);
       }
     }
   });
@@ -195,8 +194,8 @@
       if (bridge) {
         bridge.saveConfig(
           JSON.stringify({
-            serverUrl: trimmedUrl || getDefaultServerUrl(),
             apiKey: apiKey.trim(),
+            serverUrl: trimmedUrl || getDefaultServerUrl(),
           })
         );
       }
@@ -284,7 +283,7 @@
 
       const bridge = getNativeBridge();
       if (bridge) {
-        bridge.saveConfig(JSON.stringify({ serverUrl: '', apiKey: '' }));
+        bridge.saveConfig(JSON.stringify({ apiKey: '', serverUrl: '' }));
       }
     }
   }
@@ -349,12 +348,10 @@
             onclick={testConfiguration}
             disabled={loading || !apiKey.trim()}
           >
-            {#snippet children()}
-              {#if !loading}
-                <Icon name="play" size={14} />
-              {/if}
-              Test Connection
-            {/snippet}
+            {#if !loading}
+              <Icon name="play" size={14} />
+            {/if}
+            Test Connection
           </Button>
           <Button
             classes="btn-primary"
@@ -491,11 +488,12 @@
     --step-text-margin: 0 0 0 var(--space-3);
     --separator-display: none;
     --step-text-active-color: var(--text-primary);
-    --step-text-completed-color: var(--ds-green-700);
+    --step-text-completed-color: var(--ds-green-900);
     --step-index-container-active-background-color: var(--component-bg-active);
     --step-index-container-completed-background-color: var(--ds-green-700);
     --step-index-container-background-color: var(--component-bg-active);
     --step-index-color: var(--text-secondary);
+    align-items: flex-start;
     gap: var(--space-3);
   }
 
@@ -503,6 +501,10 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-3);
+  }
+
+  .qr-section :global(.button-container) {
+    align-self: center;
   }
 
   .qr-container {

@@ -6,9 +6,10 @@ import { existsSync, readdirSync, readFileSync, statSync, unlinkSync } from 'fs'
 import path from 'path';
 import { fileURLToPath } from 'url';
 
+import type { ConversationMessage } from '../sessions/types';
+
 import { HolderClient } from './holder-client';
 import { openCodeWatcher } from './opencode-watcher';
-import { sessionWatcher } from './session-watcher';
 import { terminalStore } from './terminal-store';
 
 // ---------------------------------------------------------------------------
@@ -28,7 +29,7 @@ interface ManagedTerminal {
   holderPid: number;
   id: string;
   isActive: boolean;
-  openCodeNoopCb: ((messages: import('../sessions/types').ConversationMessage[]) => void) | null;
+  openCodeNoopCb: ((messages: ConversationMessage[]) => void) | null;
   openCodeSessionId: null | string;
   outputBuffers: Map<WebSocket, OutputBuffer>;
   pid: number;
@@ -91,7 +92,7 @@ class PtyManager {
     terminal.outputBuffers.set(ws, { data: [], size: 0 });
 
     // Send cached scrollback in chunks
-    this.sendScrollback(terminal, ws);
+    void this.sendScrollback(terminal, ws);
 
     return true;
   }
@@ -200,8 +201,8 @@ class PtyManager {
       cols,
       command,
       createdAt: now,
-      cwd,
       currentCwd: null,
+      cwd,
       exitCode: connectResult.exitCode,
       exitedAt: null,
       holderPid,
@@ -751,7 +752,7 @@ class PtyManager {
       // which blocked real subscribers due to the single-callback guard.
     }
     if (terminal.openCodeSessionId) {
-      const noopCb: (messages: import('../sessions/types').ConversationMessage[]) => void = () => {};
+      const noopCb = (_messages: ConversationMessage[]): void => { /* noop */ };
       terminal.openCodeNoopCb = noopCb;
       openCodeWatcher.watch(terminal.openCodeSessionId, noopCb);
     }
@@ -771,55 +772,6 @@ class PtyManager {
       `[pty-manager] Reconnected terminal ${record.id} (pid=${connectResult.pid}, ` +
         `holder=${record.holderPid}, status=${terminal.status})`
     );
-  }
-
-  /** Wire up all HolderClient callbacks (activity, CWD, output, exit, disconnect). */
-  private wireHolderCallbacks(client: HolderClient, terminal: ManagedTerminal): void {
-    client.onActivity((active: boolean) => {
-      terminal.isActive = active;
-      const msg = JSON.stringify({ active, type: 'activity' });
-      for (const ws of terminal.clients) {
-        this.safeSend(ws, msg);
-      }
-    });
-
-    client.onCwd((path: string) => {
-      terminal.currentCwd = path;
-      const msg = JSON.stringify({ path, type: 'cwd' });
-      for (const ws of terminal.clients) {
-        this.safeSend(ws, msg);
-      }
-    });
-
-    client.onOutput((data: string) => {
-      this.appendScrollback(terminal, data);
-      this.broadcastOutput(terminal, data);
-    });
-
-    client.onExit((exitCode: null | number) => {
-      terminal.status = 'exited';
-      terminal.exitCode = exitCode;
-      terminal.exitedAt = new Date();
-      terminalStore.markExited(terminal.id, exitCode);
-
-      const exitMsg = JSON.stringify({
-        code: exitCode,
-        signal: null,
-        type: 'exit',
-      });
-      for (const ws of terminal.clients) {
-        this.safeSend(ws, exitMsg);
-      }
-    });
-
-    client.onDisconnect(() => {
-      if (terminal.status === 'running') {
-        console.warn(`[pty-manager] Holder disconnected unexpectedly for terminal ${terminal.id}`);
-        terminal.status = 'exited';
-        terminal.exitedAt = new Date();
-        terminalStore.markOrphaned(terminal.id);
-      }
-    });
   }
 
   /** Safely send a message to a WebSocket, returning false on failure. */
@@ -957,7 +909,7 @@ class PtyManager {
         if (terminal.status === 'exited' || terminal.openCodeSessionId) {
           clearInterval(pollInterval);
           if (terminal.openCodeSessionId) {
-            const noopCb: (messages: import('../sessions/types').ConversationMessage[]) => void = () => {};
+            const noopCb = (_messages: ConversationMessage[]): void => { /* noop */ };
             terminal.openCodeNoopCb = noopCb;
             openCodeWatcher.watch(terminal.openCodeSessionId, noopCb);
           }
@@ -967,7 +919,7 @@ class PtyManager {
         if (sessionId) {
           terminal.openCodeSessionId = sessionId;
           clearInterval(pollInterval);
-          const noopCb: (messages: import('../sessions/types').ConversationMessage[]) => void = () => {};
+          const noopCb = (_messages: ConversationMessage[]): void => { /* noop */ };
           terminal.openCodeNoopCb = noopCb;
           openCodeWatcher.watch(sessionId, noopCb);
           // Persist session ID to SQLite
@@ -978,6 +930,55 @@ class PtyManager {
       terminal.pollTimer = pollInterval;
       setTimeout(() => { clearInterval(pollInterval); terminal.pollTimer = null; }, 5 * 60 * 1000);
     }
+  }
+
+  /** Wire up all HolderClient callbacks (activity, CWD, output, exit, disconnect). */
+  private wireHolderCallbacks(client: HolderClient, terminal: ManagedTerminal): void {
+    client.onActivity((active: boolean) => {
+      terminal.isActive = active;
+      const msg = JSON.stringify({ active, type: 'activity' });
+      for (const ws of terminal.clients) {
+        this.safeSend(ws, msg);
+      }
+    });
+
+    client.onCwd((path: string) => {
+      terminal.currentCwd = path;
+      const msg = JSON.stringify({ path, type: 'cwd' });
+      for (const ws of terminal.clients) {
+        this.safeSend(ws, msg);
+      }
+    });
+
+    client.onOutput((data: string) => {
+      this.appendScrollback(terminal, data);
+      this.broadcastOutput(terminal, data);
+    });
+
+    client.onExit((exitCode: null | number) => {
+      terminal.status = 'exited';
+      terminal.exitCode = exitCode;
+      terminal.exitedAt = new Date();
+      terminalStore.markExited(terminal.id, exitCode);
+
+      const exitMsg = JSON.stringify({
+        code: exitCode,
+        signal: null,
+        type: 'exit',
+      });
+      for (const ws of terminal.clients) {
+        this.safeSend(ws, exitMsg);
+      }
+    });
+
+    client.onDisconnect(() => {
+      if (terminal.status === 'running') {
+        console.warn(`[pty-manager] Holder disconnected unexpectedly for terminal ${terminal.id}`);
+        terminal.status = 'exited';
+        terminal.exitedAt = new Date();
+        terminalStore.markOrphaned(terminal.id);
+      }
+    });
   }
 }
 

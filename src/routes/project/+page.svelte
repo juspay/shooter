@@ -2,7 +2,6 @@
   import type { ShooterConfig } from '$lib/types/config';
 
   import { page } from '$app/state';
-  import { Button, Pill, Shimmer } from '@juspay/svelte-ui-components';
   import {
     EmptyState,
     formatRelativeTime,
@@ -11,6 +10,7 @@
     isShooterConfig,
     setCache,
   } from '$lib/modules/client/common';
+  import { Button, Pill, Shimmer } from '@juspay/svelte-ui-components';
   import { onDestroy, onMount } from 'svelte';
 
   interface Session {
@@ -188,10 +188,8 @@
       <div class="chat-session-header-top">
         <a href="/" class="back-link">&#8592; Back to Projects</a>
         <Button classes="btn-secondary" onclick={forceRefresh} disabled={loading}>
-          {#snippet children()}
-            <Icon name="refresh" size={14} />
-            Refresh
-          {/snippet}
+          <Icon name="refresh" size={14} />
+          Refresh
         </Button>
       </div>
       <h1 class="chat-session-title">{project.name}</h1>

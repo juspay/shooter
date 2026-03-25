@@ -155,7 +155,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
     // Validate API key using timing-safe comparison
     const authError = validateAuth(request);
-    if (authError) return authError;
+    if (authError) {return authError;}
 
     // Parse request body
     const body = (await request.json()) as NotificationRequest;
@@ -405,7 +405,7 @@ export const POST: RequestHandler = async ({ request }) => {
 export const GET: RequestHandler = ({ request, url }) => {
   // Validate API key using timing-safe comparison
   const authError = validateAuth(request);
-  if (authError) return authError;
+  if (authError) {return authError;}
 
   const limit = parseInt(url.searchParams.get('limit') || '50');
   const notifications = getNotifications(limit);

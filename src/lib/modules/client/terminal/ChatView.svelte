@@ -5,11 +5,11 @@
     ToolUsePart,
   } from '$lib/modules/server/sessions/types';
 
-  import { Accordion, Avatar, Button, Input, Pill } from '@juspay/svelte-ui-components';
   import {
     getToolDescription,
     renderMarkdown,
   } from '$lib/modules/client/common';
+  import { Accordion, Avatar, Button, Input, Pill } from '@juspay/svelte-ui-components';
   import { tick } from 'svelte';
   import { SvelteSet } from 'svelte/reactivity';
 
@@ -144,6 +144,7 @@
               {#each message.parts as part, partIdx (partIdx)}
                 {#if part.type === 'text'}
                   <div class="chat-bubble chat-bubble-user">
+                    <!-- eslint-disable-next-line svelte/no-at-html-tags -- sanitized markdown -->
                     {@html renderMarkdown(part.content)}
                   </div>
                 {/if}
@@ -159,6 +160,7 @@
               {#each message.parts as part, partIdx (partIdx)}
                 {#if part.type === 'text'}
                   <div class="chat-bubble chat-bubble-assistant">
+                    <!-- eslint-disable-next-line svelte/no-at-html-tags -- sanitized markdown -->
                     {@html renderMarkdown(part.content)}
                   </div>
                 {:else if isToolUsePart(part)}
@@ -201,6 +203,7 @@
                     </div>
                     <Accordion expand={isThinkExpanded}>
                       {#if isThinkExpanded}
+                        <!-- eslint-disable-next-line svelte/no-at-html-tags -- sanitized markdown -->
                         <div class="chat-thinking-body">{@html renderMarkdown(part.content)}</div>
                       {/if}
                     </Accordion>
@@ -249,6 +252,7 @@
               <!-- System text messages (e.g. error messages displayed inline) -->
               <div class="chat-message chat-message-system">
                 <div class="chat-bubble chat-bubble-system">
+                  <!-- eslint-disable-next-line svelte/no-at-html-tags -- sanitized markdown -->
                   {@html renderMarkdown(part.content)}
                 </div>
               </div>

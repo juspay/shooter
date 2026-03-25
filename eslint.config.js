@@ -137,6 +137,11 @@ export default tseslint.config(
       'scripts/',
       'test/',
       'vite.config.js.timestamp-*',
+      'src/generated/',
+      'android/',
+      'bin/',
+      'server.ts',
+      'src/lib/modules/server/terminal/pty-holder.cjs',
     ],
   }
 );

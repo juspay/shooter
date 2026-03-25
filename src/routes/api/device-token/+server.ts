@@ -7,16 +7,16 @@ import { join } from 'path';
 
 import type { RequestHandler } from './$types';
 
-interface DeviceTokens {
-	android?: string;
-	ios?: string;
-}
-
 interface DeviceTokenRequest {
 	bundleId?: string;
 	deviceToken?: string;
 	platform: string;
 	token?: string;
+}
+
+interface DeviceTokens {
+	android?: string;
+	ios?: string;
 }
 
 const TOKENS_DIR = join(homedir(), '.shooter');
@@ -42,7 +42,7 @@ function writeTokens(tokens: DeviceTokens): void {
 
 export const POST: RequestHandler = async ({ request }) => {
 	const authError = validateAuth(request);
-	if (authError) return authError;
+	if (authError) {return authError;}
 
 	let body: DeviceTokenRequest;
 	try {

@@ -2,7 +2,6 @@
   import type { ShooterConfig } from '$lib/types/config';
 
   import { goto } from '$app/navigation';
-  import { Button, Pill, Shimmer, Tooltip } from '@juspay/svelte-ui-components';
   import {
     EmptyState,
     formatRelativeTime,
@@ -12,6 +11,7 @@
     setCache,
   } from '$lib/modules/client/common';
   import LaunchSheet from '$lib/modules/client/terminal/LaunchSheet.svelte';
+  import { Button, Pill, Shimmer, Tooltip } from '@juspay/svelte-ui-components';
   import { onDestroy, onMount } from 'svelte';
 
   interface Terminal {
@@ -181,6 +181,7 @@
   }
 
   function stripAnsi(str: string): string {
+    // eslint-disable-next-line no-control-regex, no-useless-escape
     return str.replace(/\x1b\[[0-9;]*[a-zA-Z]|\x1b\][^\x07]*\x07|\x1b\[[\?]?[0-9;]*[a-zA-Z]|\x1b/g, '').replace(/[\x00-\x1f]/g, '').trim();
   }
 
@@ -206,14 +207,14 @@
     event.preventDefault();
     event.stopPropagation();
 
-    if (!config?.apiKey) return;
+    if (!config?.apiKey) {return;}
 
     try {
       const response = await fetch(`/api/terminals/${id}`, {
-        method: 'DELETE',
         headers: {
           Authorization: `Bearer ${config.apiKey}`,
         },
+        method: 'DELETE',
       });
 
       if (response.ok) {
@@ -240,16 +241,12 @@
       </div>
       <div class="page-actions">
         <Button classes="btn-secondary" onclick={forceRefresh} disabled={loading}>
-          {#snippet children()}
             <Icon name="refresh" size={14} />
             Refresh
-          {/snippet}
         </Button>
         <Button classes="btn-primary" onclick={handleNewTerminal}>
-          {#snippet children()}
             <span class="plus-icon">+</span>
             New Terminal
-          {/snippet}
         </Button>
       </div>
     </div>
@@ -276,10 +273,8 @@
       description="Launch a new terminal session to get started. Terminal sessions will appear here once created."
     >
       <Button classes="btn-primary" onclick={handleNewTerminal}>
-        {#snippet children()}
           <span class="plus-icon">+</span>
           New Terminal
-        {/snippet}
       </Button>
     </EmptyState>
   {:else}

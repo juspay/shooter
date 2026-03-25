@@ -12,7 +12,9 @@
     open: boolean;
   }
 
-  let { commands, onClose, open = $bindable() }: Props = $props();
+  /* eslint-disable prefer-const -- Svelte $props() requires `let` when bind: is used */
+  let { commands, onClose, open }: Props = $props();
+  /* eslint-enable prefer-const */
 
   const items = $derived(
     commands.map((cmd, i) => ({

@@ -8,13 +8,13 @@
 
   import { browser } from '$app/environment';
   import { page } from '$app/state';
-  import { Banner, Pill, Shimmer } from '@juspay/svelte-ui-components';
   import {
     EmptyState,
     getCached,
     setCache,
   } from '$lib/modules/client/common';
   import ChatView from '$lib/modules/client/terminal/ChatView.svelte';
+  import { Banner, Pill, Shimmer } from '@juspay/svelte-ui-components';
   import { onMount } from 'svelte';
 
   interface SessionResponse {
@@ -49,7 +49,7 @@
   let connectionState = $state<ConnectionState>('idle');
   let ws = $state<null | WebSocket>(null);
   let wsReconnectAttempts = 0;
-  let wsReconnectTimer: number | null = null;
+  let wsReconnectTimer: null | number = null;
 
   const sessionId = $derived(page.params.id);
   const projectId = $derived(page.url.searchParams.get('project') || '');
