@@ -42,7 +42,7 @@ export const GET: RequestHandler = ({ request, url }) => {
   const wantsDetails = url.searchParams.get('details') === 'true';
   if (wantsDetails) {
     const authError = validateAuth(request);
-    if (authError) return authError;
+    if (authError) {return authError;}
   }
 
   const hasProjectId = !!env.FCM_PROJECT_ID;

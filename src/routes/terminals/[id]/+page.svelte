@@ -8,14 +8,14 @@
   import { browser } from '$app/environment';
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
-  import { Button, Input, Pill, Tabs, Tooltip } from '@juspay/svelte-ui-components';
   import { EmptyState } from '$lib/modules/client/common';
   import ChatView from '$lib/modules/client/terminal/ChatView.svelte';
+  import CommandPalette from '$lib/modules/client/terminal/CommandPalette.svelte';
   import ConnectionStatus from '$lib/modules/client/terminal/ConnectionStatus.svelte';
   import { createShortcutManager, modLabel } from '$lib/modules/client/terminal/keyboard-shortcuts';
-  import CommandPalette from '$lib/modules/client/terminal/CommandPalette.svelte';
   import QuickKeys from '$lib/modules/client/terminal/QuickKeys.svelte';
   import ShortcutsHelp from '$lib/modules/client/terminal/ShortcutsHelp.svelte';
+  import { Button, Input, Pill, Tabs, Tooltip } from '@juspay/svelte-ui-components';
   import { onDestroy, onMount } from 'svelte';
 
   // ------- Interfaces -------
@@ -55,7 +55,7 @@
 
   // DOM references
   let termContainer = $state<HTMLDivElement | null>(null);
-  let inputRef = $state<HTMLInputElement | null>(null);
+  const inputRef = $state<HTMLInputElement | null>(null);
 
   // WebSocket and terminal instance refs (not reactive)
   let termInstance: null | { dispose: () => void; sendInput: (data: string) => void; term: { cols: number; rows: number }; } = null;
@@ -80,13 +80,13 @@
   const displayCwd = $derived(shortenPath(currentCwd || terminal?.cwd || ''));
   const paletteCommands = $derived.by(() => {
     const cmds = [
-      { label: 'Go to Home', action: () => void goto('/') },
-      { label: 'Go to Terminals', action: () => void goto('/terminals') },
-      { label: 'Go to Settings', action: () => void goto('/config') },
-      { label: 'Show keyboard shortcuts', action: () => { showShortcutsHelp = true; } },
+      { action: () => void goto('/'), label: 'Go to Home' },
+      { action: () => void goto('/terminals'), label: 'Go to Terminals' },
+      { action: () => void goto('/config'), label: 'Go to Settings' },
+      { action: () => { showShortcutsHelp = true; }, label: 'Show keyboard shortcuts' },
     ];
     if (isRunning) {
-      cmds.push({ label: 'Kill terminal', action: () => void killTerminal() });
+      cmds.push({ action: () => void killTerminal(), label: 'Kill terminal' });
     }
     return cmds;
   });
@@ -94,7 +94,7 @@
   // ------- Helpers -------
 
   function shortenPath(p: string): string {
-    if (!p) return '';
+    if (!p) {return '';}
     const home = typeof window !== 'undefined' ? '' : '';
     let display = p;
     // Replace home prefix with ~
@@ -102,16 +102,16 @@
       // Best effort home detection from path
       const parts = p.split('/');
       if (parts.length >= 3 && parts[1] === 'Users') {
-        display = '~/' + parts.slice(3).join('/');
+        display = `~/${  parts.slice(3).join('/')}`;
       } else if (parts.length >= 3 && parts[1] === 'home') {
-        display = '~/' + parts.slice(3).join('/');
+        display = `~/${  parts.slice(3).join('/')}`;
       }
     }
     // Show last 2 segments if too long
     if (display.length > 30) {
       const segs = display.split('/');
       if (segs.length > 2) {
-        return '.../' + segs.slice(-2).join('/');
+        return `.../${  segs.slice(-2).join('/')}`;
       }
     }
     return display || home;
@@ -241,7 +241,6 @@
         container: termContainer,
         fontSize: window.innerWidth < 768 ? 12 : 14,
         getTicket,
-        terminalId: terminalId,
         onActivity: (active: boolean) => {
           if (!disposed) {isActive = active;}
         },
@@ -260,6 +259,7 @@
         onReconnect: () => {
           if (!disposed) {connectionStatus = 'connected';}
         },
+        terminalId,
         wsUrl,
       });
 
@@ -334,12 +334,12 @@
   function handleSessionMessage(msg: Record<string, unknown>): void {
     if (msg.type === 'history') {
       // History messages use `content` on the wire; convert to `parts` for ConversationMessage
-      const historyRaw = (msg.messages || []) as Array<{
+      const historyRaw = (msg.messages || []) as {
         content: MessagePart[];
         id: string;
         role: 'assistant' | 'system' | 'user';
         timestamp: string;
-      }>;
+      }[];
       chatMessages = historyRaw.map((m) => ({
         id: m.id,
         parts: m.content,
@@ -610,7 +610,7 @@
           <Tabs
             items={tabItems}
             activeIndex={tabActiveIndex}
-            onchange={(index) => setViewMode(index === 0 ? 'raw' : 'chat')}
+            onchange={(index) => { setViewMode(index === 0 ? 'raw' : 'chat'); }}
             classes="term-tabs"
           />
         {/if}

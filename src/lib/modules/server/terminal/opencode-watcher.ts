@@ -33,21 +33,6 @@ const POLL_INTERVAL_MS = 2000;
 /** Maximum parameters per SQLite IN clause (SQLite limit is 999). */
 const SQLITE_MAX_PARAMS = 500;
 
-/**
- * Normalise a timestamp from OpenCode's SQLite database to milliseconds.
- *
- * OpenCode currently stores `time_created` / `time_updated` as Unix
- * **milliseconds**, but this is not formally documented and could change.
- * A simple heuristic distinguishes seconds from milliseconds:
- *   - Values < 1e12 (~2001-09-09 in ms, ~33658 AD in seconds) are seconds.
- *   - Values >= 1e12 are already milliseconds.
- */
-function toMillis(timestamp: number): number {
-	return timestamp < 1e12 ? timestamp * 1000 : timestamp;
-}
-
-// ── SQLite Row Types ─────────────────────────────────────────────────
-
 interface OpenCodeMessage {
 	data: string; // JSON
 	id: string;
@@ -55,6 +40,8 @@ interface OpenCodeMessage {
 	time_created: number;
 	time_updated: number;
 }
+
+// ── SQLite Row Types ─────────────────────────────────────────────────
 
 interface OpenCodePart {
 	data: string; // JSON
@@ -75,14 +62,14 @@ interface OpenCodePartData {
 	type: string;
 }
 
-// ── Per-session Watcher State ────────────────────────────────────────
-
 interface OpenCodeSession {
 	directory: string;
 	id: string;
 	time_created: number;
 	time_updated: number;
 }
+
+// ── Per-session Watcher State ────────────────────────────────────────
 
 interface WatchState {
 	callbacks: Set<(messages: ConversationMessage[]) => void>;
@@ -97,8 +84,6 @@ interface WatchState {
 	lastPartTime: number;
 	sessionId: string;
 }
-
-// ── OpenCodeWatcher Class ────────────────────────────────────────────
 
 class OpenCodeWatcher {
 	private watchers = new Map<string, WatchState>();
@@ -585,7 +570,7 @@ class OpenCodeWatcher {
 	}
 }
 
-// ── Database Helpers ─────────────────────────────────────────────────
+// ── OpenCodeWatcher Class ────────────────────────────────────────────
 
 /**
  * Execute a SELECT query with an IN clause, batching in chunks of
@@ -596,7 +581,7 @@ function batchInQuery<T>(
 	sql: string,
 	ids: string[]
 ): T[] {
-	if (ids.length === 0) return [];
+	if (ids.length === 0) {return [];}
 
 	const results: T[] = [];
 	for (let i = 0; i < ids.length; i += SQLITE_MAX_PARAMS) {
@@ -609,9 +594,7 @@ function batchInQuery<T>(
 	return results;
 }
 
-// ── Part Conversion ──────────────────────────────────────────────────
-// Maps OpenCode part types to MessagePart directly, skipping the
-// intermediate Record<string, unknown> stage.
+// ── Database Helpers ─────────────────────────────────────────────────
 
 function convertPartToMessagePart(data: OpenCodePartData): MessagePart | null {
 	switch (data.type) {
@@ -635,6 +618,10 @@ function convertPartToMessagePart(data: OpenCodePartData): MessagePart | null {
 	}
 }
 
+// ── Part Conversion ──────────────────────────────────────────────────
+// Maps OpenCode part types to MessagePart directly, skipping the
+// intermediate Record<string, unknown> stage.
+
 /**
  * Open the OpenCode SQLite database in read-only mode.
  * Returns null if the file does not exist or cannot be opened.
@@ -648,6 +635,19 @@ function openDb(): Database.Database | null {
 	} catch {
 		return null;
 	}
+}
+
+/**
+ * Normalise a timestamp from OpenCode's SQLite database to milliseconds.
+ *
+ * OpenCode currently stores `time_created` / `time_updated` as Unix
+ * **milliseconds**, but this is not formally documented and could change.
+ * A simple heuristic distinguishes seconds from milliseconds:
+ *   - Values < 1e12 (~2001-09-09 in ms, ~33658 AD in seconds) are seconds.
+ *   - Values >= 1e12 are already milliseconds.
+ */
+function toMillis(timestamp: number): number {
+	return timestamp < 1e12 ? timestamp * 1000 : timestamp;
 }
 
 // ── Singleton ────────────────────────────────────────────────────────

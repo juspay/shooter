@@ -8,7 +8,7 @@ type WebhookBody = Record<string, unknown>;
 export const POST: RequestHandler = async ({ request }) => {
   try {
     const authError = validateAuth(request);
-    if (authError) return authError;
+    if (authError) {return authError;}
 
     const body = (await request.json()) as WebhookBody;
 

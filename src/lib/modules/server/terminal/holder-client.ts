@@ -108,7 +108,7 @@ export class HolderClient {
 						// Handshake complete once we have info.
 						if (info !== null) {
 							const settle = () => {
-								if (settled) return;
+								if (settled) {return;}
 								settled = true;
 								resolve({
 									exitCode: info!.exitCode,

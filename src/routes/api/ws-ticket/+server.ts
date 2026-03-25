@@ -7,7 +7,6 @@
 //
 // Rate limited to 10 requests per minute per API key.
 
-import { env } from '$env/dynamic/private';
 import { validateAuth } from '$lib/modules/server/auth';
 import { generateTicket } from '$lib/modules/server/ws/ticket-store';
 import { json } from '@sveltejs/kit';
@@ -63,7 +62,7 @@ setInterval(() => {
 
 // ── Endpoint ────────────────────────────────────────────────────────
 
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = ({ request }) => {
 	const authError = validateAuth(request);
 	if (authError) {return authError;}
 

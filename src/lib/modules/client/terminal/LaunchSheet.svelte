@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Banner, Button, Choicebox, Input, Select, Sheet } from '@juspay/svelte-ui-components';
+  import { Banner, Button, Choicebox, Input, Select } from '@juspay/svelte-ui-components';
   import { onMount } from 'svelte';
 
   interface Props {
@@ -25,7 +25,7 @@
     label: string;
   }
 
-  let { apiKey, onClose, onLaunch, open = $bindable() }: Props = $props();
+  const { apiKey, onClose, onLaunch, open }: Props = $props();
 
   const presets: Preset[] = [
     { args: [], command: 'claude', label: 'Claude Code' },
@@ -117,17 +117,31 @@
       launching = false;
     }
   }
+
+  function handleBackdropClick(event: MouseEvent): void {
+    if (event.target === event.currentTarget) {
+      onClose();
+    }
+  }
+
+  function handleKeydown(event: KeyboardEvent): void {
+    if (event.key === 'Escape') {
+      onClose();
+    }
+  }
 </script>
 
-<Sheet
-  bind:open
-  title="New Terminal"
-  side="bottom"
-  onclose={onClose}
-  classes="launch-sheet"
->
-  {#snippet content()}
-    <div class="launch-form">
+<svelte:window onkeydown={handleKeydown} />
+
+{#if open}
+  <div class="overlay" role="presentation" onclick={handleBackdropClick}>
+    <div class="sheet" role="dialog" aria-label="New Terminal">
+      <div class="handle-bar">
+        <div class="handle"></div>
+      </div>
+
+      <h2 class="sheet-title">New Terminal</h2>
+
       <div class="section">
         <span class="section-label">Quick Launch</span>
         <div class="preset-grid">
@@ -135,7 +149,7 @@
             <Choicebox
               mode="radio"
               selected={selectedPreset === i}
-              onclick={() => selectPreset(i)}
+              onclick={() => { selectPreset(i); }}
               classes="preset-choice"
             >
               {preset.label}
@@ -176,47 +190,94 @@
         <Banner text={launchError} classes="banner-error launch-error-banner" />
       {/if}
     </div>
-  {/snippet}
-</Sheet>
+  </div>
+{/if}
 
 <style>
-  :global(.launch-sheet) {
-    --sheet-background: var(--ds-gray-100);
-    --sheet-overlay-background: rgba(0, 0, 0, 0.6);
-    --sheet-overlay-z-index: 200;
-    --sheet-z-index: 201;
-    --sheet-height: auto;
-    --sheet-max-height: 90vh;
-    --sheet-box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.3);
-    --sheet-header-padding: var(--space-4) var(--space-5);
-    --sheet-header-background: var(--ds-gray-100);
-    --sheet-header-border-bottom: none;
-    --sheet-title-font-size: var(--text-xl);
-    --sheet-title-font-weight: 600;
-    --sheet-title-color: var(--text-primary);
-    --sheet-content-padding: 0 var(--space-5) calc(var(--space-8, 32px) + env(safe-area-inset-bottom, 0px));
-    --sheet-close-button-color: var(--text-secondary);
-    --sheet-close-button-hover-background: var(--component-bg-hover);
-    --sheet-border: none;
+  .overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 200;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
   }
 
-  /* Desktop: max width */
-  @media (min-width: 768px) {
-    :global(.launch-sheet) {
-      --sheet-max-width: 480px;
+  .sheet {
+    background: var(--ds-gray-100);
+    border-top-left-radius: var(--radius-xl);
+    border-top-right-radius: var(--radius-xl);
+    width: 100%;
+    max-height: 90vh;
+    overflow-y: auto;
+    padding: var(--space-4) var(--space-5) calc(var(--space-8, 32px) + env(safe-area-inset-bottom, 0px));
+    animation: slideUp 0.25s ease;
+  }
+
+  @keyframes slideUp {
+    from {
+      transform: translateY(100%);
+    }
+    to {
+      transform: translateY(0);
     }
   }
 
-  .launch-form {
+  /* Desktop: centered modal */
+  @media (min-width: 768px) {
+    .overlay {
+      align-items: center;
+    }
+
+    .sheet {
+      max-width: 480px;
+      border-radius: var(--radius-xl);
+      animation: fadeScale 0.2s ease;
+    }
+
+    @keyframes fadeScale {
+      from {
+        opacity: 0;
+        transform: scale(0.96);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+  }
+
+  .handle-bar {
     display: flex;
-    flex-direction: column;
-    gap: var(--space-4);
+    justify-content: center;
+    padding-bottom: var(--space-3);
+  }
+
+  .handle {
+    width: 36px;
+    height: 4px;
+    border-radius: var(--radius-full);
+    background: var(--ds-gray-500);
+  }
+
+  /* Hide handle bar on desktop */
+  @media (min-width: 768px) {
+    .handle-bar {
+      display: none;
+    }
+  }
+
+  .sheet-title {
+    font-size: var(--text-xl);
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: var(--space-5);
+    letter-spacing: var(--tracking-tight);
   }
 
   .section {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
+    margin-bottom: var(--space-4);
   }
 
   .section-label {
@@ -226,6 +287,7 @@
     color: var(--text-secondary);
     text-transform: uppercase;
     letter-spacing: 0.05em;
+    margin-bottom: var(--space-2);
   }
 
   .preset-grid {
@@ -249,6 +311,19 @@
 
   :global(.launch-select) {
     --select-height: 44px;
+    --select-trigger-background: var(--component-bg);
+    --select-trigger-border: 1px solid var(--border);
+    --select-trigger-hover-border-color: var(--border-hover);
+    --select-color: var(--text-primary);
+    --select-placeholder-color: var(--text-tertiary);
+    --select-arrow-color: var(--text-secondary);
+    --select-dropdown-background: var(--component-bg);
+    --select-dropdown-border: 1px solid var(--border);
+    --select-dropdown-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    --select-option-color: var(--text-primary);
+    --select-option-hover-background: var(--component-bg-hover);
+    --select-option-selected-background: var(--component-bg-active);
+    margin-bottom: var(--space-2);
   }
 
   :global(.launch-input) {

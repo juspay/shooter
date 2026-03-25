@@ -80,7 +80,7 @@ let _sessionWatcher: null | SessionWatcherLike = null;
 
 /** Per-connection state tracked for cleanup. */
 interface ConnectionState {
-  retryInterval: ReturnType<typeof setInterval> | null;
+  retryInterval: null | ReturnType<typeof setInterval>;
   terminalId: string;
   unsubscribe: (() => void) | null;
 }

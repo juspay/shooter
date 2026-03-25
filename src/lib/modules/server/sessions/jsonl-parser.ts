@@ -14,12 +14,12 @@ import type { ConversationMessage, MessagePart } from './types';
  * These are control/metadata entries that don't represent conversation content.
  */
 export const SKIP_EVENT_TYPES = new Set([
-  'system',
   'config',
-  'summary',
-  'result',
   'heartbeat',
   'metadata',
+  'result',
+  'summary',
+  'system',
 ]);
 
 /**

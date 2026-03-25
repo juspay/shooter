@@ -73,7 +73,7 @@ export async function createTerminal(options: TerminalOptions): Promise<Terminal
 
   // Block browser-level Cmd/Ctrl shortcuts from reaching the PTY.
   // Allow Ctrl+<letter> terminal signals (Ctrl+C/D/L/R/Z etc.) through.
-  const browserShortcuts = new Set(['s', 'w', 't', 'n', 'p', 'q', 'h', 'j', 'f', 'g', 'o', 'u']);
+  const browserShortcuts = new Set(['f', 'g', 'h', 'j', 'n', 'o', 'p', 'q', 's', 't', 'u', 'w']);
   term.attachCustomKeyEventHandler((e) => {
     // Cmd+key on Mac: block known browser shortcuts, allow the rest
     if (e.metaKey) {
@@ -91,42 +91,44 @@ export async function createTerminal(options: TerminalOptions): Promise<Terminal
     const pasteTermId = options.terminalId;
     const pasteApiKey = options.apiKey;
 
-    pasteListener = async (e: ClipboardEvent) => {
-      try {
-        if (!e.clipboardData) return;
-        const items = Array.from(e.clipboardData.items);
-        const imageItem = items.find(item => item.type.startsWith('image/'));
-        if (!imageItem) return; // No image — let normal paste proceed
+    pasteListener = (e: ClipboardEvent) => {
+      void (async () => {
+        try {
+          if (!e.clipboardData) {return;}
+          const items = Array.from(e.clipboardData.items);
+          const imageItem = items.find(item => item.type.startsWith('image/'));
+          if (!imageItem) {return;} // No image — let normal paste proceed
 
-        e.preventDefault();
-        const blob = imageItem.getAsFile();
-        if (!blob) return;
+          e.preventDefault();
+          const blob = imageItem.getAsFile();
+          if (!blob) {return;}
 
-        // Read image as base64
-        const reader = new FileReader();
-        const base64 = await new Promise<string>((resolve, reject) => {
-          reader.onload = () => resolve(reader.result as string);
-          reader.onerror = reject;
-          reader.readAsDataURL(blob);
-        });
+          // Read image as base64
+          const reader = new FileReader();
+          const base64 = await new Promise<string>((resolve, reject) => {
+            reader.onload = () => { resolve(reader.result as string); };
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
 
-        // Upload to server
-        const res = await fetch(`/api/terminals/${pasteTermId}/paste-image`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${pasteApiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ image: base64 }),
-        });
+          // Upload to server
+          const res = await fetch(`/api/terminals/${pasteTermId}/paste-image`, {
+            body: JSON.stringify({ image: base64 }),
+            headers: {
+              'Authorization': `Bearer ${pasteApiKey}`,
+              'Content-Type': 'application/json',
+            },
+            method: 'POST',
+          });
 
-        // Send Ctrl+V (0x16) to PTY only after a successful upload
-        if (res.ok && ws?.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ data: '\x16', type: 'input' }));
+          // Send Ctrl+V (0x16) to PTY only after a successful upload
+          if (res.ok && ws?.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ data: '\x16', type: 'input' }));
+          }
+        } catch {
+          // Silent failure — don't break text paste
         }
-      } catch {
-        // Silent failure — don't break text paste
-      }
+      })();
     };
 
     options.container.addEventListener('paste', pasteListener as EventListener);

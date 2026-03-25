@@ -108,7 +108,7 @@ class SessionWatcher {
       return;
     }
 
-    watched.watcher.close();
+    void watched.watcher.close();
     this.watchedFiles.delete(filePath);
     this.assistantTurnsPerFile.delete(filePath);
     this.messageIndexPerFile.delete(filePath);

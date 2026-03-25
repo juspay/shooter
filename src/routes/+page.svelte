@@ -2,7 +2,6 @@
   import type { ShooterConfig } from '$lib/types/config';
 
   import { goto } from '$app/navigation';
-  import { Button, Pill, Shimmer } from '@juspay/svelte-ui-components';
   import {
     EmptyState,
     formatRelativeTime,
@@ -11,6 +10,7 @@
     isShooterConfig,
     setCache,
   } from '$lib/modules/client/common';
+  import { Button, Pill, Shimmer } from '@juspay/svelte-ui-components';
   import { onDestroy, onMount } from 'svelte';
 
   interface ProjectGroup {
@@ -150,10 +150,8 @@
       </div>
       <div class="page-actions">
         <Button classes="btn-secondary" onclick={forceRefresh} disabled={loading}>
-          {#snippet children()}
             <Icon name="refresh" size={14} />
             Refresh
-          {/snippet}
         </Button>
       </div>
     </div>
