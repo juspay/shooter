@@ -2,7 +2,7 @@
 # ──────────────────────────────────────────────────────────────────────
 # Shooter — One-line installer
 #
-#   curl -fsSL https://raw.githubusercontent.com/juspay/shooter/main/scripts/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/juspay/shooter/release/scripts/install.sh | sh
 #
 # POSIX sh compatible. Tested on macOS and Linux.
 # ──────────────────────────────────────────────────────────────────────

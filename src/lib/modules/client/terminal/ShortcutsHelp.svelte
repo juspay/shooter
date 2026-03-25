@@ -1,114 +1,60 @@
 <script lang="ts">
+  import { KeyboardInput, Modal } from '@juspay/svelte-ui-components';
+
   import { getShortcutList } from './keyboard-shortcuts';
-  import { onMount } from 'svelte';
 
   interface Props {
-    open: boolean;
     onClose: () => void;
+    open: boolean;
   }
 
-  const { open, onClose }: Props = $props();
+  const { onClose, open }: Props = $props();
   const shortcuts = getShortcutList();
-
-  function handleKeydown(e: KeyboardEvent) {
-    if (!open) { return; }
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      e.stopPropagation();
-      onClose();
-    }
-  }
-
-  onMount(() => {
-    window.addEventListener('keydown', handleKeydown, true);
-    return () => {
-      window.removeEventListener('keydown', handleKeydown, true);
-    };
-  });
 </script>
 
 {#if open}
-  <div class="overlay">
-    <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="backdrop" onclick={onClose}></div>
-    <div class="panel" role="dialog" aria-label="Keyboard shortcuts">
-      <div class="panel-header">
-        <h2 class="panel-title">Keyboard Shortcuts</h2>
-        <button class="close-btn" onclick={onClose} type="button" aria-label="Close">&times;</button>
-      </div>
+  <Modal
+    header={{ text: 'Keyboard Shortcuts' }}
+    onoverlayClick={onClose}
+    classes="shortcuts-modal"
+  >
+    {#snippet content()}
       <div class="shortcuts-list">
         {#each shortcuts as shortcut (shortcut.keys)}
           <div class="shortcut-row">
             <span class="shortcut-desc">{shortcut.description}</span>
-            <kbd class="shortcut-key">{shortcut.keys}</kbd>
+            <KeyboardInput keys={shortcut.keys} classes="shortcut-kbd" />
           </div>
         {/each}
       </div>
-    </div>
-  </div>
+    {/snippet}
+  </Modal>
 {/if}
 
 <style>
-  .overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 1000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+  :global(.shortcuts-modal) {
+    --modal-content-background-color: var(--component-bg);
+    --modal-border-radius: var(--radius-lg);
+    --modal-header-background-color: var(--component-bg);
+    --modal-header-padding: var(--space-4) var(--space-5);
+    --modal-header-border-bottom: 1px solid var(--border);
+    --header-text-size: var(--text-lg);
+    --modal-header-text-weight: 600;
+    --background-color: rgba(0, 0, 0, 0.5);
+    --modal-z-index: 1000;
   }
 
-  .backdrop {
-    position: absolute;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.5);
-    backdrop-filter: blur(4px);
-  }
-
-  .panel {
-    position: relative;
-    background: var(--component-bg);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    padding: var(--space-5);
-    min-width: 320px;
+  :global(.shortcuts-modal .modal-content) {
     max-width: 420px;
     width: 90vw;
-  }
-
-  .panel-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: var(--space-4);
-  }
-
-  .panel-title {
-    font-size: var(--text-lg);
-    font-weight: 600;
-    color: var(--text-primary);
-  }
-
-  .close-btn {
-    background: none;
-    border: none;
-    color: var(--text-secondary);
-    font-size: 20px;
-    cursor: pointer;
-    padding: 4px 8px;
-    border-radius: var(--radius-sm);
-  }
-
-  .close-btn:hover {
-    background: var(--component-bg-hover);
-    color: var(--text-primary);
+    min-width: 320px;
   }
 
   .shortcuts-list {
     display: flex;
     flex-direction: column;
     gap: var(--space-2);
+    padding: var(--space-4) var(--space-5);
   }
 
   .shortcut-row {
@@ -123,14 +69,12 @@
     color: var(--text-secondary);
   }
 
-  .shortcut-key {
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    background: var(--ds-gray-200);
-    border: 1px solid var(--ds-gray-400);
-    border-radius: var(--radius-sm);
-    padding: 2px 8px;
-    color: var(--text-primary);
-    white-space: nowrap;
+  :global(.shortcut-kbd) {
+    --keyboard-input-key-color: var(--text-primary);
+    --keyboard-input-key-background: var(--ds-gray-200);
+    --keyboard-input-key-border: 1px solid var(--ds-gray-400);
+    --keyboard-input-key-box-shadow: 0 1px 0 var(--ds-gray-400);
+    --keyboard-input-font-family: var(--font-mono);
+    --keyboard-input-font-size: var(--text-xs);
   }
 </style>

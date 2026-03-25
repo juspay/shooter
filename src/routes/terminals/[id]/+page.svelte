@@ -8,7 +8,7 @@
   import { browser } from '$app/environment';
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
-  import { Button, Input, Pill, Tabs } from '@juspay/svelte-ui-components';
+  import { Button, Input, Pill, Tabs, Tooltip } from '@juspay/svelte-ui-components';
   import { EmptyState } from '$lib/modules/client/common';
   import ChatView from '$lib/modules/client/terminal/ChatView.svelte';
   import ConnectionStatus from '$lib/modules/client/terminal/ConnectionStatus.svelte';
@@ -528,7 +528,6 @@
 
     // Set up keyboard shortcuts
     shortcutManager = createShortcutManager({
-      onCommandPalette: () => { showCommandPalette = !showCommandPalette; },
       onHelp: () => { showShortcutsHelp = !showShortcutsHelp; },
     });
 
@@ -594,10 +593,14 @@
         <span class="term-command-name">{commandName}</span>
         <Pill text={badgeLabel} classes={badgeClass} />
         {#if isRunning}
-          <span class="activity-dot {isActive ? 'activity-active' : 'activity-idle'}" title={isActive ? 'Active' : 'Idle'}></span>
+          <Tooltip text={isActive ? 'Active' : 'Idle'} position="bottom">
+            <span class="activity-dot {isActive ? 'activity-active' : 'activity-idle'}"></span>
+          </Tooltip>
         {/if}
         {#if displayCwd}
-          <span class="term-cwd" title={currentCwd || terminal?.cwd || ''}>{displayCwd}</span>
+          <Tooltip text={currentCwd || terminal?.cwd || ''} position="bottom">
+            <span class="term-cwd">{displayCwd}</span>
+          </Tooltip>
         {/if}
         <ConnectionStatus status={connectionStatus} onretry={handleRetry} />
       </div>
@@ -692,7 +695,7 @@
 {/if}
 
 <ShortcutsHelp open={showShortcutsHelp} onClose={() => { showShortcutsHelp = false; }} />
-<CommandPalette open={showCommandPalette} commands={paletteCommands} onClose={() => { showCommandPalette = false; }} />
+<CommandPalette bind:open={showCommandPalette} commands={paletteCommands} onClose={() => { showCommandPalette = false; }} />
 
 <style>
   /* ============================================

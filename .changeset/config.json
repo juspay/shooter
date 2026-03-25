@@ -1,0 +1,22 @@
+{
+  "$schema": "https://unpkg.com/@changesets/config@3.0.0/schema.json",
+  "changelog": [
+    "@changesets/changelog-github",
+    {
+      "repo": "juspay/shooter"
+    }
+  ],
+  "commit": false,
+  "fixed": [],
+  "linked": [],
+  "access": "public",
+  "baseBranch": "release",
+  "updateInternalDependencies": "patch",
+  "ignore": [
+    "docs/**",
+    "ios/**",
+    "android/**",
+    "plans/**",
+    "specs/**"
+  ]
+}

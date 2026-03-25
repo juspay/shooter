@@ -3,7 +3,7 @@
 
   import { browser } from '$app/environment';
   import { goto } from '$app/navigation';
-  import { Banner, Button, Input } from '@juspay/svelte-ui-components';
+  import { Banner, Button, Input, Stepper } from '@juspay/svelte-ui-components';
   import { Card, hasScanner, Icon, isShooterConfig, scanQR } from '$lib/modules/client/common';
   import { onMount } from 'svelte';
 
@@ -368,29 +368,15 @@
 
       <aside class="settings-sidebar">
         <Card title="Setup Guide">
-          <ol class="setup-steps">
-            <li class="step">
-              <span class="step-number">1</span>
-              <div class="step-content">
-                <h4>Get API Key</h4>
-                <p>Retrieve the API key from your environment variables</p>
-              </div>
-            </li>
-            <li class="step">
-              <span class="step-number">2</span>
-              <div class="step-content">
-                <h4>Find Device Token</h4>
-                <p>Get the 64-character token from iOS app logs</p>
-              </div>
-            </li>
-            <li class="step">
-              <span class="step-number">3</span>
-              <div class="step-content">
-                <h4>Test Connection</h4>
-                <p>Verify credentials work before saving</p>
-              </div>
-            </li>
-          </ol>
+          <Stepper
+            steps={[
+              { label: 'Get API Key' },
+              { label: 'Find Device Token' },
+              { label: 'Test Connection' },
+            ]}
+            currentStepIndex={apiKey.trim() && deviceToken.trim() ? 2 : apiKey.trim() ? 1 : 0}
+            classes="setup-stepper"
+          />
         </Card>
 
         <Card title="Mobile App Setup" description={canScan ? 'Scan a QR code to connect' : 'Scan to connect your mobile app'}>
@@ -495,45 +481,22 @@
     justify-content: flex-end;
   }
 
-  .setup-steps {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-4);
-  }
-
-  .step {
-    display: flex;
+  :global(.setup-stepper) {
+    --container-flex-direction: column;
+    --step-flex-direction: row;
+    --step-index-container-height: 24px;
+    --step-index-container-width: 24px;
+    --step-index-font-size: var(--text-xs);
+    --step-text-font-size: var(--text-sm);
+    --step-text-margin: 0 0 0 var(--space-3);
+    --separator-display: none;
+    --step-text-active-color: var(--text-primary);
+    --step-text-completed-color: var(--ds-green-700);
+    --step-index-container-active-background-color: var(--component-bg-active);
+    --step-index-container-completed-background-color: var(--ds-green-700);
+    --step-index-container-background-color: var(--component-bg-active);
+    --step-index-color: var(--text-secondary);
     gap: var(--space-3);
-  }
-
-  .step-number {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 24px;
-    height: 24px;
-    background: var(--component-bg-active);
-    border-radius: var(--radius-sm);
-    font-size: var(--text-xs);
-    font-weight: 600;
-    color: var(--text-secondary);
-    flex-shrink: 0;
-  }
-
-  .step-content h4 {
-    font-size: var(--text-sm);
-    font-weight: 500;
-    color: var(--text-primary);
-    margin-bottom: var(--space-1);
-  }
-
-  .step-content p {
-    font-size: var(--text-xs);
-    color: var(--text-tertiary);
-    line-height: var(--leading-relaxed);
   }
 
   .qr-section {

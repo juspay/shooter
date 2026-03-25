@@ -2,7 +2,7 @@
   import type { ShooterConfig } from '$lib/types/config';
 
   import { goto } from '$app/navigation';
-  import { Button, Pill, Shimmer } from '@juspay/svelte-ui-components';
+  import { Button, Pill, Shimmer, Tooltip } from '@juspay/svelte-ui-components';
   import {
     EmptyState,
     formatRelativeTime,
@@ -300,7 +300,9 @@
           </div>
 
           <div class="terminal-card-meta">
-            <span class="terminal-cwd" title={terminal.currentCwd || terminal.cwd}>{truncatePath(terminal.currentCwd || terminal.cwd)}</span>
+            <Tooltip text={terminal.currentCwd || terminal.cwd} position="bottom">
+              <span class="terminal-cwd">{truncatePath(terminal.currentCwd || terminal.cwd)}</span>
+            </Tooltip>
             <span class="terminal-pid">PID {terminal.pid}</span>
           </div>
 
@@ -342,7 +344,9 @@
           </div>
 
           <div class="terminal-card-meta">
-            <span class="terminal-cwd" title={terminal.cwd}>{truncatePath(terminal.cwd)}</span>
+            <Tooltip text={terminal.cwd} position="bottom">
+              <span class="terminal-cwd">{truncatePath(terminal.cwd)}</span>
+            </Tooltip>
           </div>
 
           {#if terminal.lastOutput}
