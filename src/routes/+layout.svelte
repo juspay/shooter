@@ -4,7 +4,6 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
   import { StatusBadge } from '$lib/modules/client/common';
-  import { Button } from '@juspay/svelte-ui-components';
   import { onMount, type Snippet } from 'svelte';
 
   const { children }: { children: Snippet } = $props();
@@ -50,16 +49,27 @@
 
       <div class="nav-right">
         <StatusBadge status={systemStatus} />
-        <Button
-          classes="btn-gear {$page.url.pathname === '/config' ? 'btn-gear-active' : ''}"
+        <button
+          class="btn-gear {$page.url.pathname === '/config' ? 'btn-gear-active' : ''}"
           onclick={() => goto('/config')}
           aria-label="Settings"
         >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="3"></circle>
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-            </svg>
-        </Button>
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <circle cx="12" cy="12" r="3"></circle>
+            <path
+              d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"
+            ></path>
+          </svg>
+        </button>
       </div>
     </div>
   </header>
@@ -75,10 +85,20 @@
       <a
         href="/"
         class="tab-item"
-        class:active={$page.url.pathname === '/' || $page.url.pathname.startsWith('/project') || $page.url.pathname.startsWith('/session')}
+        class:active={$page.url.pathname === '/' ||
+          $page.url.pathname.startsWith('/project') ||
+          $page.url.pathname.startsWith('/session')}
       >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
+          ></path>
         </svg>
         <span>Projects</span>
       </a>
@@ -87,7 +107,14 @@
         class="tab-item"
         class:active={$page.url.pathname.startsWith('/terminals')}
       >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
           <polyline points="4 17 10 11 4 5"></polyline>
           <line x1="12" y1="19" x2="20" y2="19"></line>
         </svg>
@@ -104,27 +131,37 @@
     gap: var(--space-2);
   }
 
-  :global(.btn-gear) {
-    --button-color: transparent;
-    --button-text-color: var(--text-muted);
-    --button-hover-color: var(--component-bg);
-    --button-hover-text-color: var(--text-primary);
-    --button-border: none;
-    --button-hover-border: none;
-    --button-padding: 0;
-    --button-height: 36px;
-    --button-width: 36px;
-    --button-border-radius: var(--radius-md);
+  .btn-gear {
+    background: transparent;
+    color: var(--text-muted);
+    border: none;
+    padding: 0;
+    height: 36px;
+    width: 36px;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
-  :global(.btn-gear-active) {
-    --button-color: var(--component-bg);
-    --button-text-color: var(--text-primary);
+  .btn-gear:hover {
+    background: var(--component-bg);
+    color: var(--text-primary);
+  }
+  .btn-gear:focus-visible {
+    outline: 2px solid var(--ds-green-700);
+    outline-offset: 2px;
+  }
+  .btn-gear-active {
+    background: var(--component-bg);
+    color: var(--text-primary);
   }
 
   .content-area {
     flex: 1;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 
   .bottom-tabs {
@@ -176,9 +213,9 @@
 
   /* Mobile: page headers stack vertically, buttons wrap */
   @media (max-width: 480px) {
-    :global(.btn-gear) {
-      --button-height: 44px;
-      --button-width: 44px;
+    .btn-gear {
+      height: 44px;
+      width: 44px;
     }
     .bottom-tabs {
       height: 60px;

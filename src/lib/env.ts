@@ -8,7 +8,7 @@ const shooterHome = process.env.SHOOTER_HOME || '';
 const envPath = shooterHome ? join(shooterHome, '.env') : undefined;
 
 if (envPath && existsSync(envPath)) {
-	config({ path: envPath });
+  config({ path: envPath });
 } else {
-	config();
+  config();
 }

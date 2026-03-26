@@ -701,20 +701,20 @@ When creating a new file, ask:
 
 ### Import Path Patterns
 
-| What                | Import From                                   |
-| ------------------- | --------------------------------------------- |
-| Types               | `$lib/types`                                  |
-| UI Components       | `$lib/modules/client/common`                  |
-| Terminal UI         | `$lib/modules/client/terminal/{component}`    |
-| APNs Services       | `$lib/modules/server/apn/library-apns`        |
-| CLI Utilities       | `$lib/modules/server/cli`                     |
-| Terminal (PTY)      | `$lib/modules/server/terminal/{module}`       |
-| WebSocket           | `$lib/modules/server/ws/{module}`             |
-| Sessions            | `$lib/modules/server/sessions/{module}`       |
-| Auth                | `$lib/modules/server/auth`                    |
-| Server Utils        | `$lib/modules/server/{module}`                |
-| SvelteKit Types     | `./$types`                                    |
-| SvelteKit Utilities | `@sveltejs/kit`                               |
+| What                | Import From                                |
+| ------------------- | ------------------------------------------ |
+| Types               | `$lib/types`                               |
+| UI Components       | `$lib/modules/client/common`               |
+| Terminal UI         | `$lib/modules/client/terminal/{component}` |
+| APNs Services       | `$lib/modules/server/apn/library-apns`     |
+| CLI Utilities       | `$lib/modules/server/cli`                  |
+| Terminal (PTY)      | `$lib/modules/server/terminal/{module}`    |
+| WebSocket           | `$lib/modules/server/ws/{module}`          |
+| Sessions            | `$lib/modules/server/sessions/{module}`    |
+| Auth                | `$lib/modules/server/auth`                 |
+| Server Utils        | `$lib/modules/server/{module}`             |
+| SvelteKit Types     | `./$types`                                 |
+| SvelteKit Utilities | `@sveltejs/kit`                            |
 
 ---
 

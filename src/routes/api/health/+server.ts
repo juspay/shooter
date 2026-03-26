@@ -1,40 +1,15 @@
+import type {
+  FCMConfiguration,
+  HealthChecks,
+  HealthConfiguration,
+  HealthStatus,
+} from '$generated/types';
+
 import { env } from '$env/dynamic/private';
 import { validateAuth } from '$lib/modules/server/auth';
 import { json } from '@sveltejs/kit';
 
 import type { RequestHandler } from './$types';
-
-interface FCMConfiguration {
-  configured: boolean;
-  hasClientEmail: boolean;
-  hasPrivateKey: boolean;
-  hasProjectId: boolean;
-}
-
-interface HealthChecks {
-  hasApiKey: boolean;
-  hasAPNsConfig: boolean;
-  hasBundleId: boolean;
-  hasDeviceToken: boolean;
-  hasFCMConfig: boolean;
-}
-
-interface HealthConfiguration {
-  apnsKeyId: null | string;
-  bundleId: null | string;
-  deviceTokenLength: number;
-  fcm: FCMConfiguration;
-  production: boolean;
-}
-
-interface HealthResponse {
-  checks: HealthChecks;
-  configuration: HealthConfiguration;
-  environment: string;
-  status: 'degraded' | 'healthy';
-  timestamp: string;
-  version: string;
-}
 
 export const GET: RequestHandler = ({ request, url }) => {
   // Basic status check is public (used by layout status badge).
@@ -42,37 +17,48 @@ export const GET: RequestHandler = ({ request, url }) => {
   const wantsDetails = url.searchParams.get('details') === 'true';
   if (wantsDetails) {
     const authError = validateAuth(request);
-    if (authError) {return authError;}
+    if (authError) {
+      return authError;
+    }
   }
 
-  const hasProjectId = !!env.FCM_PROJECT_ID;
-  const hasClientEmail = !!env.FCM_CLIENT_EMAIL;
-  const hasPrivateKey = !!env.FCM_PRIVATE_KEY;
+  const hasProjectId = !!env.FCM_PROJECT_ID?.trim();
+  const hasClientEmail = !!env.FCM_CLIENT_EMAIL?.trim();
+  const hasPrivateKey = !!env.FCM_PRIVATE_KEY?.trim();
 
-  const health: HealthResponse = {
-    checks: {
-      hasApiKey: !!env.API_KEY,
-      hasAPNsConfig: !!(
-        env.APNS_KEY_ID &&
-        env.APNS_TEAM_ID &&
-        env.APNS_KEY
-      ),
-      hasBundleId: !!env.APNS_BUNDLE_ID,
-      hasDeviceToken: !!env.DEVICE_TOKEN,
-      hasFCMConfig: hasProjectId && hasClientEmail && hasPrivateKey,
-    },
-    configuration: {
-      apnsKeyId: env.APNS_KEY_ID ? `${env.APNS_KEY_ID.substring(0, 4)}...` : null,
-      bundleId: env.APNS_BUNDLE_ID || null,
-      deviceTokenLength: env.DEVICE_TOKEN ? env.DEVICE_TOKEN.length : 0,
-      fcm: {
-        configured: hasProjectId && hasClientEmail && hasPrivateKey,
-        hasClientEmail,
-        hasPrivateKey,
-        hasProjectId,
-      },
-      production: env.APNS_PRODUCTION === 'true',
-    },
+  const checks: HealthChecks = {
+    hasApiKey: !!env.API_KEY?.trim(),
+    hasAPNsConfig: !!(env.APNS_KEY_ID?.trim() && env.APNS_TEAM_ID?.trim() && env.APNS_KEY?.trim()),
+    hasBundleId: !!env.APNS_BUNDLE_ID?.trim(),
+    hasDeviceToken: !!env.DEVICE_TOKEN?.trim(),
+    hasFCMConfig: hasProjectId && hasClientEmail && hasPrivateKey,
+  };
+
+  const fcm: FCMConfiguration = {
+    configured: hasProjectId && hasClientEmail && hasPrivateKey,
+    hasClientEmail,
+    hasPrivateKey,
+    hasProjectId,
+  };
+
+  const configuration: HealthConfiguration = {
+    apnsKeyId: env.APNS_KEY_ID ? `${env.APNS_KEY_ID.substring(0, 4)}...` : '',
+    bundleId: env.APNS_BUNDLE_ID || '',
+    deviceTokenLength: env.DEVICE_TOKEN ? env.DEVICE_TOKEN.length : 0,
+    fcm,
+    production: env.APNS_PRODUCTION === 'true',
+  };
+
+  const health: {
+    checks: HealthChecks;
+    configuration: HealthConfiguration;
+    environment: string;
+    status: HealthStatus;
+    timestamp: string;
+    version: string;
+  } = {
+    checks,
+    configuration,
     environment: env.NODE_ENV || 'development',
     status: 'healthy',
     timestamp: new Date().toISOString(),

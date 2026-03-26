@@ -111,14 +111,14 @@ android/
 
 ## Technology Stack
 
-| Component | Choice | Why |
-|-----------|--------|-----|
-| UI (dashboard) | WebView | Web app already works, mobile-responsive |
-| Push notifications | Firebase Cloud Messaging | Android's APNs equivalent |
-| HTTP (permission responses) | OkHttp | Lightweight, one dependency |
-| Storage (config) | SharedPreferences | Simple key-value, no Room needed |
-| Security (API key) | EncryptedSharedPreferences | AES-256-GCM encryption |
-| Min SDK | API 26 (Android 8.0) | Notification channels required |
+| Component                   | Choice                     | Why                                      |
+| --------------------------- | -------------------------- | ---------------------------------------- |
+| UI (dashboard)              | WebView                    | Web app already works, mobile-responsive |
+| Push notifications          | Firebase Cloud Messaging   | Android's APNs equivalent                |
+| HTTP (permission responses) | OkHttp                     | Lightweight, one dependency              |
+| Storage (config)            | SharedPreferences          | Simple key-value, no Room needed         |
+| Security (API key)          | EncryptedSharedPreferences | AES-256-GCM encryption                   |
+| Min SDK                     | API 26 (Android 8.0)       | Notification channels required           |
 
 ### Dependencies
 
@@ -212,6 +212,7 @@ class MainActivity : Activity() {
 ### 3. SetupActivity.kt (first-launch config)
 
 Simple form with:
+
 - Server URL text field (default: `http://10.0.2.2:3000` for emulator)
 - API key text field (password input)
 - FCM token display (with copy button)

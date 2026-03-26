@@ -48,28 +48,28 @@ List all terminals (running and recently exited).
 }
 ```
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `count` | number | Total number of terminals |
-| `terminals[].id` | string | 8-character hex terminal ID |
-| `terminals[].command` | string | Command that was launched |
-| `terminals[].args` | string[] | Arguments passed to the command |
-| `terminals[].cwd` | string | Working directory |
-| `terminals[].pid` | number | OS process ID |
-| `terminals[].status` | `"running"` \| `"exited"` | Current process state |
-| `terminals[].exitCode` | number \| null | Exit code (null if still running) |
-| `terminals[].createdAt` | string | ISO 8601 creation timestamp |
-| `terminals[].exitedAt` | string \| null | ISO 8601 exit timestamp |
-| `terminals[].clientCount` | number | Connected WebSocket viewers |
-| `terminals[].lastOutput` | string \| null | Last chunk of terminal output |
+| Field                     | Type                      | Description                       |
+| ------------------------- | ------------------------- | --------------------------------- |
+| `count`                   | number                    | Total number of terminals         |
+| `terminals[].id`          | string                    | 8-character hex terminal ID       |
+| `terminals[].command`     | string                    | Command that was launched         |
+| `terminals[].args`        | string[]                  | Arguments passed to the command   |
+| `terminals[].cwd`         | string                    | Working directory                 |
+| `terminals[].pid`         | number                    | OS process ID                     |
+| `terminals[].status`      | `"running"` \| `"exited"` | Current process state             |
+| `terminals[].exitCode`    | number \| null            | Exit code (null if still running) |
+| `terminals[].createdAt`   | string                    | ISO 8601 creation timestamp       |
+| `terminals[].exitedAt`    | string \| null            | ISO 8601 exit timestamp           |
+| `terminals[].clientCount` | number                    | Connected WebSocket viewers       |
+| `terminals[].lastOutput`  | string \| null            | Last chunk of terminal output     |
 
 **Status codes:**
 
-| Code | Meaning |
-|------|---------|
-| 200 | Success |
-| 401 | Missing or invalid authorization |
-| 500 | Server error |
+| Code | Meaning                          |
+| ---- | -------------------------------- |
+| 200  | Success                          |
+| 401  | Missing or invalid authorization |
+| 500  | Server error                     |
 
 **Example:**
 
@@ -98,13 +98,13 @@ Create a new terminal session.
 }
 ```
 
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `command` | string | Yes | - | Command to run. Must be one of: `zsh`, `bash`, `sh`, `fish`, `claude`, `opencode` |
-| `args` | string[] | No | `[]` | Arguments passed to the command |
-| `cwd` | string | Yes | - | Working directory (must be under `$HOME`) |
-| `cols` | number | No | `80` | Terminal width in columns |
-| `rows` | number | No | `24` | Terminal height in rows |
+| Field     | Type     | Required | Default | Description                                                                       |
+| --------- | -------- | -------- | ------- | --------------------------------------------------------------------------------- |
+| `command` | string   | Yes      | -       | Command to run. Must be one of: `zsh`, `bash`, `sh`, `fish`, `claude`, `opencode` |
+| `args`    | string[] | No       | `[]`    | Arguments passed to the command                                                   |
+| `cwd`     | string   | Yes      | -       | Working directory (must be under `$HOME`)                                         |
+| `cols`    | number   | No       | `80`    | Terminal width in columns                                                         |
+| `rows`    | number   | No       | `24`    | Terminal height in rows                                                           |
 
 **Response (201):**
 
@@ -120,24 +120,24 @@ Create a new terminal session.
 }
 ```
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | string | 8-character hex terminal ID |
-| `pid` | number | OS process ID |
-| `command` | string | Command that was launched |
-| `cwd` | string | Resolved working directory |
-| `createdAt` | string | ISO 8601 creation timestamp |
-| `ws` | string | WebSocket path for raw PTY I/O |
+| Field       | Type   | Description                                  |
+| ----------- | ------ | -------------------------------------------- |
+| `id`        | string | 8-character hex terminal ID                  |
+| `pid`       | number | OS process ID                                |
+| `command`   | string | Command that was launched                    |
+| `cwd`       | string | Resolved working directory                   |
+| `createdAt` | string | ISO 8601 creation timestamp                  |
+| `ws`        | string | WebSocket path for raw PTY I/O               |
 | `sessionWs` | string | WebSocket path for structured session stream |
 
 **Status codes:**
 
-| Code | Meaning |
-|------|---------|
-| 201 | Terminal created |
-| 400 | Validation error (missing command, invalid cwd, disallowed command, bad args) |
-| 401 | Missing or invalid authorization |
-| 500 | Server error |
+| Code | Meaning                                                                       |
+| ---- | ----------------------------------------------------------------------------- |
+| 201  | Terminal created                                                              |
+| 400  | Validation error (missing command, invalid cwd, disallowed command, bad args) |
+| 401  | Missing or invalid authorization                                              |
+| 500  | Server error                                                                  |
 
 **Example:**
 
@@ -179,12 +179,12 @@ Get details for a single terminal.
 
 **Status codes:**
 
-| Code | Meaning |
-|------|---------|
-| 200 | Success |
-| 401 | Missing or invalid authorization |
-| 404 | Terminal not found |
-| 500 | Server error |
+| Code | Meaning                          |
+| ---- | -------------------------------- |
+| 200  | Success                          |
+| 401  | Missing or invalid authorization |
+| 404  | Terminal not found               |
+| 500  | Server error                     |
 
 **Example:**
 
@@ -225,12 +225,12 @@ Kill a running terminal or remove an exited one.
 
 **Status codes:**
 
-| Code | Meaning |
-|------|---------|
-| 200 | Terminal killed or removed |
-| 401 | Missing or invalid authorization |
-| 404 | Terminal not found |
-| 500 | Server error |
+| Code | Meaning                          |
+| ---- | -------------------------------- |
+| 200  | Terminal killed or removed       |
+| 401  | Missing or invalid authorization |
+| 404  | Terminal not found               |
+| 500  | Server error                     |
 
 **Example:**
 
@@ -256,10 +256,10 @@ Resize a running terminal.
 }
 ```
 
-| Field | Type | Required | Constraints | Description |
-|-------|------|----------|-------------|-------------|
-| `cols` | number | Yes | 1-500 | New width in columns |
-| `rows` | number | Yes | 1-200 | New height in rows |
+| Field  | Type   | Required | Constraints | Description          |
+| ------ | ------ | -------- | ----------- | -------------------- |
+| `cols` | number | Yes      | 1-500       | New width in columns |
+| `rows` | number | Yes      | 1-200       | New height in rows   |
 
 **Response:**
 
@@ -272,14 +272,14 @@ Resize a running terminal.
 
 **Status codes:**
 
-| Code | Meaning |
-|------|---------|
-| 200 | Terminal resized |
-| 400 | Missing or invalid cols/rows |
-| 401 | Missing or invalid authorization |
-| 404 | Terminal not found |
-| 409 | Terminal has already exited |
-| 500 | Server error |
+| Code | Meaning                          |
+| ---- | -------------------------------- |
+| 200  | Terminal resized                 |
+| 400  | Missing or invalid cols/rows     |
+| 401  | Missing or invalid authorization |
+| 404  | Terminal not found               |
+| 409  | Terminal has already exited      |
+| 500  | Server error                     |
 
 **Example:**
 
@@ -311,9 +311,9 @@ Generate a short-lived, single-use ticket for authenticating WebSocket connectio
 }
 ```
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `ticket` | string | 64-character hex ticket (32 random bytes) |
+| Field       | Type   | Description                                  |
+| ----------- | ------ | -------------------------------------------- |
+| `ticket`    | string | 64-character hex ticket (32 random bytes)    |
 | `expiresIn` | number | Seconds until the ticket expires (always 30) |
 
 The ticket is passed as a query parameter when opening a WebSocket:
@@ -324,11 +324,11 @@ ws://your-host/ws/terminal/a1b2c3d4?ticket=<ticket>
 
 **Status codes:**
 
-| Code | Meaning |
-|------|---------|
-| 200 | Ticket generated |
-| 401 | Missing or invalid authorization |
-| 429 | Rate limit exceeded |
+| Code | Meaning                          |
+| ---- | -------------------------------- |
+| 200  | Ticket generated                 |
+| 401  | Missing or invalid authorization |
+| 429  | Rate limit exceeded              |
 
 **Example:**
 
@@ -355,10 +355,10 @@ Return the number of clients currently connected to the `/ws/events` channel. Us
 
 **Status codes:**
 
-| Code | Meaning |
-|------|---------|
-| 200 | Success |
-| 401 | Missing or invalid authorization |
+| Code | Meaning                          |
+| ---- | -------------------------------- |
+| 200  | Success                          |
+| 401  | Missing or invalid authorization |
 
 **Example:**
 
@@ -383,10 +383,10 @@ Returns all projects that have session data on disk, sorted by most recently mod
 
 **Query parameters:**
 
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `limit` | number | `0` (all) | Max projects to return |
-| `offset` | number | `0` | Skip this many projects |
+| Param    | Type   | Default   | Description             |
+| -------- | ------ | --------- | ----------------------- |
+| `limit`  | number | `0` (all) | Max projects to return  |
+| `offset` | number | `0`       | Skip this many projects |
 
 **Response:**
 
@@ -420,24 +420,24 @@ Returns all projects that have session data on disk, sorted by most recently mod
 }
 ```
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `count` | number | Total sessions across all projects |
-| `total` | number | Total number of projects |
-| `projects[].id` | string | Short hash project ID |
-| `projects[].name` | string | Project directory name |
-| `projects[].fullPath` | string | Absolute path on disk |
-| `projects[].sessionCount` | number | Number of sessions in this project |
-| `projects[].lastModified` | string | ISO 8601 timestamp of most recent session activity |
-| `projects[].sessions[].id` | string | Session UUID |
-| `projects[].sessions[].title` | string | Session title (from first prompt or metadata) |
-| `projects[].sessions[].summary` | string | Brief summary of the session |
-| `projects[].sessions[].source` | `"claude-code"` \| `"opencode"` | Which AI tool created the session |
-| `projects[].sessions[].created` | string | ISO 8601 creation timestamp |
-| `projects[].sessions[].modified` | string | ISO 8601 last modification timestamp |
-| `projects[].sessions[].messageCount` | number | Number of messages in the session |
-| `projects[].sessions[].gitBranch` | string | Git branch active when session was created |
-| `projects[].sessions[].projectPath` | string | Project working directory |
+| Field                                | Type                            | Description                                        |
+| ------------------------------------ | ------------------------------- | -------------------------------------------------- |
+| `count`                              | number                          | Total sessions across all projects                 |
+| `total`                              | number                          | Total number of projects                           |
+| `projects[].id`                      | string                          | Short hash project ID                              |
+| `projects[].name`                    | string                          | Project directory name                             |
+| `projects[].fullPath`                | string                          | Absolute path on disk                              |
+| `projects[].sessionCount`            | number                          | Number of sessions in this project                 |
+| `projects[].lastModified`            | string                          | ISO 8601 timestamp of most recent session activity |
+| `projects[].sessions[].id`           | string                          | Session UUID                                       |
+| `projects[].sessions[].title`        | string                          | Session title (from first prompt or metadata)      |
+| `projects[].sessions[].summary`      | string                          | Brief summary of the session                       |
+| `projects[].sessions[].source`       | `"claude-code"` \| `"opencode"` | Which AI tool created the session                  |
+| `projects[].sessions[].created`      | string                          | ISO 8601 creation timestamp                        |
+| `projects[].sessions[].modified`     | string                          | ISO 8601 last modification timestamp               |
+| `projects[].sessions[].messageCount` | number                          | Number of messages in the session                  |
+| `projects[].sessions[].gitBranch`    | string                          | Git branch active when session was created         |
+| `projects[].sessions[].projectPath`  | string                          | Project working directory                          |
 
 #### Get session messages
 
@@ -445,12 +445,12 @@ Fetch parsed conversation messages for a specific session.
 
 **Query parameters:**
 
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| `id` | string | Yes | Session ID |
-| `project` | string | No | Project ID (helps locate the session faster) |
-| `offset` | number | No | Message offset (default: 0) |
-| `limit` | number | No | Max messages to return (default: 100) |
+| Param     | Type   | Required | Description                                  |
+| --------- | ------ | -------- | -------------------------------------------- |
+| `id`      | string | Yes      | Session ID                                   |
+| `project` | string | No       | Project ID (helps locate the session faster) |
+| `offset`  | number | No       | Message offset (default: 0)                  |
+| `limit`   | number | No       | Max messages to return (default: 100)        |
 
 **Response:**
 
@@ -491,11 +491,11 @@ Fetch parsed conversation messages for a specific session.
 
 **Status codes:**
 
-| Code | Meaning |
-|------|---------|
-| 200 | Success |
-| 401 | Missing or invalid authorization |
-| 404 | Session not found (when querying by `id`) |
+| Code | Meaning                                   |
+| ---- | ----------------------------------------- |
+| 200  | Success                                   |
+| 401  | Missing or invalid authorization          |
+| 404  | Session not found (when querying by `id`) |
 
 **Example (list projects):**
 
@@ -538,17 +538,17 @@ Send an APNs push notification to the configured iOS device. Includes intelligen
 }
 ```
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `title` | string | Yes | Notification title |
-| `message` | string | Yes | Notification body text |
-| `data` | object | No | Arbitrary metadata included in the push payload |
-| `data.category` | string | No | Notification category (e.g., `"completion"`, `"debug"`) |
-| `data.source` | string | No | Hook source (e.g., `"stop-hook"`, `"smart-completion-detector"`) |
-| `data.project` | string | No | Project name |
-| `data.tool` | string | No | Tool that triggered the notification |
-| `data.requestId` | string | No | Custom request ID (auto-generated if omitted) |
-| `waitForResponse` | boolean | No | If `true`, creates a pending permission request for bidirectional flow |
+| Field             | Type    | Required | Description                                                            |
+| ----------------- | ------- | -------- | ---------------------------------------------------------------------- |
+| `title`           | string  | Yes      | Notification title                                                     |
+| `message`         | string  | Yes      | Notification body text                                                 |
+| `data`            | object  | No       | Arbitrary metadata included in the push payload                        |
+| `data.category`   | string  | No       | Notification category (e.g., `"completion"`, `"debug"`)                |
+| `data.source`     | string  | No       | Hook source (e.g., `"stop-hook"`, `"smart-completion-detector"`)       |
+| `data.project`    | string  | No       | Project name                                                           |
+| `data.tool`       | string  | No       | Tool that triggered the notification                                   |
+| `data.requestId`  | string  | No       | Custom request ID (auto-generated if omitted)                          |
+| `waitForResponse` | boolean | No       | If `true`, creates a pending permission request for bidirectional flow |
 
 **Response (sent):**
 
@@ -575,12 +575,12 @@ Send an APNs push notification to the configured iOS device. Includes intelligen
 
 **Status codes:**
 
-| Code | Meaning |
-|------|---------|
-| 200 | Notification sent or filtered |
-| 400 | Missing title or message |
-| 401 | Missing or invalid authorization |
-| 500 | APNs not configured, no device token, or delivery failure |
+| Code | Meaning                                                   |
+| ---- | --------------------------------------------------------- |
+| 200  | Notification sent or filtered                             |
+| 400  | Missing title or message                                  |
+| 401  | Missing or invalid authorization                          |
+| 500  | APNs not configured, no device token, or delivery failure |
 
 **Example:**
 
@@ -605,9 +605,9 @@ List recent notification history (sent, filtered, and failed).
 
 **Query parameters:**
 
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `limit` | number | `50` | Max records to return (server cap: 100) |
+| Param   | Type   | Default | Description                             |
+| ------- | ------ | ------- | --------------------------------------- |
+| `limit` | number | `50`    | Max records to return (server cap: 100) |
 
 **Response:**
 
@@ -633,26 +633,26 @@ List recent notification history (sent, filtered, and failed).
 }
 ```
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `notifications[].id` | string | Request ID |
-| `notifications[].title` | string | Notification title |
-| `notifications[].message` | string | Notification body |
-| `notifications[].status` | `"sent"` \| `"filtered"` \| `"failed"` | Delivery outcome |
-| `notifications[].timestamp` | string | ISO 8601 timestamp |
-| `notifications[].source` | string \| undefined | Hook source |
-| `notifications[].project` | string \| undefined | Project name |
-| `notifications[].category` | string \| undefined | Notification category |
-| `notifications[].tool` | string \| undefined | Tool name |
-| `notifications[].data` | object \| undefined | Full metadata payload |
-| `notifications[].error` | string \| undefined | Error message (for `"failed"` or `"filtered"`) |
+| Field                       | Type                                   | Description                                    |
+| --------------------------- | -------------------------------------- | ---------------------------------------------- |
+| `notifications[].id`        | string                                 | Request ID                                     |
+| `notifications[].title`     | string                                 | Notification title                             |
+| `notifications[].message`   | string                                 | Notification body                              |
+| `notifications[].status`    | `"sent"` \| `"filtered"` \| `"failed"` | Delivery outcome                               |
+| `notifications[].timestamp` | string                                 | ISO 8601 timestamp                             |
+| `notifications[].source`    | string \| undefined                    | Hook source                                    |
+| `notifications[].project`   | string \| undefined                    | Project name                                   |
+| `notifications[].category`  | string \| undefined                    | Notification category                          |
+| `notifications[].tool`      | string \| undefined                    | Tool name                                      |
+| `notifications[].data`      | object \| undefined                    | Full metadata payload                          |
+| `notifications[].error`     | string \| undefined                    | Error message (for `"failed"` or `"filtered"`) |
 
 **Status codes:**
 
-| Code | Meaning |
-|------|---------|
-| 200 | Success |
-| 401 | Missing or invalid authorization |
+| Code | Meaning                          |
+| ---- | -------------------------------- |
+| 200  | Success                          |
+| 401  | Missing or invalid authorization |
 
 **Example:**
 
@@ -678,10 +678,10 @@ Submit a permission decision from the iOS app (or any client). Completes the bid
 }
 ```
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `requestId` | string | Yes | The request ID from the notification |
-| `decision` | `"allow"` \| `"deny"` | Yes | The user's permission decision |
+| Field       | Type                  | Required | Description                          |
+| ----------- | --------------------- | -------- | ------------------------------------ |
+| `requestId` | string                | Yes      | The request ID from the notification |
+| `decision`  | `"allow"` \| `"deny"` | Yes      | The user's permission decision       |
 
 **Response:**
 
@@ -695,13 +695,13 @@ Submit a permission decision from the iOS app (or any client). Completes the bid
 
 **Status codes:**
 
-| Code | Meaning |
-|------|---------|
-| 200 | Decision recorded |
-| 400 | Missing requestId or decision, or invalid decision value |
-| 401 | Missing or invalid authorization |
-| 404 | Request not found or expired (requests expire after 5 minutes) |
-| 500 | Server error |
+| Code | Meaning                                                        |
+| ---- | -------------------------------------------------------------- |
+| 200  | Decision recorded                                              |
+| 400  | Missing requestId or decision, or invalid decision value       |
+| 401  | Missing or invalid authorization                               |
+| 404  | Request not found or expired (requests expire after 5 minutes) |
+| 500  | Server error                                                   |
 
 **Example:**
 
@@ -722,9 +722,9 @@ Poll for a permission decision. Used by the CLI notifier hook to block until the
 
 **Query parameters:**
 
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| `requestId` | string | Yes | The request ID to check |
+| Param       | Type   | Required | Description             |
+| ----------- | ------ | -------- | ----------------------- |
+| `requestId` | string | Yes      | The request ID to check |
 
 **Response (pending):**
 
@@ -746,19 +746,19 @@ Poll for a permission decision. Used by the CLI notifier hook to block until the
 }
 ```
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `status` | `"pending"` \| `"decided"` | Whether a decision has been made |
+| Field      | Type                          | Description                       |
+| ---------- | ----------------------------- | --------------------------------- |
+| `status`   | `"pending"` \| `"decided"`    | Whether a decision has been made  |
 | `decision` | `"allow"` \| `"deny"` \| null | The decision (null while pending) |
 
 **Status codes:**
 
-| Code | Meaning |
-|------|---------|
-| 200 | Status returned (pending or decided) |
-| 400 | Missing requestId query parameter |
-| 401 | Missing or invalid authorization |
-| 404 | Request not found or expired |
+| Code | Meaning                              |
+| ---- | ------------------------------------ |
+| 200  | Status returned (pending or decided) |
+| 400  | Missing requestId query parameter    |
+| 401  | Missing or invalid authorization     |
+| 404  | Request not found or expired         |
 
 **Example:**
 
@@ -798,25 +798,25 @@ Health check endpoint. Reports server status and configuration readiness. Does *
 }
 ```
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `status` | `"healthy"` \| `"degraded"` | Overall health (`"degraded"` if any critical check fails) |
-| `environment` | string | `NODE_ENV` value |
-| `version` | string | Server version |
-| `checks.hasApiKey` | boolean | Whether `API_KEY` is set |
-| `checks.hasAPNsConfig` | boolean | Whether APNs key, key ID, and team ID are all set |
-| `checks.hasBundleId` | boolean | Whether `APNS_BUNDLE_ID` is set |
-| `checks.hasDeviceToken` | boolean | Whether `DEVICE_TOKEN` is set |
-| `configuration.apnsKeyId` | string \| null | First 4 characters of the APNs key ID (masked) |
-| `configuration.bundleId` | string \| null | iOS app bundle identifier |
-| `configuration.deviceTokenLength` | number | Length of the device token string |
-| `configuration.production` | boolean | Whether APNs production gateway is enabled |
+| Field                             | Type                        | Description                                               |
+| --------------------------------- | --------------------------- | --------------------------------------------------------- |
+| `status`                          | `"healthy"` \| `"degraded"` | Overall health (`"degraded"` if any critical check fails) |
+| `environment`                     | string                      | `NODE_ENV` value                                          |
+| `version`                         | string                      | Server version                                            |
+| `checks.hasApiKey`                | boolean                     | Whether `API_KEY` is set                                  |
+| `checks.hasAPNsConfig`            | boolean                     | Whether APNs key, key ID, and team ID are all set         |
+| `checks.hasBundleId`              | boolean                     | Whether `APNS_BUNDLE_ID` is set                           |
+| `checks.hasDeviceToken`           | boolean                     | Whether `DEVICE_TOKEN` is set                             |
+| `configuration.apnsKeyId`         | string \| null              | First 4 characters of the APNs key ID (masked)            |
+| `configuration.bundleId`          | string \| null              | iOS app bundle identifier                                 |
+| `configuration.deviceTokenLength` | number                      | Length of the device token string                         |
+| `configuration.production`        | boolean                     | Whether APNs production gateway is enabled                |
 
 **Status codes:**
 
-| Code | Meaning |
-|------|---------|
-| 200 | Always returns 200 (check `status` field for health) |
+| Code | Meaning                                              |
+| ---- | ---------------------------------------------------- |
+| 200  | Always returns 200 (check `status` field for health) |
 
 **Example:**
 
@@ -846,21 +846,21 @@ Raw PTY I/O stream. Bidirectional: the server sends terminal output and the clie
 
 **Client-to-server messages:**
 
-| Type | Fields | Description |
-|------|--------|-------------|
-| `input` | `data: string` | Keystrokes / pasted text to write to the PTY |
-| `resize` | `cols: number, rows: number` | Resize the terminal (cols: 1-500, rows: 1-200) |
-| `signal` | `signal: "SIGINT" \| "SIGTERM" \| "SIGTSTP"` | Send a signal to the process |
+| Type     | Fields                                       | Description                                    |
+| -------- | -------------------------------------------- | ---------------------------------------------- |
+| `input`  | `data: string`                               | Keystrokes / pasted text to write to the PTY   |
+| `resize` | `cols: number, rows: number`                 | Resize the terminal (cols: 1-500, rows: 1-200) |
+| `signal` | `signal: "SIGINT" \| "SIGTERM" \| "SIGTSTP"` | Send a signal to the process                   |
 
 **Server-to-client messages:**
 
-| Type | Fields | Description |
-|------|--------|-------------|
-| `scrollback` | `data: string, chunk: number, total: number` | Scrollback replay (sent in 50 KB chunks on connect) |
-| `output` | `data: string` | New terminal output |
-| `output-dropped` | `bytes: number` | Output was dropped due to backpressure |
-| `exit` | `code: number \| null, signal: string \| null` | Terminal process exited |
-| `error` | `message: string` | Error message |
+| Type             | Fields                                         | Description                                         |
+| ---------------- | ---------------------------------------------- | --------------------------------------------------- |
+| `scrollback`     | `data: string, chunk: number, total: number`   | Scrollback replay (sent in 50 KB chunks on connect) |
+| `output`         | `data: string`                                 | New terminal output                                 |
+| `output-dropped` | `bytes: number`                                | Output was dropped due to backpressure              |
+| `exit`           | `code: number \| null, signal: string \| null` | Terminal process exited                             |
+| `error`          | `message: string`                              | Error message                                       |
 
 ---
 
@@ -870,23 +870,23 @@ Structured session stream for the Chat view. Sends parsed conversation history o
 
 **Client-to-server messages:**
 
-| Type | Fields | Description |
-|------|--------|-------------|
-| `send-input` | `text: string` | Send a complete message to the AI (written to PTY with trailing newline). Max 10 KB. |
-| `cancel` | *(none)* | Send SIGINT to interrupt the AI process |
-| `subscribe` | `sessionId: string` | Switch to a different terminal's session stream |
+| Type         | Fields              | Description                                                                          |
+| ------------ | ------------------- | ------------------------------------------------------------------------------------ |
+| `send-input` | `text: string`      | Send a complete message to the AI (written to PTY with trailing newline). Max 10 KB. |
+| `cancel`     | _(none)_            | Send SIGINT to interrupt the AI process                                              |
+| `subscribe`  | `sessionId: string` | Switch to a different terminal's session stream                                      |
 
 **Server-to-client messages:**
 
-| Type | Fields | Description |
-|------|--------|-------------|
-| `history` | `messages: HistoryMessage[]` | Full conversation history (sent once on connect) |
-| `message` | `role: string, content: ContentBlock[], timestamp: string` | New user or assistant message |
-| `tool-use` | `name: string, input: object, status: string, id: string` | AI invoked a tool |
+| Type          | Fields                                                         | Description                                      |
+| ------------- | -------------------------------------------------------------- | ------------------------------------------------ |
+| `history`     | `messages: HistoryMessage[]`                                   | Full conversation history (sent once on connect) |
+| `message`     | `role: string, content: ContentBlock[], timestamp: string`     | New user or assistant message                    |
+| `tool-use`    | `name: string, input: object, status: string, id: string`      | AI invoked a tool                                |
 | `tool-result` | `id: string, output: string, status: string, isError: boolean` | Tool execution result (output truncated to 2 KB) |
-| `thinking` | `text: string` | AI thinking/reasoning block |
-| `session-end` | *(none)* | The AI turn completed (stop_reason = end_turn) |
-| `error` | `message: string` | Error message |
+| `thinking`    | `text: string`                                                 | AI thinking/reasoning block                      |
+| `session-end` | _(none)_                                                       | The AI turn completed (stop_reason = end_turn)   |
+| `error`       | `message: string`                                              | Error message                                    |
 
 **HistoryMessage schema:**
 
@@ -923,13 +923,13 @@ Global event bus. Broadcast-only channel that pushes system-wide events to all c
 
 **Event types broadcast to all clients:**
 
-| Type | Fields | Description |
-|------|--------|-------------|
-| `session-started` | `sessionId, project, source` | An AI session began. `source` is `"claude-code"` or `"opencode"`. |
-| `session-ended` | `sessionId, summary` | An AI session completed |
-| `permission-requested` | `requestId, tool, input` | A permission request was sent to the iOS device |
-| `permission-resolved` | `requestId, decision` | A permission request was resolved (`"allow"` or `"deny"`) |
-| `terminal-created` | `terminalId, command` | A new terminal was launched |
-| `terminal-exited` | `terminalId, code` | A terminal process exited |
+| Type                   | Fields                       | Description                                                       |
+| ---------------------- | ---------------------------- | ----------------------------------------------------------------- |
+| `session-started`      | `sessionId, project, source` | An AI session began. `source` is `"claude-code"` or `"opencode"`. |
+| `session-ended`        | `sessionId, summary`         | An AI session completed                                           |
+| `permission-requested` | `requestId, tool, input`     | A permission request was sent to the iOS device                   |
+| `permission-resolved`  | `requestId, decision`        | A permission request was resolved (`"allow"` or `"deny"`)         |
+| `terminal-created`     | `terminalId, command`        | A new terminal was launched                                       |
+| `terminal-exited`      | `terminalId, code`           | A terminal process exited                                         |
 
 All events include a `timestamp` field (ISO 8601).

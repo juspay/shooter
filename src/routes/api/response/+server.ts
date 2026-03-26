@@ -1,5 +1,6 @@
 import { cleanup, getDecision, setDecision } from '$lib/modules/server/apn/pending-requests';
 import { validateAuth } from '$lib/modules/server/auth';
+import { toErrorMessage } from '$lib/modules/server/utils/error';
 import { json } from '@sveltejs/kit';
 
 import type { RequestHandler } from './$types';
@@ -9,7 +10,9 @@ export const POST: RequestHandler = async ({ request }) => {
   cleanup();
 
   const authError = validateAuth(request);
-  if (authError) {return authError;}
+  if (authError) {
+    return authError;
+  }
 
   let body: { decision?: string; requestId?: string };
   try {
@@ -42,8 +45,8 @@ export const POST: RequestHandler = async ({ request }) => {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    const err = error as Error;
-    return json({ details: err.message, error: 'Failed to process response' }, { status: 500 });
+    console.error('[response] Failed to process response:', toErrorMessage(error));
+    return json({ error: 'Failed to process response' }, { status: 500 });
   }
 };
 
@@ -52,7 +55,9 @@ export const GET: RequestHandler = ({ request, url }) => {
   cleanup();
 
   const authErr = validateAuth(request);
-  if (authErr) {return authErr;}
+  if (authErr) {
+    return authErr;
+  }
 
   const requestId = url.searchParams.get('requestId');
   if (!requestId) {

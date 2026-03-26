@@ -2,23 +2,24 @@
 // Relays terminal output to connected clients and routes client input
 // (keystrokes, resize, signals) back to the PTY.
 
+import type { TerminalSignal } from '$generated/types';
 import type { WebSocket } from 'ws';
 
 // ── Types ────────────────────────────────────────────────────────────
 
 /** Inbound messages from the client. */
 type ClientMessage =
-  | { cols: number; rows: number; type: 'resize'; }
-  | { data: string; type: 'input'; }
-  | { signal: 'SIGINT' | 'SIGTERM' | 'SIGTSTP'; type: 'signal'; };
+  | { cols: number; rows: number; type: 'resize' }
+  | { data: string; type: 'input' }
+  | { signal: TerminalSignal; type: 'signal' };
 
 /** Outbound messages to the client. */
 type ServerMessage =
-  | { bytes: number; type: 'output-dropped'; }
-  | { chunk: number; data: string; total: number; type: 'scrollback'; }
-  | { code: null | number; signal: null | string; type: 'exit'; }
-  | { data: string; type: 'output'; }
-  | { message: string; type: 'error'; };
+  | { bytes: number; type: 'output-dropped' }
+  | { chunk: number; data: string; total: number; type: 'scrollback' }
+  | { code: null | number; signal: null | string; type: 'exit' }
+  | { data: string; type: 'output' }
+  | { message: string; type: 'error' };
 
 // ── Constants ────────────────────────────────────────────────────────
 
@@ -29,8 +30,8 @@ const SIGNAL_MAP: Record<string, NodeJS.Signals> = {
   SIGTSTP: 'SIGTSTP',
 };
 
-// ── PTY Manager interface ────────────────────────────────────────────
-// Minimal duck-typed interface matching the real pty-manager singleton.
+// ── PTY Manager type ─────────────────────────────────────────────────
+// Minimal duck-typed shape matching the real pty-manager singleton.
 
 interface ManagedTerminal {
   clients: Set<WebSocket>;
@@ -159,18 +160,29 @@ function parseClientMessage(raw: string): ClientMessage | null {
 
     switch (msg.type) {
       case 'input':
-        if (typeof msg.data !== 'string') {return null;}
+        if (typeof msg.data !== 'string') {
+          return null;
+        }
         return { data: msg.data, type: 'input' };
       case 'resize':
-        if (typeof msg.cols !== 'number' || typeof msg.rows !== 'number') {return null;}
-        if (msg.cols < 1 || msg.rows < 1 || msg.cols > 500 || msg.rows > 200) {return null;}
+        if (
+          typeof msg.cols !== 'number' ||
+          typeof msg.rows !== 'number' ||
+          !Number.isFinite(msg.cols) ||
+          !Number.isFinite(msg.rows)
+        ) {
+          return null;
+        }
+        if (msg.cols < 1 || msg.rows < 1 || msg.cols > 500 || msg.rows > 200) {
+          return null;
+        }
         return { cols: Math.floor(msg.cols), rows: Math.floor(msg.rows), type: 'resize' };
       case 'signal':
-        if (typeof msg.signal !== 'string' || !(msg.signal in SIGNAL_MAP)) {return null;}
+        if (typeof msg.signal !== 'string' || !Object.hasOwn(SIGNAL_MAP, msg.signal)) {
+          return null;
+        }
         return {
-          signal: msg.signal as ClientMessage & { type: 'signal' } extends { signal: infer S }
-            ? S
-            : never,
+          signal: msg.signal as TerminalSignal,
           type: 'signal',
         };
       default:

@@ -1,14 +1,9 @@
 // Shared in-memory store for pending permission requests.
 // Used by /api/notify (creates entries) and /api/response (reads/updates).
 
-export interface PendingRequest {
-  createdAt: number;
-  decidedAt: null | number;
-  decision: 'allow' | 'deny' | null;
-  sessionId: string;
-  toolInput: Record<string, unknown>;
-  toolName: string;
-}
+import type { PendingRequest } from '$generated/types';
+
+export type { PendingRequest };
 
 const MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes
 

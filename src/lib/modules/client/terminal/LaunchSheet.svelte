@@ -1,22 +1,14 @@
 <script lang="ts">
+  import type { CreateTerminalResponse } from '$generated/types';
+
   import { Banner, Button, Choicebox, Input, Select } from '@juspay/svelte-ui-components';
   import { onMount } from 'svelte';
 
   interface Props {
     apiKey: string;
     onClose: () => void;
-    onLaunch: (response: TerminalResponse) => void;
+    onLaunch: (response: CreateTerminalResponse) => void;
     open: boolean;
-  }
-
-  interface TerminalResponse {
-    command: string;
-    createdAt: string;
-    cwd: string;
-    id: string;
-    pid: number;
-    sessionWs: string;
-    ws: string;
   }
 
   interface Preset {
@@ -50,7 +42,9 @@
       const response = await fetch('/api/sessions?limit=50&offset=0', {
         headers: { Authorization: `Bearer ${apiKey}` },
       });
-      if (!response.ok) {return;}
+      if (!response.ok) {
+        return;
+      }
       const data: { projects: { fullPath: string }[] } = await response.json();
       const paths = data.projects
         .map((p) => p.fullPath)
@@ -78,14 +72,20 @@
 
   function getEffectiveCwd(): string {
     const custom = customCwd.trim();
-    if (custom) {return custom;}
-    if (selectedCwd) {return selectedCwd;}
+    if (custom) {
+      return custom;
+    }
+    if (selectedCwd) {
+      return selectedCwd;
+    }
     return '/tmp';
   }
 
   async function handleLaunch(): Promise<void> {
     const command = getCommand();
-    if (!command) {return;}
+    if (!command) {
+      return;
+    }
 
     launching = true;
     launchError = '';
@@ -109,7 +109,7 @@
         return;
       }
 
-      const result: TerminalResponse = await response.json();
+      const result: CreateTerminalResponse = await response.json();
       onLaunch(result);
     } catch {
       launchError = 'Network error — is the server running?';
@@ -152,7 +152,9 @@
             <Choicebox
               mode="radio"
               selected={selectedPreset === i}
-              onclick={() => { selectPreset(i); }}
+              onclick={() => {
+                selectPreset(i);
+              }}
               classes="preset-choice"
             >
               {preset.label}
@@ -164,10 +166,14 @@
       <div class="section">
         <span class="section-label">Working Directory</span>
         <Select
-          items={projectPaths.length > 0 ? projectPaths.map((p) => ({ id: p, label: p })) : [{ id: '', label: 'No recent projects' }]}
-          value={selectedCwd ? [selectedCwd] : (projectPaths.length > 0 ? [projectPaths[0]] : [''])}
+          items={projectPaths.length > 0
+            ? projectPaths.map((p) => ({ id: p, label: p }))
+            : [{ id: '', label: 'No recent projects' }]}
+          value={selectedCwd ? [selectedCwd] : projectPaths.length > 0 ? [projectPaths[0]] : ['']}
           placeholder="Select a project"
-          onchange={(value) => { selectedCwd = value[0] || ''; }}
+          onchange={(value) => {
+            selectedCwd = value[0] || '';
+          }}
           classes="launch-select"
         />
         <div class="custom-cwd-group">
@@ -214,7 +220,8 @@
     width: 100%;
     max-height: 90vh;
     overflow-y: auto;
-    padding: var(--space-4) var(--space-5) calc(var(--space-8, 32px) + env(safe-area-inset-bottom, 0px));
+    padding: var(--space-4) var(--space-5)
+      calc(var(--space-8, 32px) + env(safe-area-inset-bottom, 0px));
     animation: slideUp 0.25s ease;
   }
 

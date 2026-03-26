@@ -14,10 +14,12 @@ import type { RequestHandler } from './$types';
 // ── Endpoint ────────────────────────────────────────────────────────
 
 export const GET: RequestHandler = ({ request }) => {
-	const authError = validateAuth(request);
-	if (authError) {return authError;}
+  const authError = validateAuth(request);
+  if (authError) {
+    return authError;
+  }
 
-	return json({
-		connectedClients: getConnectedClientCount(),
-	});
+  return json({
+    connectedClients: getConnectedClientCount(),
+  });
 };

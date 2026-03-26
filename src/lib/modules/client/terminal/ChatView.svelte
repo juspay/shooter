@@ -5,10 +5,7 @@
     ToolUsePart,
   } from '$lib/modules/server/sessions/types';
 
-  import {
-    getToolDescription,
-    renderMarkdown,
-  } from '$lib/modules/client/common';
+  import { getToolDescription, renderMarkdown } from '$lib/modules/client/common';
   import { Accordion, Avatar, Button, Input, Pill } from '@juspay/svelte-ui-components';
   import { tick } from 'svelte';
   import { SvelteSet } from 'svelte/reactivity';
@@ -48,13 +45,17 @@
   });
 
   async function scrollToBottom(): Promise<void> {
-    if (!shouldAutoScroll || !chatContainerEl) { return; }
+    if (!shouldAutoScroll || !chatContainerEl) {
+      return;
+    }
     await tick();
     chatContainerEl.scrollTop = chatContainerEl.scrollHeight;
   }
 
   function handleScroll(): void {
-    if (!chatContainerEl) { return; }
+    if (!chatContainerEl) {
+      return;
+    }
     const { clientHeight, scrollHeight, scrollTop } = chatContainerEl;
     shouldAutoScroll = scrollHeight - scrollTop - clientHeight < 100;
   }
@@ -62,7 +63,9 @@
   // --- Input handling ---
   function handleSend(): void {
     const text = inputText.trim();
-    if (!text) { return; }
+    if (!text) {
+      return;
+    }
     inputText = '';
     onSendInput?.(text);
   }
@@ -109,9 +112,7 @@
         <span class="chatview-title">Session</span>
       </div>
       <div class="chatview-header-right">
-        <span
-          class="connection-status {connectionState}"
-        >
+        <span class="connection-status {connectionState}">
           <span class="connection-status-dot"></span>
           {connectionState === 'connected'
             ? 'Connected'
@@ -120,18 +121,20 @@
               : 'Disconnected'}
         </span>
         {#if !sessionEnded && onCancel}
-          <Button classes="btn-danger btn-sm" onclick={() => { onCancel(); }} text="Cancel" />
+          <Button
+            classes="btn-danger btn-sm"
+            onclick={() => {
+              onCancel();
+            }}
+            text="Cancel"
+          />
         {/if}
       </div>
     </div>
   {/if}
 
   <!-- Chat Container (scrollable) -->
-  <div
-    class="chat-container chatview-scroll"
-    bind:this={chatContainerEl}
-    onscroll={handleScroll}
-  >
+  <div class="chat-container chatview-scroll" bind:this={chatContainerEl} onscroll={handleScroll}>
     {#if messages.length === 0}
       <div class="chatview-empty">
         <p class="chatview-empty-text">Waiting for session messages...</p>
@@ -169,9 +172,14 @@
                   <div class="chat-tool-card">
                     <div
                       class="chat-tool-header"
-                      onclick={() => { toggleTool(toolId); }}
+                      onclick={() => {
+                        toggleTool(toolId);
+                      }}
                       onkeydown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') { toggleTool(toolId); }
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          toggleTool(toolId);
+                        }
                       }}
                       role="button"
                       tabindex="0"
@@ -192,9 +200,14 @@
                   <div class="chat-thinking">
                     <div
                       class="chat-thinking-header"
-                      onclick={() => { toggleTool(thinkId); }}
+                      onclick={() => {
+                        toggleTool(thinkId);
+                      }}
                       onkeydown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') { toggleTool(thinkId); }
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          toggleTool(thinkId);
+                        }
                       }}
                       role="button"
                       tabindex="0"
@@ -222,9 +235,14 @@
                 <div class="chat-tool-card">
                   <div
                     class="chat-tool-header"
-                    onclick={() => { toggleTool(resultId); }}
+                    onclick={() => {
+                      toggleTool(resultId);
+                    }}
                     onkeydown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') { toggleTool(resultId); }
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        toggleTool(resultId);
+                      }
                     }}
                     role="button"
                     tabindex="0"

@@ -17,7 +17,12 @@
   );
 </script>
 
-<div class="connection-status" class:reconnecting={status === 'reconnecting'} class:disconnected={status === 'disconnected'} class:connected={status === 'connected'}>
+<div
+  class="connection-status"
+  class:reconnecting={status === 'reconnecting'}
+  class:disconnected={status === 'disconnected'}
+  class:connected={status === 'connected'}
+>
   <span class="status-dot {status}"></span>
   <span class="status-label">{label}</span>
   {#if status === 'disconnected' && onretry}

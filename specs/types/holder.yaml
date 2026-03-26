@@ -1,0 +1,214 @@
+# Holder Client Type Definitions
+# Non-top file - referenced from index.yaml
+# Contains types for the PTY holder Unix socket protocol (ndjson)
+# and the session-watcher's per-file tracking state
+
+Holder:
+  # ─── Connect Result ──────────────────────────────────────────────
+
+  ConnectResult:
+    type: object
+    description: Result returned after successfully connecting to a PTY holder process and completing the info+scrollback handshake
+    required:
+      - pid
+      - exited
+      - scrollback
+    properties:
+      pid:
+        type: number
+        description: OS process ID of the PTY child process
+      exited:
+        type: boolean
+        description: Whether the PTY process has already exited
+      exitCode:
+        type: number
+        nullable: true
+        description: Process exit code if exited, or null if still running
+      scrollback:
+        type: string
+        description: Scrollback buffer content replayed on connect
+
+  # ─── Named variant types for IncomingMessage oneOf ──────────────
+
+  IncomingActivityMessage:
+    type: object
+    description: Terminal activity state change (active/idle)
+    required:
+      - type
+      - active
+    properties:
+      type:
+        type: string
+        const: activity
+      active:
+        type: boolean
+        description: Whether the terminal is currently producing output
+
+  IncomingExitMessage:
+    type: object
+    description: PTY process has exited
+    required:
+      - type
+      - code
+      - signal
+    properties:
+      type:
+        type: string
+        const: exit
+      code:
+        type: number
+        nullable: true
+        description: Process exit code
+      signal:
+        type: string
+        nullable: true
+        description: Signal that caused the exit
+
+  IncomingOutputMessage:
+    type: object
+    description: PTY output chunk during normal operation
+    required:
+      - type
+      - data
+    properties:
+      type:
+        type: string
+        const: output
+      data:
+        type: string
+        description: Raw PTY output data
+
+  IncomingScrollbackMessage:
+    type: object
+    description: Full scrollback replay sent on connection
+    required:
+      - type
+      - data
+    properties:
+      type:
+        type: string
+        const: scrollback
+      data:
+        type: string
+        description: Full scrollback buffer content
+
+  IncomingInfoMessage:
+    type: object
+    description: Current holder state sent on connection
+    required:
+      - type
+      - pid
+      - exited
+      - exitCode
+    properties:
+      type:
+        type: string
+        const: info
+      pid:
+        type: number
+        description: PTY child process ID
+      exited:
+        type: boolean
+        description: Whether the PTY process has exited
+      exitCode:
+        type: number
+        nullable: true
+        description: Exit code if process has exited
+
+  IncomingCwdMessage:
+    type: object
+    description: Current working directory change detected via OSC 7
+    required:
+      - type
+      - path
+    properties:
+      type:
+        type: string
+        const: cwd
+      path:
+        type: string
+        description: Absolute path of the new working directory
+
+  # ─── Incoming Messages (holder → server) ─────────────────────────
+
+  IncomingMessage:
+    description: Messages received from the PTY holder process over Unix socket (ndjson)
+    oneOf:
+      - $ref: './specs/types/holder.yaml#/Holder/IncomingActivityMessage'
+      - $ref: './specs/types/holder.yaml#/Holder/IncomingExitMessage'
+      - $ref: './specs/types/holder.yaml#/Holder/IncomingOutputMessage'
+      - $ref: './specs/types/holder.yaml#/Holder/IncomingScrollbackMessage'
+      - $ref: './specs/types/holder.yaml#/Holder/IncomingInfoMessage'
+      - $ref: './specs/types/holder.yaml#/Holder/IncomingCwdMessage'
+
+  # ─── Named variant types for OutgoingMessage oneOf ──────────────
+
+  OutgoingResizeMessage:
+    type: object
+    description: Resize the PTY dimensions
+    required:
+      - type
+      - cols
+      - rows
+    properties:
+      type:
+        type: string
+        const: resize
+      cols:
+        type: number
+        description: New width in columns
+      rows:
+        type: number
+        description: New height in rows
+
+  OutgoingInputMessage:
+    type: object
+    description: Write data to PTY stdin
+    required:
+      - type
+      - data
+    properties:
+      type:
+        type: string
+        const: input
+      data:
+        type: string
+        description: Raw input data to write to PTY
+
+  OutgoingKillMessage:
+    type: object
+    description: Send a signal to the PTY process
+    required:
+      - type
+    properties:
+      type:
+        type: string
+        const: kill
+      signal:
+        type: string
+        description: Signal name to send (default SIGTERM)
+
+  # ─── Outgoing Messages (server → holder) ─────────────────────────
+
+  OutgoingMessage:
+    description: Messages sent to the PTY holder process over Unix socket (ndjson)
+    oneOf:
+      - $ref: './specs/types/holder.yaml#/Holder/OutgoingResizeMessage'
+      - $ref: './specs/types/holder.yaml#/Holder/OutgoingInputMessage'
+      - $ref: './specs/types/holder.yaml#/Holder/OutgoingKillMessage'
+
+  # ─── Session Watcher Types ──────────────────────────────────────
+
+  WatchedFile:
+    type: object
+    description: Tracking state for a JSONL session file being watched by the SessionWatcher
+    required:
+      - filePath
+      - offset
+    properties:
+      filePath:
+        type: string
+        description: Absolute path to the JSONL session file being watched
+      offset:
+        type: number
+        description: Byte offset of the last read position in the file

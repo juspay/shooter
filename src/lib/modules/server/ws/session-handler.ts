@@ -3,6 +3,7 @@
 // on connect and streams new messages (text, tool-use, tool-result,
 // thinking) as they appear.
 
+import type { MessageRole, TextContentBlock } from '$generated/types';
 import type { WebSocket } from 'ws';
 
 import type { ConversationMessage, MessagePart } from '../sessions/types';
@@ -11,8 +12,8 @@ import type { ConversationMessage, MessagePart } from '../sessions/types';
 
 /** Inbound messages from the client. */
 type ClientMessage =
-  | { sessionId: string; type: 'subscribe'; }
-  | { text: string; type: 'send-input'; }
+  | { sessionId: string; type: 'subscribe' }
+  | { text: string; type: 'send-input' }
   | { type: 'cancel' };
 
 /** A message in the history payload. */
@@ -25,10 +26,10 @@ interface HistoryMessage {
 
 /** A single part within a history message — discriminated union. */
 type HistoryPart =
-  | { content: string; type: 'text'; }
-  | { content: string; type: 'thinking'; }
-  | { id: string; input: Record<string, unknown>; toolName: string; type: 'tool_use'; }
-  | { isError: boolean; output: string; toolUseId: string; type: 'tool_result'; };
+  | { content: string; type: 'text' }
+  | { content: string; type: 'thinking' }
+  | { id: string; input: Record<string, unknown>; toolName: string; type: 'tool_use' }
+  | { isError: boolean; output: string; toolUseId: string; type: 'tool_result' };
 
 interface ManagedTerminal {
   id: string;
@@ -41,36 +42,34 @@ interface ManagedTerminal {
   status: 'exited' | 'running';
 }
 
-/** Role values that appear in session messages. */
-type MessageRole = 'assistant' | 'system' | 'user';
-
 interface PtyManagerLike {
   getTerminal: (id: string) => ManagedTerminal | undefined;
 }
 
-// ── PTY Manager interface ────────────────────────────────────────────
+// ── PTY Manager type ─────────────────────────────────────────────────
 
 /** Outbound messages to the client. */
 type ServerMessage =
-  | { content: TextContentBlock[]; role: MessageRole; timestamp: string; type: 'message'; }
-  | { id: string; input: Record<string, unknown>; name: string; status: 'running'; type: 'tool-use'; }
-  | { id: string; isError: boolean; output: string; status: 'done'; type: 'tool-result'; }
-  | { message: string; type: 'error'; }
-  | { messages: HistoryMessage[]; type: 'history'; }
-  | { text: string; type: 'thinking'; }
+  | { content: TextContentBlock[]; role: MessageRole; timestamp: string; type: 'message' }
+  | {
+      id: string;
+      input: Record<string, unknown>;
+      name: string;
+      status: 'running';
+      type: 'tool-use';
+    }
+  | { id: string; isError: boolean; output: string; status: 'done'; type: 'tool-result' }
+  | { message: string; type: 'error' }
+  | { messages: HistoryMessage[]; type: 'history' }
+  | { text: string; type: 'thinking' }
   | { type: 'session-end' };
 
 interface SessionWatcherLike {
   getHistory: (sessionFile: string) => ConversationMessage[];
-  subscribe: (sessionFile: string, callback: (messages: ConversationMessage[]) => void) => () => void;
-}
-
-// ── Session Watcher interface ────────────────────────────────────────
-
-/** Content block in the live 'message' payload. */
-interface TextContentBlock {
-  content: string;
-  type: 'text';
+  subscribe: (
+    sessionFile: string,
+    callback: (messages: ConversationMessage[]) => void
+  ) => () => void;
 }
 
 // ── Module-level references ──────────────────────────────────────────
@@ -139,7 +138,7 @@ export function handleSessionConnection(ws: WebSocket, terminalId: string): void
             safeSend(ws, { message: 'Terminal has exited', type: 'error' });
             return;
           }
-          currentTerminal.pty.write(`${msg.text  }\n`);
+          currentTerminal.pty.write(`${msg.text}\n`);
           break;
         }
 
@@ -218,8 +217,8 @@ export function setSessionWatcher(watcher: SessionWatcherLike): void {
  */
 function conversationToHistory(messages: ConversationMessage[]): HistoryMessage[] {
   return messages
-    .filter(msg => msg.parts.length > 0)
-    .map(msg => ({
+    .filter((msg) => msg.parts.length > 0)
+    .map((msg) => ({
       content: msg.parts.map(partToHistoryPart),
       id: msg.id,
       role: msg.role,
@@ -288,12 +287,18 @@ function parseClientMessage(raw: string): ClientMessage | null {
       case 'cancel':
         return { type: 'cancel' };
       case 'send-input':
-        if (typeof msg.text !== 'string' || msg.text.length === 0) {return null;}
+        if (typeof msg.text !== 'string' || msg.text.length === 0) {
+          return null;
+        }
         // Cap input length at 10KB to prevent abuse.
-        if (msg.text.length > 10240) {return null;}
+        if (msg.text.length > 10240) {
+          return null;
+        }
         return { text: msg.text, type: 'send-input' };
       case 'subscribe':
-        if (typeof msg.sessionId !== 'string' || msg.sessionId.length === 0) {return null;}
+        if (typeof msg.sessionId !== 'string' || msg.sessionId.length === 0) {
+          return null;
+        }
         return { sessionId: msg.sessionId, type: 'subscribe' };
       default:
         return null;
@@ -315,7 +320,12 @@ function partToHistoryPart(part: MessagePart): HistoryPart {
     case 'thinking':
       return { content: part.content, type: 'thinking' };
     case 'tool_result':
-      return { isError: part.isError, output: part.output, toolUseId: part.toolUseId, type: 'tool_result' };
+      return {
+        isError: part.isError,
+        output: part.output,
+        toolUseId: part.toolUseId,
+        type: 'tool_result',
+      };
     case 'tool_use':
       return { id: part.id, input: part.input, toolName: part.toolName, type: 'tool_use' };
   }
@@ -432,21 +442,18 @@ function subscribeWithSessionKey(
 
   // ── Stream new messages ────────────────────────────────────────
   try {
-    const unsubscribe = _sessionWatcher.subscribe(
-      sessionKey,
-      (messages: ConversationMessage[]) => {
-        if (ws.readyState !== 1 /* OPEN */) {
-          return;
-        }
+    const unsubscribe = _sessionWatcher.subscribe(sessionKey, (messages: ConversationMessage[]) => {
+      if (ws.readyState !== 1 /* OPEN */) {
+        return;
+      }
 
-        for (const msg of messages) {
-          const liveMessages = conversationToLive(msg);
-          for (const liveMsg of liveMessages) {
-            safeSend(ws, liveMsg);
-          }
+      for (const msg of messages) {
+        const liveMessages = conversationToLive(msg);
+        for (const liveMsg of liveMessages) {
+          safeSend(ws, liveMsg);
         }
       }
-    );
+    });
 
     // Store unsubscribe so we can clean up on close or re-subscribe.
     state.unsubscribe = unsubscribe;

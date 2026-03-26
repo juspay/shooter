@@ -13,15 +13,15 @@ The app does not duplicate any web UI. All dashboard rendering happens in the We
 
 ## 2. Prerequisites
 
-| Requirement | Version | Notes |
-|---|---|---|
-| Android Studio | Ladybug (2024.2) or later | Needed for SDK management and device tooling |
-| Android SDK | API 35 (compileSdk) | Install via Android Studio SDK Manager |
-| Minimum device API | 26 (Android 8.0) | Set in `app/build.gradle.kts` as `minSdk` |
-| JDK | 17 | `compileOptions` and `kotlinOptions` both target Java 17 |
-| Gradle | 8.12+ | Only required locally if generating the wrapper via `setup.sh` |
-| Firebase account | -- | Free Spark plan is sufficient for FCM |
-| Shooter server | Running | The web dashboard the app loads must be reachable |
+| Requirement        | Version                   | Notes                                                          |
+| ------------------ | ------------------------- | -------------------------------------------------------------- |
+| Android Studio     | Ladybug (2024.2) or later | Needed for SDK management and device tooling                   |
+| Android SDK        | API 35 (compileSdk)       | Install via Android Studio SDK Manager                         |
+| Minimum device API | 26 (Android 8.0)          | Set in `app/build.gradle.kts` as `minSdk`                      |
+| JDK                | 17                        | `compileOptions` and `kotlinOptions` both target Java 17       |
+| Gradle             | 8.12+                     | Only required locally if generating the wrapper via `setup.sh` |
+| Firebase account   | --                        | Free Spark plan is sufficient for FCM                          |
+| Shooter server     | Running                   | The web dashboard the app loads must be reachable              |
 
 ### Installing the JDK
 
@@ -165,13 +165,13 @@ The API key authenticates the app when sending permission responses and register
 
 The app exposes two JavaScript interfaces to the WebView:
 
-| Interface | Method | Description |
-|---|---|---|
-| `ShooterNative` | `openSettings()` | Navigates the WebView to the `/config` page |
-| `ShooterBridge` | `getConfig()` | Returns JSON with `serverUrl`, `apiKey`, `fcmToken` |
+| Interface       | Method             | Description                                              |
+| --------------- | ------------------ | -------------------------------------------------------- |
+| `ShooterNative` | `openSettings()`   | Navigates the WebView to the `/config` page              |
+| `ShooterBridge` | `getConfig()`      | Returns JSON with `serverUrl`, `apiKey`, `fcmToken`      |
 | `ShooterBridge` | `saveConfig(json)` | Persists `serverUrl` and `apiKey` from the JSON argument |
-| `ShooterBridge` | `getFcmToken()` | Returns the cached FCM registration token |
-| `ShooterBridge` | `getPlatform()` | Returns the string `"android"` |
+| `ShooterBridge` | `getFcmToken()`    | Returns the cached FCM registration token                |
+| `ShooterBridge` | `getPlatform()`    | Returns the string `"android"`                           |
 
 The web dashboard can call these from JavaScript (e.g. `ShooterBridge.getConfig()`) to synchronize settings between the native layer and the browser context.
 
@@ -183,21 +183,21 @@ The web dashboard can call these from JavaScript (e.g. `ShooterBridge.getConfig(
 
 The server sends FCM **data-only** messages (no `notification` block). This ensures `ShooterFirebaseService.onMessageReceived()` is called whether the app is in the foreground or background. The data payload contains:
 
-| Key | Required | Description |
-|---|---|---|
-| `title` | Yes | Notification title |
-| `body` | Yes | Notification body text |
-| `category` | No | If `"CLAUDE_PERMISSION"`, the notification gets Allow/Deny actions |
-| `requestId` | No | Identifies the permission request; required when `category` is `"CLAUDE_PERMISSION"` |
+| Key         | Required | Description                                                                          |
+| ----------- | -------- | ------------------------------------------------------------------------------------ |
+| `title`     | Yes      | Notification title                                                                   |
+| `body`      | Yes      | Notification body text                                                               |
+| `category`  | No       | If `"CLAUDE_PERMISSION"`, the notification gets Allow/Deny actions                   |
+| `requestId` | No       | Identifies the permission request; required when `category` is `"CLAUDE_PERMISSION"` |
 
 ### 6.2 Notification Channels
 
 The app creates two Android notification channels at startup (in `ShooterApplication`):
 
-| Channel ID | Name | Importance | Purpose |
-|---|---|---|---|
-| `permissions` | Permission Requests | HIGH | Interactive Allow/Deny notifications with vibration |
-| `events` | Session Events | DEFAULT | Informational notifications for coding session activity |
+| Channel ID    | Name                | Importance | Purpose                                                 |
+| ------------- | ------------------- | ---------- | ------------------------------------------------------- |
+| `permissions` | Permission Requests | HIGH       | Interactive Allow/Deny notifications with vibration     |
+| `events`      | Session Events      | DEFAULT    | Informational notifications for coding session activity |
 
 Users can independently configure sound, vibration, and visibility for each channel in Android system settings.
 

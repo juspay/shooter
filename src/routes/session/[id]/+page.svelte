@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { SessionViewResponse, ShooterConfig } from '$generated/types';
   import type {
     ConversationMessage,
     MessagePart,
@@ -8,35 +9,10 @@
 
   import { browser } from '$app/environment';
   import { page } from '$app/state';
-  import {
-    EmptyState,
-    getCached,
-    setCache,
-  } from '$lib/modules/client/common';
+  import { EmptyState, getCached, setCache } from '$lib/modules/client/common';
   import ChatView from '$lib/modules/client/terminal/ChatView.svelte';
   import { Banner, Pill, Shimmer } from '@juspay/svelte-ui-components';
   import { onMount } from 'svelte';
-
-  interface SessionResponse {
-    messages: ConversationMessage[];
-    session: SessionInfo;
-  }
-
-  // WebSocket message types from the live session channel
-  interface WsMessage {
-    content?: MessagePart[];
-    id?: string;
-    input?: Record<string, unknown>;
-    isError?: boolean;
-    message?: string;
-    name?: string;
-    output?: string;
-    role?: string;
-    status?: string;
-    text?: string;
-    timestamp?: string;
-    type: string;
-  }
 
   let session = $state<null | SessionInfo>(null);
   let messages = $state<ConversationMessage[]>([]);
@@ -44,12 +20,12 @@
   let error = $state<null | string>(null);
 
   // Live streaming state
-  type ConnectionState = 'connected' | 'connecting' | 'disconnected' | 'idle';
   let isSessionActive = $state(false);
-  let connectionState = $state<ConnectionState>('idle');
+  let connectionState = $state<'connected' | 'connecting' | 'disconnected' | 'idle'>('idle');
   let ws = $state<null | WebSocket>(null);
   let wsReconnectAttempts = 0;
   let wsReconnectTimer: null | number = null;
+  let disposed = false;
 
   const sessionId = $derived(page.params.id);
   const projectId = $derived(page.url.searchParams.get('project') || '');
@@ -70,7 +46,20 @@
 
   // Handle incoming WebSocket messages
   function handleWsMessage(event: MessageEvent): void {
-    let data: WsMessage;
+    let data: {
+      content?: MessagePart[];
+      id?: string;
+      input?: Record<string, unknown>;
+      isError?: boolean;
+      message?: string;
+      name?: string;
+      output?: string;
+      role?: string;
+      status?: string;
+      text?: string;
+      timestamp?: string;
+      type: string;
+    };
     try {
       data = JSON.parse(event.data);
     } catch {
@@ -119,7 +108,7 @@
       };
       appendToLastAssistant(thinkPart);
     } else if (data.type === 'error') {
-      // Server-sent error — display in the UI
+      // Server-sent error -- display in the UI
       const errorMsg: ConversationMessage = {
         id: nextWsMessageId(),
         parts: [{ content: data.text || data.message || 'Unknown error', type: 'text' }],
@@ -128,10 +117,10 @@
       };
       messages = [...messages, errorMsg];
     } else if (data.type === 'permission-requested') {
-      // Permission request — log for now (full UI integration would go here)
+      // Permission request -- log for now (full UI integration would go here)
       console.log('[session] Permission requested:', data);
     } else if (data.type === 'session-end') {
-      // Session has ended — mark as inactive
+      // Session has ended -- mark as inactive
       isSessionActive = false;
       connectionState = 'disconnected';
       if (ws) {
@@ -163,11 +152,20 @@
 
   // Connect to the live session WebSocket
   async function connectWebSocket(): Promise<void> {
-    if (!browser || !isSessionActive) {return;}
+    if (!browser || !isSessionActive || disposed) {
+      return;
+    }
 
     const saved = localStorage.getItem('shooter_config');
-    if (!saved) {return;}
-    const config = JSON.parse(saved);
+    if (!saved) {
+      return;
+    }
+    let config: ShooterConfig;
+    try {
+      config = JSON.parse(saved) as ShooterConfig;
+    } catch {
+      return;
+    }
 
     connectionState = 'connecting';
 
@@ -177,11 +175,23 @@
         headers: { Authorization: `Bearer ${config.apiKey}` },
         method: 'POST',
       });
-      if (!ticketRes.ok) {
+      if (!ticketRes.ok || disposed) {
         connectionState = 'disconnected';
+        // Schedule retry with same backoff logic as onclose
+        if (isSessionActive && !disposed && wsReconnectAttempts < 5) {
+          wsReconnectAttempts++;
+          wsReconnectTimer = window.setTimeout(() => {
+            void connectWebSocket();
+          }, 2000);
+        }
         return;
       }
       const { ticket } = await ticketRes.json();
+
+      if (disposed) {
+        connectionState = 'disconnected';
+        return;
+      }
 
       // Build WebSocket URL
       const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -190,6 +200,10 @@
       const socket = new WebSocket(wsUrl);
 
       socket.onopen = () => {
+        if (disposed) {
+          socket.close();
+          return;
+        }
         connectionState = 'connected';
         ws = socket;
         wsReconnectAttempts = 0; // Reset on successful connection
@@ -201,7 +215,7 @@
         connectionState = 'disconnected';
         ws = null;
         // Reconnect with backoff (max 5 retries)
-        if (isSessionActive && wsReconnectAttempts < 5) {
+        if (isSessionActive && !disposed && wsReconnectAttempts < 5) {
           wsReconnectAttempts++;
           wsReconnectTimer = window.setTimeout(() => {
             void connectWebSocket();
@@ -248,7 +262,14 @@
         loading = false;
         return;
       }
-      const config = JSON.parse(saved);
+      let config: ShooterConfig;
+      try {
+        config = JSON.parse(saved) as ShooterConfig;
+      } catch {
+        error = 'Invalid saved configuration. Please reconfigure in settings.';
+        loading = false;
+        return;
+      }
 
       const sid = sessionId || '';
       const pid = projectId || '';
@@ -263,14 +284,15 @@
         loading = false;
         return;
       }
-      const data: SessionResponse = await res.json();
-      session = data.session;
-      messages = (data.messages || []).reverse();
-      setCache(`shooter_session_${sid}`, { messages: data.messages || [], session: data.session });
+      const data: SessionViewResponse = await res.json();
+      session = data.session as SessionInfo;
+      const rawMessages: unknown[] = Array.isArray(data.messages) ? data.messages : [];
+      messages = [...(rawMessages as ConversationMessage[])].reverse();
+      setCache(`shooter_session_${sid}`, { messages: rawMessages, session: data.session });
 
       // Check if session is active and connect WebSocket if so
       if (data.session) {
-        isSessionActive = checkSessionActive(data.session);
+        isSessionActive = checkSessionActive(data.session as SessionInfo);
         if (isSessionActive) {
           void connectWebSocket();
         }
@@ -289,7 +311,7 @@
     };
     if (cached) {
       session = cached.session;
-      messages = (cached.messages || []).reverse();
+      messages = Array.isArray(cached.messages) ? [...cached.messages].reverse() : [];
       loading = false;
     }
 
@@ -297,6 +319,7 @@
 
     // Cleanup WebSocket and reconnect timer on component destroy
     return () => {
+      disposed = true;
       if (wsReconnectTimer) {
         clearTimeout(wsReconnectTimer);
         wsReconnectTimer = null;
@@ -376,12 +399,7 @@
 
     <!-- Chat Container -->
     <div class="session-chat-container">
-      <ChatView
-        messages={messages}
-        connectionState={connectionState}
-        showInput={false}
-        sessionEnded={!isSessionActive}
-      />
+      <ChatView {messages} {connectionState} showInput={false} sessionEnded={!isSessionActive} />
     </div>
   {/if}
 </main>

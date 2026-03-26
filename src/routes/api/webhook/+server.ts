@@ -1,20 +1,22 @@
 import { validateAuth } from '$lib/modules/server/auth';
+import { toErrorMessage } from '$lib/modules/server/utils/error';
 import { json } from '@sveltejs/kit';
 
 import type { RequestHandler } from './$types';
 
-type WebhookBody = Record<string, unknown>;
-
+// TODO: Add HMAC signature validation for webhook payloads.
+// This is currently a stub endpoint — no signature verification is performed.
 export const POST: RequestHandler = async ({ request }) => {
   try {
     const authError = validateAuth(request);
-    if (authError) {return authError;}
+    if (authError) {
+      return authError;
+    }
 
-    const body = (await request.json()) as WebhookBody;
+    const body = (await request.json()) as Record<string, unknown>;
 
     console.log('Webhook received:', {
       body,
-      headers: Object.fromEntries(request.headers.entries()),
       timestamp: new Date().toISOString(),
     });
 
@@ -22,19 +24,15 @@ export const POST: RequestHandler = async ({ request }) => {
     // For now, just log and acknowledge
 
     return json({
-      data: body,
       message: 'Webhook received successfully',
       success: true,
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    const err = error as Error;
-    console.error('Webhook error:', err);
+    console.error('[webhook] Failed to process webhook:', toErrorMessage(error));
     return json(
       {
-        details: err.message,
         error: 'Failed to process webhook',
-        timestamp: new Date().toISOString(),
       },
       { status: 500 }
     );

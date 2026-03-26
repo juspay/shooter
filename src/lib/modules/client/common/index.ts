@@ -3,6 +3,7 @@ export { getCached, setCache } from './cache';
 export { default as Card } from './Card.svelte';
 export { isShooterConfig } from './config-guard';
 export { default as EmptyState } from './EmptyState.svelte';
+export { toErrorMessage } from './error';
 
 export { default as Icon } from './Icon.svelte';
 export { renderMarkdown } from './markdown';

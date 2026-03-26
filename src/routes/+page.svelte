@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ShooterConfig } from '$lib/types/config';
+  import type { ProjectGroup, ShooterConfig } from '$generated/types';
 
   import { goto } from '$app/navigation';
   import {
@@ -12,14 +12,6 @@
   } from '$lib/modules/client/common';
   import { Button, Pill, Shimmer } from '@juspay/svelte-ui-components';
   import { onDestroy, onMount } from 'svelte';
-
-  interface ProjectGroup {
-    fullPath: string;
-    id: string;
-    lastModified: string;
-    name: string;
-    sessionCount: number;
-  }
 
   const POLL_INTERVAL_MS = 30_000; // 30s - avoid heavy reflows
   const PAGE_SIZE = 20;
@@ -150,8 +142,8 @@
       </div>
       <div class="page-actions">
         <Button classes="btn-secondary" onclick={forceRefresh} disabled={loading}>
-            <Icon name="refresh" size={14} />
-            Refresh
+          <Icon name="refresh" size={14} />
+          Refresh
         </Button>
       </div>
     </div>
@@ -189,7 +181,10 @@
             <Pill text={formatRelativeTime(project.lastModified)} classes="pill-session-time" />
           </div>
           <div class="session-stats">
-            <span><strong>{project.sessionCount}</strong> {project.sessionCount === 1 ? 'session' : 'sessions'}</span>
+            <span
+              ><strong>{project.sessionCount}</strong>
+              {project.sessionCount === 1 ? 'session' : 'sessions'}</span
+            >
           </div>
         </a>
       {/each}

@@ -7,79 +7,79 @@ import { join } from 'path';
 
 import type { RequestHandler } from './$types';
 
-interface DeviceTokenRequest {
-	bundleId?: string;
-	deviceToken?: string;
-	platform: string;
-	token?: string;
-}
-
-interface DeviceTokens {
-	android?: string;
-	ios?: string;
-}
-
 const TOKENS_DIR = join(homedir(), '.shooter');
 const TOKENS_FILE = join(TOKENS_DIR, 'device-tokens.json');
 
-function readTokens(): DeviceTokens {
-	try {
-		if (existsSync(TOKENS_FILE)) {
-			return JSON.parse(readFileSync(TOKENS_FILE, 'utf-8'));
-		}
-	} catch {
-		// Corrupt file — start fresh
-	}
-	return {};
+function readTokens(): { android?: string; ios?: string } {
+  try {
+    if (existsSync(TOKENS_FILE)) {
+      const parsed: unknown = JSON.parse(readFileSync(TOKENS_FILE, 'utf-8'));
+      // Guard against valid-but-wrong JSON (null, array, number, string)
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return {};
+      }
+      return parsed as { android?: string; ios?: string };
+    }
+  } catch {
+    // Corrupt file -- start fresh
+  }
+  return {};
 }
 
-function writeTokens(tokens: DeviceTokens): void {
-	if (!existsSync(TOKENS_DIR)) {
-		mkdirSync(TOKENS_DIR, { recursive: true });
-	}
-	writeFileSync(TOKENS_FILE, JSON.stringify(tokens, null, 2), 'utf-8');
+function writeTokens(tokens: { android?: string; ios?: string }): void {
+  if (!existsSync(TOKENS_DIR)) {
+    mkdirSync(TOKENS_DIR, { mode: 0o700, recursive: true });
+  }
+  writeFileSync(TOKENS_FILE, JSON.stringify(tokens, null, 2), { encoding: 'utf-8', mode: 0o600 });
 }
 
 export const POST: RequestHandler = async ({ request }) => {
-	const authError = validateAuth(request);
-	if (authError) {return authError;}
+  const authError = validateAuth(request);
+  if (authError) {
+    return authError;
+  }
 
-	let body: DeviceTokenRequest;
-	try {
-		body = await request.json();
-	} catch {
-		return json({ error: 'Invalid JSON body' }, { status: 400 });
-	}
+  let body: { bundleId?: string; deviceToken?: string; platform: string; token?: string };
+  try {
+    const parsed: unknown = await request.json();
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return json({ error: 'Invalid JSON body: expected an object' }, { status: 400 });
+    }
+    body = parsed as typeof body;
+  } catch {
+    return json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
 
-	const platform = body.platform;
-	if (!platform || (platform !== 'ios' && platform !== 'android')) {
-		return json(
-			{ error: 'Missing or invalid platform (must be "ios" or "android")' },
-			{ status: 400 },
-		);
-	}
+  const platform = body.platform;
+  if (!platform || (platform !== 'ios' && platform !== 'android')) {
+    return json(
+      { error: 'Missing or invalid platform (must be "ios" or "android")' },
+      { status: 400 }
+    );
+  }
 
-	// iOS sends "deviceToken", Android sends "token"
-	const token = body.deviceToken || body.token;
-	if (!token || typeof token !== 'string' || token.trim().length === 0) {
-		return json({ error: 'Missing device token (deviceToken or token)' }, { status: 400 });
-	}
+  // iOS sends "deviceToken", Android sends "token"
+  const rawToken = body.deviceToken || body.token;
+  if (!rawToken || typeof rawToken !== 'string' || rawToken.trim().length === 0) {
+    return json({ error: 'Missing device token (deviceToken or token)' }, { status: 400 });
+  }
+  const token = rawToken.trim();
 
-	// Persist to ~/.shooter/device-tokens.json
-	const tokens = readTokens();
-	tokens[platform] = token;
-	writeTokens(tokens);
+  // Persist to ~/.shooter/device-tokens.json
+  const tokens = readTokens();
+  tokens[platform] = token;
+  writeTokens(tokens);
 
-	// Update in-memory env so APNs can use it immediately (iOS is the primary APNs target)
-	if (platform === 'ios') {
-		(env as Record<string, string>).DEVICE_TOKEN = token;
-	}
+  // Update in-memory env so APNs can use it immediately (iOS is the primary APNs target)
+  if (platform === 'ios') {
+    (env as Record<string, string>).DEVICE_TOKEN = token;
+  }
 
-	console.log(`[device-token] Registered ${platform} token (length: ${token.length})`);
+  console.log(`[device-token] Registered ${platform} token (length: ${token.length})`);
 
-	return json({
-		platform,
-		success: true,
-		timestamp: new Date().toISOString(),
-	});
+  return json({
+    platform,
+    success: true,
+    timestamp: new Date().toISOString(),
+  });
 };

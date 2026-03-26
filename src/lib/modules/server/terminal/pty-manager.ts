@@ -1,3 +1,4 @@
+import type { TerminalRecord } from '$generated/types';
 import type WebSocket from 'ws';
 
 import { type ChildProcess, fork } from 'child_process';
@@ -76,7 +77,9 @@ class PtyManager {
   private terminals = new Map<string, ManagedTerminal>();
 
   constructor() {
-    this.cleanupTimer = setInterval(() => { this.cleanup(); }, CLEANUP_INTERVAL_MS);
+    this.cleanupTimer = setInterval(() => {
+      this.cleanup();
+    }, CLEANUP_INTERVAL_MS);
   }
 
   // -----------------------------------------------------------------------
@@ -86,7 +89,9 @@ class PtyManager {
 
   attach(id: string, ws: WebSocket): boolean {
     const terminal = this.terminals.get(id);
-    if (!terminal) {return false;}
+    if (!terminal) {
+      return false;
+    }
 
     terminal.clients.add(ws);
     terminal.outputBuffers.set(ws, { data: [], size: 0 });
@@ -103,10 +108,12 @@ class PtyManager {
 
   cleanup(): void {
     const now = Date.now();
-    const exited: { exitedAt: number; id: string; }[] = [];
+    const exited: { exitedAt: number; id: string }[] = [];
 
     for (const [id, terminal] of this.terminals) {
-      if (terminal.status !== 'exited') {continue;}
+      if (terminal.status !== 'exited') {
+        continue;
+      }
 
       const exitTime = terminal.exitedAt?.getTime() ?? terminal.createdAt.getTime();
 
@@ -304,7 +311,9 @@ class PtyManager {
 
   detach(id: string, ws: WebSocket): boolean {
     const terminal = this.terminals.get(id);
-    if (!terminal) {return false;}
+    if (!terminal) {
+      return false;
+    }
 
     terminal.clients.delete(ws);
     terminal.outputBuffers.delete(ws);
@@ -360,7 +369,9 @@ class PtyManager {
 
   getScrollback(id: string): null | string {
     const terminal = this.terminals.get(id);
-    if (!terminal) {return null;}
+    if (!terminal) {
+      return null;
+    }
 
     return terminal.scrollback;
   }
@@ -371,8 +382,12 @@ class PtyManager {
 
   kill(id: string): boolean {
     const terminal = this.terminals.get(id);
-    if (!terminal) {return false;}
-    if (terminal.status === 'exited') {return true;} // already dead
+    if (!terminal) {
+      return false;
+    }
+    if (terminal.status === 'exited') {
+      return true;
+    } // already dead
 
     try {
       // Send SIGTERM through the holder protocol
@@ -455,8 +470,12 @@ class PtyManager {
 
   remove(id: string): boolean {
     const terminal = this.terminals.get(id);
-    if (!terminal) {return false;}
-    if (terminal.status === 'running') {return false;} // cannot remove running terminals
+    if (!terminal) {
+      return false;
+    }
+    if (terminal.status === 'running') {
+      return false;
+    } // cannot remove running terminals
 
     this.evict(id);
     return true;
@@ -468,7 +487,9 @@ class PtyManager {
 
   resize(id: string, cols: number, rows: number): boolean {
     const terminal = this.terminals.get(id);
-    if (!terminal || terminal.status === 'exited') {return false;}
+    if (!terminal || terminal.status === 'exited') {
+      return false;
+    }
 
     try {
       terminal.pty.resize(cols, rows);
@@ -516,7 +537,9 @@ class PtyManager {
       }
 
       const buffer = terminal.outputBuffers.get(ws);
-      if (!buffer) {continue;}
+      if (!buffer) {
+        continue;
+      }
 
       const msgSize = Buffer.byteLength(msg, 'utf8');
 
@@ -557,7 +580,9 @@ class PtyManager {
   /** Evict a terminal, freeing all resources. */
   private evict(id: string): void {
     const terminal = this.terminals.get(id);
-    if (!terminal) {return;}
+    if (!terminal) {
+      return;
+    }
 
     // Clear session-file poll timer if still running
     if (terminal.pollTimer) {
@@ -612,11 +637,9 @@ class PtyManager {
   //          with backpressure management
   // -----------------------------------------------------------------------
 
-  private handleReconnectFailure(record: {
-    holderPid: null | number;
-    id: string;
-    socketPath: null | string;
-  }): void {
+  private handleReconnectFailure(
+    record: Pick<TerminalRecord, 'holderPid' | 'id' | 'socketPath'>
+  ): void {
     // Check if holder PID is still alive
     if (record.holderPid) {
       try {
@@ -632,7 +655,7 @@ class PtyManager {
 
     // Check for .exit sidecar
     if (record.socketPath) {
-      const exitFilePath = `${record.socketPath  }.exit`;
+      const exitFilePath = `${record.socketPath}.exit`;
       if (existsSync(exitFilePath)) {
         try {
           const exitData = JSON.parse(readFileSync(exitFilePath, 'utf8')) as {
@@ -656,30 +679,14 @@ class PtyManager {
     console.log(`[pty-manager] Marked terminal ${record.id} as orphaned`);
   }
 
-  private async reconnectOne(record: {
-    args: string;
-    cols: number;
-    command: string;
-    createdAt: string;
-    cwd: string;
-    exitCode: null | number;
-    exitedAt: null | string;
-    holderPid: null | number;
-    id: string;
-    opencodeSessionId: null | string;
-    pid: null | number;
-    rows: number;
-    sessionFile: null | string;
-    socketPath: null | string;
-    status: string;
-  }): Promise<void> {
+  private async reconnectOne(record: TerminalRecord): Promise<void> {
     if (!record.socketPath) {
       throw new Error('No socket path stored');
     }
 
     // Check for .exit sidecar file — the PTY may have exited while
     // the server was down
-    const exitFilePath = `${record.socketPath  }.exit`;
+    const exitFilePath = `${record.socketPath}.exit`;
     if (existsSync(exitFilePath)) {
       try {
         const exitData = JSON.parse(readFileSync(exitFilePath, 'utf8')) as {
@@ -752,7 +759,9 @@ class PtyManager {
       // which blocked real subscribers due to the single-callback guard.
     }
     if (terminal.openCodeSessionId) {
-      const noopCb = (_messages: ConversationMessage[]): void => { /* noop */ };
+      const noopCb = (_messages: ConversationMessage[]): void => {
+        /* noop */
+      };
       terminal.openCodeNoopCb = noopCb;
       openCodeWatcher.watch(terminal.openCodeSessionId, noopCb);
     }
@@ -778,7 +787,9 @@ class PtyManager {
   private safeSend(ws: WebSocket, msg: string): boolean {
     try {
       // readyState 1 === OPEN
-      if (ws.readyState !== 1) {return false;}
+      if (ws.readyState !== 1) {
+        return false;
+      }
       ws.send(msg);
       return true;
     } catch {
@@ -789,7 +800,9 @@ class PtyManager {
   /** Send cached scrollback data to a newly connected client in 50 KB chunks. */
   private async sendScrollback(terminal: ManagedTerminal, ws: WebSocket): Promise<void> {
     const fullData = terminal.scrollback;
-    if (fullData.length === 0) {return;}
+    if (fullData.length === 0) {
+      return;
+    }
 
     const totalBytes = Buffer.byteLength(fullData, 'utf8');
     const totalChunks = Math.ceil(totalBytes / SCROLLBACK_CHUNK_SIZE);
@@ -814,7 +827,7 @@ class PtyManager {
     while (offset < buf.length) {
       // Gate scrollback sending on actual socket backpressure
       if (ws.bufferedAmount > SCROLLBACK_CHUNK_SIZE * 2) {
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await new Promise((resolve) => setTimeout(resolve, 50));
       }
 
       const end = Math.min(offset + SCROLLBACK_CHUNK_SIZE, buf.length);
@@ -838,7 +851,9 @@ class PtyManager {
     // directory for new JSONL files created after launch.
     if (command === 'claude') {
       const projectDir = path.join(
-        process.env.HOME || '', '.claude', 'projects',
+        process.env.HOME || '',
+        '.claude',
+        'projects',
         cwd.replace(/\//g, '-')
       );
       const launchTime = terminal.createdAt.getTime();
@@ -851,13 +866,15 @@ class PtyManager {
           }
           if (terminal.sessionFile) {
             // No-op: session-handler.ts subscribes when a client connects.
-      // Previously called sessionWatcher.watch() with an empty callback,
-      // which blocked real subscribers due to the single-callback guard.
+            // Previously called sessionWatcher.watch() with an empty callback,
+            // which blocked real subscribers due to the single-callback guard.
           }
           return;
         }
         try {
-          if (!existsSync(projectDir)) {return;}
+          if (!existsSync(projectDir)) {
+            return;
+          }
           const files = readdirSync(projectDir)
             .filter((f) => f.endsWith('.jsonl'))
             .map((f) => {
@@ -882,8 +899,8 @@ class PtyManager {
               terminal.pollTimer = null;
             }
             // No-op: session-handler.ts subscribes when a client connects.
-      // Previously called sessionWatcher.watch() with an empty callback,
-      // which blocked real subscribers due to the single-callback guard.
+            // Previously called sessionWatcher.watch() with an empty callback,
+            // which blocked real subscribers due to the single-callback guard.
             // Persist session file to SQLite
             terminalStore.update(id, { sessionFile: terminal.sessionFile });
           }
@@ -892,12 +909,15 @@ class PtyManager {
         }
       }, 1500);
 
-      setTimeout(() => {
-        if (terminal.pollTimer) {
-          clearInterval(terminal.pollTimer);
-          terminal.pollTimer = null;
-        }
-      }, 5 * 60 * 1000);
+      setTimeout(
+        () => {
+          if (terminal.pollTimer) {
+            clearInterval(terminal.pollTimer);
+            terminal.pollTimer = null;
+          }
+        },
+        5 * 60 * 1000
+      );
     }
 
     // For OpenCode: detect the session via SQLite database lookup.
@@ -909,7 +929,9 @@ class PtyManager {
         if (terminal.status === 'exited' || terminal.openCodeSessionId) {
           clearInterval(pollInterval);
           if (terminal.openCodeSessionId) {
-            const noopCb = (_messages: ConversationMessage[]): void => { /* noop */ };
+            const noopCb = (_messages: ConversationMessage[]): void => {
+              /* noop */
+            };
             terminal.openCodeNoopCb = noopCb;
             openCodeWatcher.watch(terminal.openCodeSessionId, noopCb);
           }
@@ -919,7 +941,9 @@ class PtyManager {
         if (sessionId) {
           terminal.openCodeSessionId = sessionId;
           clearInterval(pollInterval);
-          const noopCb = (_messages: ConversationMessage[]): void => { /* noop */ };
+          const noopCb = (_messages: ConversationMessage[]): void => {
+            /* noop */
+          };
           terminal.openCodeNoopCb = noopCb;
           openCodeWatcher.watch(sessionId, noopCb);
           // Persist session ID to SQLite
@@ -928,7 +952,13 @@ class PtyManager {
       }, 2000);
 
       terminal.pollTimer = pollInterval;
-      setTimeout(() => { clearInterval(pollInterval); terminal.pollTimer = null; }, 5 * 60 * 1000);
+      setTimeout(
+        () => {
+          clearInterval(pollInterval);
+          terminal.pollTimer = null;
+        },
+        5 * 60 * 1000
+      );
     }
   }
 
@@ -1008,6 +1038,5 @@ function resolveHolderPath(): string {
 // server.ts (tsx) and SvelteKit's build handler load this module separately.
 const PTY_GLOBAL_KEY = '__shooter_pty_manager';
 export const ptyManager: PtyManager =
-	((globalThis as Record<string, unknown>)[PTY_GLOBAL_KEY] as PtyManager) ||
-	new PtyManager();
+  ((globalThis as Record<string, unknown>)[PTY_GLOBAL_KEY] as PtyManager) || new PtyManager();
 (globalThis as Record<string, unknown>)[PTY_GLOBAL_KEY] = ptyManager;

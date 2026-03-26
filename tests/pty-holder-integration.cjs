@@ -11,10 +11,7 @@ const net = require('net');
 const fs = require('fs');
 const path = require('path');
 
-const HOLDER_PATH = path.resolve(
-  __dirname,
-  '../src/lib/modules/server/terminal/pty-holder.cjs'
-);
+const HOLDER_PATH = path.resolve(__dirname, '../src/lib/modules/server/terminal/pty-holder.cjs');
 
 const SOCKET_PREFIX = '/tmp/shooter-test-';
 
@@ -30,21 +27,34 @@ function cleanupSocket(socketPath) {
   for (const p of [socketPath, socketPath + '.exit']) {
     try {
       if (fs.existsSync(p)) fs.unlinkSync(p);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 }
 
 /** Fork the holder, return { child, readyPromise }. */
-function spawnHolder(id, socketPath, { cwd = '/tmp', cols = 80, rows = 24, command, args = [] } = {}) {
-  const child = fork(HOLDER_PATH, [id, socketPath, cwd, String(cols), String(rows), command, ...args], {
-    stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
-    detached: false,
-  });
+function spawnHolder(
+  id,
+  socketPath,
+  { cwd = '/tmp', cols = 80, rows = 24, command, args = [] } = {}
+) {
+  const child = fork(
+    HOLDER_PATH,
+    [id, socketPath, cwd, String(cols), String(rows), command, ...args],
+    {
+      stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
+      detached: false,
+    }
+  );
 
   allChildren.push(child);
 
   const readyPromise = new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error('Holder did not send ready within 10s')), 10_000);
+    const timeout = setTimeout(
+      () => reject(new Error('Holder did not send ready within 10s')),
+      10_000
+    );
     child.on('message', (msg) => {
       if (msg && msg.type === 'ready') {
         clearTimeout(timeout);
@@ -80,7 +90,9 @@ function connectSocket(socketPath) {
           if (line.length === 0) continue;
           try {
             messages.push(JSON.parse(line));
-          } catch { /* skip malformed */ }
+          } catch {
+            /* skip malformed */
+          }
         }
       });
 
@@ -109,7 +121,11 @@ function waitForMessage(messages, predicate, timeoutMs = 10_000) {
     }, 50);
     const timer = setTimeout(() => {
       clearInterval(interval);
-      reject(new Error(`Timed out waiting for message. Have ${messages.length} messages: ${JSON.stringify(messages, null, 2)}`));
+      reject(
+        new Error(
+          `Timed out waiting for message. Have ${messages.length} messages: ${JSON.stringify(messages, null, 2)}`
+        )
+      );
     }, timeoutMs);
   });
 }
@@ -120,7 +136,9 @@ function killChild(child) {
     if (!child.killed && child.exitCode === null) {
       child.kill('SIGKILL');
     }
-  } catch { /* already dead */ }
+  } catch {
+    /* already dead */
+  }
 }
 
 /** Wait for child to fully exit after kill. */
@@ -196,7 +214,10 @@ async function test1() {
     process.stdout.write(`  Info message received: pid=${info.pid}\n`);
 
     // Wait for output containing "hello"
-    const output = await waitForMessage(messages, (m) => m.type === 'output' && m.data && m.data.includes('hello'));
+    const output = await waitForMessage(
+      messages,
+      (m) => m.type === 'output' && m.data && m.data.includes('hello')
+    );
     process.stdout.write(`  Output message received containing "hello".\n`);
 
     // Wait for exit message (echo exits immediately)
@@ -227,7 +248,10 @@ async function test1() {
     assert(!fs.existsSync(socketPath), 'Socket file should be cleaned up');
     process.stdout.write('  Socket cleaned up.\n');
   } finally {
-    if (socket) try { socket.destroy(); } catch {}
+    if (socket)
+      try {
+        socket.destroy();
+      } catch {}
     if (child) killChild(child);
     await delay(100);
     cleanupSocket(socketPath);
@@ -277,7 +301,10 @@ async function test2() {
     killChild(child);
     await waitForExit(child);
   } finally {
-    if (socket) try { socket.destroy(); } catch {}
+    if (socket)
+      try {
+        socket.destroy();
+      } catch {}
     if (child) killChild(child);
     await delay(100);
     cleanupSocket(socketPath);
@@ -319,7 +346,10 @@ async function test3() {
     process.stdout.write('  Sent input "hello\\n".\n');
 
     // Wait for output containing "hello"
-    const output = await waitForMessage(messages, (m) => m.type === 'output' && m.data && m.data.includes('hello'));
+    const output = await waitForMessage(
+      messages,
+      (m) => m.type === 'output' && m.data && m.data.includes('hello')
+    );
     process.stdout.write('  Received output containing "hello".\n');
 
     // Send resize -- should not crash
@@ -345,7 +375,10 @@ async function test3() {
     killChild(child);
     await waitForExit(child);
   } finally {
-    if (socket) try { socket.destroy(); } catch {}
+    if (socket)
+      try {
+        socket.destroy();
+      } catch {}
     if (child) killChild(child);
     await delay(100);
     cleanupSocket(socketPath);
@@ -398,7 +431,10 @@ async function test4() {
     // Should receive info again
     const info2 = await waitForMessage(messages2, (m) => m.type === 'info');
     assert(typeof info2.pid === 'number', 'Second connect should receive info');
-    assert(info2.pid === info1.pid, `PID should be same across reconnect: ${info1.pid} vs ${info2.pid}`);
+    assert(
+      info2.pid === info1.pid,
+      `PID should be same across reconnect: ${info1.pid} vs ${info2.pid}`
+    );
     process.stdout.write(`  Reconnected: info pid=${info2.pid} (same as before).\n`);
 
     // Clean up
@@ -408,8 +444,14 @@ async function test4() {
     await waitForExit(child);
     process.stdout.write('  Holder killed.\n');
   } finally {
-    if (socket1) try { socket1.destroy(); } catch {}
-    if (socket2) try { socket2.destroy(); } catch {}
+    if (socket1)
+      try {
+        socket1.destroy();
+      } catch {}
+    if (socket2)
+      try {
+        socket2.destroy();
+      } catch {}
     if (child) killChild(child);
     await delay(100);
     cleanupSocket(socketPath);
@@ -434,7 +476,9 @@ async function main() {
   const failed = results.filter((r) => !r.passed).length;
   for (const r of results) {
     const status = r.passed ? 'PASS' : 'FAIL';
-    process.stdout.write(`  [${status}] ${r.name} (${r.elapsed}ms)${r.error ? ' - ' + r.error : ''}\n`);
+    process.stdout.write(
+      `  [${status}] ${r.name} (${r.elapsed}ms)${r.error ? ' - ' + r.error : ''}\n`
+    );
   }
   process.stdout.write(`\nTotal: ${results.length} | Passed: ${passed} | Failed: ${failed}\n`);
 

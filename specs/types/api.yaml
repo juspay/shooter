@@ -1,0 +1,240 @@
+# API Route Type Definitions
+# Non-top file - referenced from index.yaml
+# Contains all types used by REST API route handlers:
+#   /api/notify, /api/health, /api/device-token, /api/webhook
+
+API:
+  # ─── Notification Types (/api/notify) ──────────────────────────────
+
+  FilterResult:
+    type: object
+    description: Result of intelligent notification filtering decision
+    required:
+      - reason
+      - send
+    properties:
+      reason:
+        type: string
+        description: Human-readable explanation of the filter decision
+      send:
+        type: boolean
+        description: Whether the notification should be sent
+
+  NotificationData:
+    type: object
+    description: Custom data payload attached to a notification
+    additionalProperties: true
+    properties:
+      category:
+        type: string
+        description: Notification category for grouping
+      files:
+        type: string
+        description: Files related to the notification event
+      project:
+        type: string
+        description: Project name associated with the notification
+      source:
+        type: string
+        description: Source hook or system that generated the notification
+      tool:
+        type: string
+        description: Tool name related to the notification event
+
+  NotificationRequest:
+    type: object
+    description: Request body for sending a push notification via /api/notify
+    required:
+      - message
+      - title
+    properties:
+      data:
+        $ref: './specs/types/api.yaml#/API/NotificationData'
+        description: Optional custom data payload
+      deviceToken:
+        type: string
+        description: Override device token for this request (e.g. from config page test), falls back to env DEVICE_TOKEN
+      message:
+        type: string
+        description: Notification body text
+      skipPush:
+        type: boolean
+        description: When true, register a pending request without sending a push notification (used for bidirectional permission flow)
+      title:
+        type: string
+        description: Notification title
+      waitForResponse:
+        type: boolean
+        description: Whether to create a pending permission request and wait for a response
+
+  # ─── Health Check Types (/api/health) ──────────────────────────────
+
+  FCMConfiguration:
+    type: object
+    description: Firebase Cloud Messaging configuration status
+    required:
+      - configured
+      - hasClientEmail
+      - hasPrivateKey
+      - hasProjectId
+    properties:
+      configured:
+        type: boolean
+        description: Whether all required FCM environment variables are present
+      hasClientEmail:
+        type: boolean
+        description: Whether FCM_CLIENT_EMAIL is set
+      hasPrivateKey:
+        type: boolean
+        description: Whether FCM_PRIVATE_KEY is set
+      hasProjectId:
+        type: boolean
+        description: Whether FCM_PROJECT_ID is set
+
+  HealthChecks:
+    type: object
+    description: Boolean checks for required service configurations
+    required:
+      - hasApiKey
+      - hasAPNsConfig
+      - hasBundleId
+      - hasDeviceToken
+      - hasFCMConfig
+    properties:
+      hasApiKey:
+        type: boolean
+        description: Whether API_KEY is set
+      hasAPNsConfig:
+        type: boolean
+        description: Whether all APNs keys are configured (APNS_KEY, APNS_KEY_ID, APNS_TEAM_ID)
+      hasBundleId:
+        type: boolean
+        description: Whether APNS_BUNDLE_ID is set
+      hasDeviceToken:
+        type: boolean
+        description: Whether DEVICE_TOKEN is set
+      hasFCMConfig:
+        type: boolean
+        description: Whether all FCM credentials are configured
+
+  HealthConfiguration:
+    type: object
+    description: Detailed server configuration snapshot
+    required:
+      - apnsKeyId
+      - bundleId
+      - deviceTokenLength
+      - fcm
+      - production
+    properties:
+      apnsKeyId:
+        type: string
+        description: Truncated APNs key ID (first 4 chars + "..."), or empty string if not set
+      bundleId:
+        type: string
+        description: iOS app bundle identifier, or empty string if not set
+      deviceTokenLength:
+        type: number
+        description: Length of the configured device token (0 if not set)
+      fcm:
+        $ref: './specs/types/api.yaml#/API/FCMConfiguration'
+        description: FCM configuration status
+      production:
+        type: boolean
+        description: Whether the server is using the production APNs gateway
+
+  HealthStatus:
+    type: string
+    enum:
+      - healthy
+      - degraded
+    description: Overall server health status
+
+  PublicHealthResponse:
+    type: object
+    description: Public health check response (no auth required) — status and timestamp only
+    required:
+      - status
+      - timestamp
+    properties:
+      status:
+        $ref: './specs/types/api.yaml#/API/HealthStatus'
+        description: Overall health status
+      timestamp:
+        type: string
+        description: ISO 8601 timestamp when the health check was performed
+
+  HealthResponse:
+    type: object
+    description: Full health check response from /api/health (authenticated, ?details=true)
+    required:
+      - checks
+      - configuration
+      - environment
+      - status
+      - timestamp
+      - version
+    properties:
+      checks:
+        $ref: './specs/types/api.yaml#/API/HealthChecks'
+        description: Boolean configuration checks
+      configuration:
+        $ref: './specs/types/api.yaml#/API/HealthConfiguration'
+        description: Detailed configuration snapshot
+      environment:
+        type: string
+        description: Current NODE_ENV value (e.g. "development", "production")
+      status:
+        $ref: './specs/types/api.yaml#/API/HealthStatus'
+        description: Overall health status
+      timestamp:
+        type: string
+        description: ISO 8601 timestamp when the health check was performed
+      version:
+        type: string
+        description: Server version string
+
+  # ─── Device Token Types (/api/device-token) ────────────────────────
+
+  DeviceTokenRequest:
+    type: object
+    description: >
+      Request body for registering a device push token.
+      At least one of `deviceToken` (iOS/APNs) or `token` (Android/FCM) must be
+      provided. The server validates this constraint at runtime.
+    required:
+      - platform
+    properties:
+      bundleId:
+        type: string
+        description: iOS app bundle identifier
+      deviceToken:
+        type: string
+        description: iOS device token for APNs (required when platform is "ios")
+      platform:
+        type: string
+        enum:
+          - ios
+          - android
+        description: Target platform for push notifications
+      token:
+        type: string
+        description: Android device token for FCM (required when platform is "android")
+
+  DeviceTokens:
+    type: object
+    description: Persisted device tokens keyed by platform
+    properties:
+      android:
+        type: string
+        description: Android FCM device token
+      ios:
+        type: string
+        description: iOS APNs device token
+
+  # ─── Webhook Types (/api/webhook) ──────────────────────────────────
+
+  WebhookBody:
+    type: object
+    description: Incoming webhook request body (arbitrary key-value payload)
+    additionalProperties: true

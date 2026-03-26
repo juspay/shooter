@@ -1,0 +1,207 @@
+# Sessions Module Type Definitions
+# Non-top file - referenced from index.yaml
+# Contains all types related to coding session viewing: session info,
+# project grouping, and parsed conversation messages with their content parts
+
+Sessions:
+  # ─── Named Enum Types ──────────────────────────────────────────────
+
+  SessionSource:
+    type: string
+    enum:
+      - claude-code
+      - opencode
+    description: Source tool that produced the session
+
+  MessageRole:
+    type: string
+    enum:
+      - assistant
+      - system
+      - user
+    description: Role of the conversation message sender
+
+  # ─── Session & Project Types ────────────────────────────────────────
+
+  SessionInfo:
+    type: object
+    description: Metadata about a single coding session
+    required:
+      - created
+      - gitBranch
+      - id
+      - messageCount
+      - modified
+      - projectPath
+      - source
+      - summary
+      - title
+    properties:
+      created:
+        type: string
+        description: ISO 8601 timestamp when the session was created
+      gitBranch:
+        type: string
+        description: Git branch active during the session
+      id:
+        type: string
+        description: Unique session identifier
+      messageCount:
+        type: number
+        description: Total number of messages in the session
+      modified:
+        type: string
+        description: ISO 8601 timestamp when the session was last modified
+      projectPath:
+        type: string
+        description: Absolute path to the project directory
+      source:
+        $ref: './specs/types/sessions.yaml#/Sessions/SessionSource'
+        description: Source tool that produced the session
+      summary:
+        type: string
+        description: Brief summary of the session content
+      title:
+        type: string
+        description: Display title for the session
+
+  ProjectGroup:
+    type: object
+    description: A project with its associated sessions grouped together
+    required:
+      - fullPath
+      - id
+      - lastModified
+      - name
+      - sessionCount
+      - sessions
+    properties:
+      fullPath:
+        type: string
+        description: Absolute filesystem path to the project
+      id:
+        type: string
+        description: Unique project identifier
+      lastModified:
+        type: string
+        description: ISO 8601 timestamp of the most recently modified session
+      name:
+        type: string
+        description: Display name for the project
+      sessionCount:
+        type: number
+        description: Total number of sessions in this project
+      sessions:
+        type: array
+        description: Array of sessions belonging to this project
+        items:
+          $ref: './specs/types/sessions.yaml#/Sessions/SessionInfo'
+
+  # ─── Message Part Types (discriminated union) ───────────────────────
+
+  TextPart:
+    type: object
+    description: A plain text content block in a conversation message
+    required:
+      - type
+      - content
+    properties:
+      type:
+        type: string
+        const: text
+      content:
+        type: string
+        description: The text content
+
+  ThinkingPart:
+    type: object
+    description: An AI thinking/reasoning block in a conversation message
+    required:
+      - type
+      - content
+    properties:
+      type:
+        type: string
+        const: thinking
+      content:
+        type: string
+        description: The thinking/reasoning content
+
+  ToolUsePart:
+    type: object
+    description: A tool invocation block in a conversation message
+    required:
+      - type
+      - id
+      - toolName
+      - input
+    properties:
+      type:
+        type: string
+        const: tool_use
+      id:
+        type: string
+        description: Unique identifier for this tool use
+      toolName:
+        type: string
+        description: Name of the tool being invoked
+      input:
+        type: object
+        description: Tool input parameters as key-value pairs
+        additionalProperties: true
+
+  ToolResultPart:
+    type: object
+    description: A tool result block in a conversation message
+    required:
+      - type
+      - toolUseId
+      - output
+      - isError
+    properties:
+      type:
+        type: string
+        const: tool_result
+      toolUseId:
+        type: string
+        description: Tool use ID this result corresponds to
+      output:
+        type: string
+        description: Tool output text
+      isError:
+        type: boolean
+        description: Whether the tool execution resulted in an error
+
+  MessagePart:
+    description: A single content part within a conversation message
+    oneOf:
+      - $ref: './specs/types/sessions.yaml#/Sessions/TextPart'
+      - $ref: './specs/types/sessions.yaml#/Sessions/ThinkingPart'
+      - $ref: './specs/types/sessions.yaml#/Sessions/ToolUsePart'
+      - $ref: './specs/types/sessions.yaml#/Sessions/ToolResultPart'
+
+  # ─── Conversation Message ──────────────────────────────────────────
+
+  ConversationMessage:
+    type: object
+    description: A single message in a coding session conversation
+    required:
+      - id
+      - parts
+      - role
+      - timestamp
+    properties:
+      id:
+        type: string
+        description: Unique message identifier
+      parts:
+        type: array
+        description: Ordered content parts that make up the message body
+        items:
+          $ref: './specs/types/sessions.yaml#/Sessions/MessagePart'
+      role:
+        $ref: './specs/types/sessions.yaml#/Sessions/MessageRole'
+        description: Role of the message sender
+      timestamp:
+        type: string
+        description: ISO 8601 timestamp when the message was created

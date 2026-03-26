@@ -47,13 +47,13 @@ Open [http://localhost:3000](http://localhost:3000) in your browser. Visit `/con
 
 ## All Setup Methods
 
-| Method | Command | Notes |
-|--------|---------|-------|
-| Interactive wizard | `pnpm setup` | Recommended. Walks through env config, builds, and verifies. |
-| CLI (npx) | `npx @juspay/shooter setup` | No clone needed -- runs the setup wizard directly from npm |
-| One-command install | `curl -fsSL https://raw.githubusercontent.com/juspay/shooter/release/scripts/install.sh \| sh` | Clones to `~/.shooter`, installs deps, runs wizard |
-| Docker | `docker compose up -d` | See [Docker](#docker) |
-| Manual | See [Manual Setup](#manual-setup) | For advanced users |
+| Method              | Command                                                                                        | Notes                                                        |
+| ------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| Interactive wizard  | `pnpm setup`                                                                                   | Recommended. Walks through env config, builds, and verifies. |
+| CLI (npx)           | `npx @juspay/shooter setup`                                                                    | No clone needed -- runs the setup wizard directly from npm   |
+| One-command install | `curl -fsSL https://raw.githubusercontent.com/juspay/shooter/release/scripts/install.sh \| sh` | Clones to `~/.shooter`, installs deps, runs wizard           |
+| Docker              | `docker compose up -d`                                                                         | See [Docker](#docker)                                        |
+| Manual              | See [Manual Setup](#manual-setup)                                                              | For advanced users                                           |
 
 ### Manual Setup
 
@@ -111,11 +111,11 @@ source ~/.zshrc
 
 **Three WebSocket channels:**
 
-| Channel | Path | Purpose |
-|---------|------|---------|
-| Terminal I/O | `/ws/terminal/:id` | Raw PTY byte stream (xterm.js) |
-| Session stream | `/ws/session/:id` | Structured AI conversation updates |
-| Global events | `/ws/events` | Server broadcasts (new sessions, exits, permissions) |
+| Channel        | Path               | Purpose                                              |
+| -------------- | ------------------ | ---------------------------------------------------- |
+| Terminal I/O   | `/ws/terminal/:id` | Raw PTY byte stream (xterm.js)                       |
+| Session stream | `/ws/session/:id`  | Structured AI conversation updates                   |
+| Global events  | `/ws/events`       | Server broadcasts (new sessions, exits, permissions) |
 
 ---
 
@@ -123,21 +123,21 @@ source ~/.zshrc
 
 Copy `.env.example` to `.env` and fill in your values. The `pnpm setup` wizard handles this interactively.
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `API_KEY` | **Yes** | -- | Bearer token for authenticating all API and hook requests |
-| `PORT` | No | `3000` | HTTP server port |
-| `DEVICE_PLATFORM` | No | `ios` | Push notification target: `ios` or `android` |
-| `APNS_KEY` | No | -- | APNs private key (`.p8` file contents, newlines escaped as `\n`) |
-| `APNS_KEY_ID` | No | -- | 10-character APNs key identifier from Apple Developer portal |
-| `APNS_TEAM_ID` | No | -- | 10-character Apple Team ID |
-| `APNS_BUNDLE_ID` | No | -- | iOS app bundle identifier (must match Xcode project) |
-| `APNS_PRODUCTION` | No | `false` | Set `true` for TestFlight / App Store builds |
-| `DEVICE_TOKEN` | No | -- | Target iOS device token (64-character hex) |
-| `FCM_PROJECT_ID` | No | -- | Firebase project ID |
-| `FCM_CLIENT_EMAIL` | No | -- | Firebase service account email |
-| `FCM_PRIVATE_KEY` | No | -- | Firebase service account private key (PEM format) |
-| `ANDROID_DEVICE_TOKEN` | No | -- | Target Android FCM device token |
+| Variable               | Required | Default | Description                                                      |
+| ---------------------- | -------- | ------- | ---------------------------------------------------------------- |
+| `API_KEY`              | **Yes**  | --      | Bearer token for authenticating all API and hook requests        |
+| `PORT`                 | No       | `3000`  | HTTP server port                                                 |
+| `DEVICE_PLATFORM`      | No       | `ios`   | Push notification target: `ios` or `android`                     |
+| `APNS_KEY`             | No       | --      | APNs private key (`.p8` file contents, newlines escaped as `\n`) |
+| `APNS_KEY_ID`          | No       | --      | 10-character APNs key identifier from Apple Developer portal     |
+| `APNS_TEAM_ID`         | No       | --      | 10-character Apple Team ID                                       |
+| `APNS_BUNDLE_ID`       | No       | --      | iOS app bundle identifier (must match Xcode project)             |
+| `APNS_PRODUCTION`      | No       | `false` | Set `true` for TestFlight / App Store builds                     |
+| `DEVICE_TOKEN`         | No       | --      | Target iOS device token (64-character hex)                       |
+| `FCM_PROJECT_ID`       | No       | --      | Firebase project ID                                              |
+| `FCM_CLIENT_EMAIL`     | No       | --      | Firebase service account email                                   |
+| `FCM_PRIVATE_KEY`      | No       | --      | Firebase service account private key (PEM format)                |
+| `ANDROID_DEVICE_TOKEN` | No       | --      | Target Android FCM device token                                  |
 
 ---
 
@@ -225,22 +225,22 @@ Shooter integrates with Claude Code through lifecycle hooks defined in `.claude/
 
 ### Captured Events
 
-| Hook | Description |
-|------|-------------|
-| `PreToolUse` | Before a tool executes (file edit, bash command, etc.) |
-| `PostToolUse` | After a tool completes successfully |
-| `PostToolUseFailure` | After a tool fails |
-| `PermissionRequest` | Claude Code asks for permission -- **blocks until you respond** |
-| `SessionStart` | A new coding session begins |
-| `SessionEnd` | A coding session ends |
-| `Stop` | Claude Code stops execution |
-| `Notification` | General notification from Claude Code |
-| `SubagentStart` | A subagent is spawned |
-| `SubagentStop` | A subagent completes |
-| `UserPromptSubmit` | User submits a prompt |
-| `TeammateIdle` | A teammate agent becomes idle |
-| `TaskCompleted` | A task finishes |
-| `PreCompact` | Before context compaction |
+| Hook                 | Description                                                     |
+| -------------------- | --------------------------------------------------------------- |
+| `PreToolUse`         | Before a tool executes (file edit, bash command, etc.)          |
+| `PostToolUse`        | After a tool completes successfully                             |
+| `PostToolUseFailure` | After a tool fails                                              |
+| `PermissionRequest`  | Claude Code asks for permission -- **blocks until you respond** |
+| `SessionStart`       | A new coding session begins                                     |
+| `SessionEnd`         | A coding session ends                                           |
+| `Stop`               | Claude Code stops execution                                     |
+| `Notification`       | General notification from Claude Code                           |
+| `SubagentStart`      | A subagent is spawned                                           |
+| `SubagentStop`       | A subagent completes                                            |
+| `UserPromptSubmit`   | User submits a prompt                                           |
+| `TeammateIdle`       | A teammate agent becomes idle                                   |
+| `TaskCompleted`      | A task finishes                                                 |
+| `PreCompact`         | Before context compaction                                       |
 
 ### Permission Flow
 
@@ -254,13 +254,13 @@ The `PermissionRequest` hook has a 180-second timeout in `.claude/settings.json`
 
 ### Hook Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `SHOOTER_USE_LOCAL` | -- | Set `true` to connect to local server instead of remote URL |
-| `SHOOTER_LOCAL_PORT` | `3000` | Local server port when using `SHOOTER_USE_LOCAL` |
-| `SHOOTER_API_URL` | -- | Remote server URL (when not using local) |
-| `SHOOTER_PERMISSION_TIMEOUT` | `120` | Seconds to wait for a permission response |
-| `API_KEY` | -- | Bearer token (must match the server's `API_KEY`) |
+| Variable                     | Default | Description                                                 |
+| ---------------------------- | ------- | ----------------------------------------------------------- |
+| `SHOOTER_USE_LOCAL`          | --      | Set `true` to connect to local server instead of remote URL |
+| `SHOOTER_LOCAL_PORT`         | `3000`  | Local server port when using `SHOOTER_USE_LOCAL`            |
+| `SHOOTER_API_URL`            | --      | Remote server URL (when not using local)                    |
+| `SHOOTER_PERMISSION_TIMEOUT` | `120`   | Seconds to wait for a permission response                   |
+| `API_KEY`                    | --      | Bearer token (must match the server's `API_KEY`)            |
 
 ---
 
@@ -297,7 +297,7 @@ services:
   shooter:
     build: .
     ports:
-      - "3000:3000"
+      - '3000:3000'
     env_file:
       - .env
     volumes:
@@ -314,25 +314,25 @@ volumes:
 
 All endpoints require the `Authorization: Bearer <API_KEY>` header.
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/api/health` | Health check with server status |
-| `GET` | `/api/terminals` | List all active and recently exited terminals |
-| `POST` | `/api/terminals` | Create a new terminal session |
-| `GET` | `/api/terminals/:id` | Get details for a specific terminal |
-| `DELETE` | `/api/terminals/:id` | Kill and remove a terminal session |
-| `POST` | `/api/terminals/:id/resize` | Resize a terminal (cols, rows) |
-| `POST` | `/api/ws-ticket` | Generate a short-lived WebSocket auth ticket |
-| `GET` | `/api/ws-status` | Get connected WebSocket client count |
-| `POST` | `/api/notify` | Send a push notification via APNs or FCM |
-| `GET` | `/api/notify` | Check notification status and history |
-| `POST` | `/api/response` | Submit a permission allow/deny decision |
-| `GET` | `/api/response` | Poll for a pending permission decision |
-| `GET` | `/api/sessions` | List sessions across all projects |
-| `POST` | `/api/webhook` | Receive external webhook events |
-| `GET` | `/api/qr-config` | Generate QR code for mobile app pairing |
-| `POST` | `/api/device-token` | Register a device token (iOS or Android) |
-| `GET` | `/api/debug` | Debug information (APNs config, device token status) |
+| Method   | Path                        | Description                                          |
+| -------- | --------------------------- | ---------------------------------------------------- |
+| `GET`    | `/api/health`               | Health check with server status                      |
+| `GET`    | `/api/terminals`            | List all active and recently exited terminals        |
+| `POST`   | `/api/terminals`            | Create a new terminal session                        |
+| `GET`    | `/api/terminals/:id`        | Get details for a specific terminal                  |
+| `DELETE` | `/api/terminals/:id`        | Kill and remove a terminal session                   |
+| `POST`   | `/api/terminals/:id/resize` | Resize a terminal (cols, rows)                       |
+| `POST`   | `/api/ws-ticket`            | Generate a short-lived WebSocket auth ticket         |
+| `GET`    | `/api/ws-status`            | Get connected WebSocket client count                 |
+| `POST`   | `/api/notify`               | Send a push notification via APNs or FCM             |
+| `GET`    | `/api/notify`               | Check notification status and history                |
+| `POST`   | `/api/response`             | Submit a permission allow/deny decision              |
+| `GET`    | `/api/response`             | Poll for a pending permission decision               |
+| `GET`    | `/api/sessions`             | List sessions across all projects                    |
+| `POST`   | `/api/webhook`              | Receive external webhook events                      |
+| `GET`    | `/api/qr-config`            | Generate QR code for mobile app pairing              |
+| `POST`   | `/api/device-token`         | Register a device token (iOS or Android)             |
+| `GET`    | `/api/debug`                | Debug information (APNs config, device token status) |
 
 ### WebSocket Authentication
 

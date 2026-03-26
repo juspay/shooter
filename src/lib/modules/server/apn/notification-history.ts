@@ -1,19 +1,8 @@
 // In-memory notification history store.
 // Same pattern as pending-requests.ts — suitable for single-instance deployments.
 
-export interface NotificationRecord {
-  category?: string;
-  data?: Record<string, unknown>;
-  error?: string;
-  id: string;
-  message: string;
-  project?: string;
-  source?: string;
-  status: 'failed' | 'filtered' | 'sent';
-  timestamp: string;
-  title: string;
-  tool?: string;
-}
+export type { NotificationRecord } from '$generated/types';
+import type { NotificationRecord } from '$generated/types';
 
 const MAX_HISTORY = 100;
 

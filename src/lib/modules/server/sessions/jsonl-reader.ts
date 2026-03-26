@@ -122,7 +122,8 @@ function cleanTitle(prompt: string): string {
     .replace(/<command-args>.*?<\/command-args>/gs, '')
     .replace(/<local-command-caveat>.*?<\/local-command-caveat>/gs, '')
     .replace(/<local-command-stdout>.*?<\/local-command-stdout>/gs, '')
-    .replace(/<system-reminder>.*?<\/system-reminder>/gs, '');
+    .replace(/<system-reminder>.*?<\/system-reminder>/gs, '')
+    .replace(/<task-notification>.*?<\/task-notification>/gs, '');
 
   // Iteratively strip tags until none remain (prevents reconstructed tags like "<scr" + "ipt>")
   let prev = '';
@@ -220,7 +221,9 @@ function listSessionsForProject(projectDir: string): SessionInfo[] {
           // Count user + assistant messages for the message count
           const lines = content.split('\n');
           for (const line of lines) {
-            if (!line.trim()) { continue; }
+            if (!line.trim()) {
+              continue;
+            }
             try {
               const entry = JSON.parse(line);
               if (entry.type === 'user' || entry.type === 'assistant') {
@@ -232,12 +235,18 @@ function listSessionsForProject(projectDir: string): SessionInfo[] {
           }
           // Find the first real user message (skip system caveats, commands, tool results)
           for (const line of lines) {
-            if (!line.trim()) { continue; }
+            if (!line.trim()) {
+              continue;
+            }
             try {
               const entry = JSON.parse(line);
-              if (entry.type !== 'user') { continue; }
+              if (entry.type !== 'user') {
+                continue;
+              }
               const msg = entry.message;
-              if (!msg?.content) { continue; }
+              if (!msg?.content) {
+                continue;
+              }
 
               // Extract text from content (can be string or array of blocks)
               let text = '';
@@ -256,14 +265,22 @@ function listSessionsForProject(projectDir: string): SessionInfo[] {
                 }
               }
 
-              if (!text) { continue; }
+              if (!text) {
+                continue;
+              }
 
               // Skip system-injected caveats and command outputs
-              if (text.startsWith('<local-command') ||
-                  text.startsWith('<command-name>') ||
-                  text.startsWith('<local-command-stdout>') ||
-                  text.startsWith('<system-reminder>') ||
-                  text.startsWith('<task-notification>')) {
+              // Keep aligned with cleanTitle() tag stripping
+              if (
+                text.startsWith('<local-command') ||
+                text.startsWith('<command-name>') ||
+                text.startsWith('<command-message>') ||
+                text.startsWith('<command-args>') ||
+                text.startsWith('<local-command-stdout>') ||
+                text.startsWith('<local-command-caveat>') ||
+                text.startsWith('<system-reminder>') ||
+                text.startsWith('<task-notification>')
+              ) {
                 continue;
               }
 

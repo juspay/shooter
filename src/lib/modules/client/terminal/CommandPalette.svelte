@@ -9,12 +9,11 @@
   interface Props {
     commands: Command[];
     onClose: () => void;
-    open: boolean;
+    open?: boolean;
   }
 
-  /* eslint-disable prefer-const -- Svelte $props() requires `let` when bind: is used */
-  let { commands, onClose, open }: Props = $props();
-  /* eslint-enable prefer-const */
+  // eslint-disable-next-line prefer-const -- open is mutated via bind:open from parent
+  let { commands, onClose, open = $bindable(false) }: Props = $props();
 
   const items = $derived(
     commands.map((cmd, i) => ({

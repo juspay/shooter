@@ -1,5 +1,6 @@
 import { validateAuth } from '$lib/modules/server/auth';
 import { ptyManager } from '$lib/modules/server/terminal/pty-manager.js';
+import { toErrorMessage } from '$lib/modules/server/utils/error';
 import { json } from '@sveltejs/kit';
 
 import type { RequestHandler } from './$types';
@@ -7,7 +8,9 @@ import type { RequestHandler } from './$types';
 // POST /api/terminals/:id/resize — Resize terminal
 export const POST: RequestHandler = async ({ params, request }) => {
   const authError = validateAuth(request);
-  if (authError) {return authError;}
+  if (authError) {
+    return authError;
+  }
 
   let body: { cols?: number; rows?: number };
   try {
@@ -54,7 +57,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    const err = error as Error;
-    return json({ details: err.message, error: 'Failed to resize terminal' }, { status: 500 });
+    console.error('[terminals] Failed to resize terminal:', toErrorMessage(error));
+    return json({ error: 'Failed to resize terminal' }, { status: 500 });
   }
 };

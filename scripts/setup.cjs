@@ -24,13 +24,33 @@ const C = {
   magenta: '\x1b[35m',
 };
 
-function bold(s) { return `${C.bold}${s}${C.reset}`; }
-function green(s) { return `${C.green}${s}${C.reset}`; }
-function red(s) { return `${C.red}${s}${C.reset}`; }
-function yellow(s) { return `${C.yellow}${s}${C.reset}`; }
-function cyan(s) { return `${C.cyan}${s}${C.reset}`; }
-function dim(s) { return `${C.dim}${s}${C.reset}`; }
-function mask(secret) { return secret.slice(0, 4) + '****'; }
+function bold(s) {
+  return `${C.bold}${s}${C.reset}`;
+}
+function green(s) {
+  return `${C.green}${s}${C.reset}`;
+}
+function red(s) {
+  return `${C.red}${s}${C.reset}`;
+}
+function yellow(s) {
+  return `${C.yellow}${s}${C.reset}`;
+}
+function cyan(s) {
+  return `${C.cyan}${s}${C.reset}`;
+}
+function dim(s) {
+  return `${C.dim}${s}${C.reset}`;
+}
+function mask(secret) {
+  return secret.slice(0, 4) + '****';
+}
+
+// Escapes characters that have special meaning inside double-quoted
+// shell strings: backslash, double-quote, dollar sign, and backtick.
+function escapeForDoubleQuotedShell(s) {
+  return s.replace(/[\\"$`]/g, '\\$&');
+}
 
 // ── Globals ──────────────────────────────────────────────────────────
 const ROOT = process.env.SHOOTER_PKG_ROOT || path.resolve(__dirname, '..');
@@ -199,9 +219,7 @@ async function collectConfig() {
 
   // ── API Key ──────────────────────────────────────────────────────
   console.log(bold('2. Server authentication\n'));
-  const apiKeyAnswer = await ask(
-    `  API_KEY ${dim('(press Enter to auto-generate)')}: `
-  );
+  const apiKeyAnswer = await ask(`  API_KEY ${dim('(press Enter to auto-generate)')}: `);
   if (apiKeyAnswer) {
     config.apiKey = apiKeyAnswer;
   } else {
@@ -224,13 +242,27 @@ async function collectConfig() {
     }
     console.log('');
 
-    config.apnsKeyId = await askRequired('  APNS_KEY_ID (10-char key identifier): ', validateAPNsKeyId);
-    config.apnsTeamId = await askRequired('  APNS_TEAM_ID (10-char team identifier): ', validateTeamId);
-    config.apnsBundleId = await askRequired('  APNS_BUNDLE_ID (e.g. com.example.shooter): ', validateBundleId);
-    config.deviceToken = await askRequired('  DEVICE_TOKEN (64-char hex from iOS device): ', validateDeviceToken);
+    config.apnsKeyId = await askRequired(
+      '  APNS_KEY_ID (10-char key identifier): ',
+      validateAPNsKeyId
+    );
+    config.apnsTeamId = await askRequired(
+      '  APNS_TEAM_ID (10-char team identifier): ',
+      validateTeamId
+    );
+    config.apnsBundleId = await askRequired(
+      '  APNS_BUNDLE_ID (e.g. com.example.shooter): ',
+      validateBundleId
+    );
+    config.deviceToken = await askRequired(
+      '  DEVICE_TOKEN (64-char hex from iOS device): ',
+      validateDeviceToken
+    );
 
     console.log('');
-    config.apnsProduction = await confirm('  Use production APNs gateway? (use "yes" for TestFlight/App Store)');
+    config.apnsProduction = await confirm(
+      '  Use production APNs gateway? (use "yes" for TestFlight/App Store)'
+    );
   }
   console.log('');
 
@@ -245,11 +277,15 @@ async function collectConfig() {
 
     config.fcmPrivateKey = await askMultiline('  FCM_PRIVATE_KEY (service account private key):');
     if (!config.fcmPrivateKey.includes('BEGIN')) {
-      console.log(yellow('  Warning: Key does not look like a PEM private key. Continuing anyway.'));
+      console.log(
+        yellow('  Warning: Key does not look like a PEM private key. Continuing anyway.')
+      );
     }
     console.log('');
 
-    const androidTokenAnswer = await ask(`  ANDROID_DEVICE_TOKEN ${dim('(optional, press Enter to skip)')}: `);
+    const androidTokenAnswer = await ask(
+      `  ANDROID_DEVICE_TOKEN ${dim('(optional, press Enter to skip)')}: `
+    );
     if (androidTokenAnswer) {
       config.androidDeviceToken = androidTokenAnswer;
     }
@@ -267,7 +303,7 @@ function buildEnvContent(config) {
     `# ${new Date().toISOString()}`,
     '',
     '# Authentication',
-    `API_KEY=${config.apiKey}`,
+    `API_KEY="${escapeForDoubleQuotedShell(config.apiKey)}"`,
     '',
   ];
 
@@ -400,12 +436,16 @@ async function offerShellExport(apiKey) {
   const shouldAdd = await confirm(`  Add 'export API_KEY=...' to ~/${profileName}?`);
 
   if (shouldAdd) {
-    const exportLine = `\nexport API_KEY="${apiKey}"\n`;
+    const exportLine = `\nexport API_KEY="${escapeForDoubleQuotedShell(apiKey)}"\n`;
     fs.appendFileSync(profilePath, exportLine, 'utf-8');
     console.log(green(`  Added to ~/${profileName}`));
-    console.log(yellow(`  Run ${cyan(`source ~/${profileName}`)} or open a new terminal for hooks to work.`));
+    console.log(
+      yellow(`  Run ${cyan(`source ~/${profileName}`)} or open a new terminal for hooks to work.`)
+    );
   } else {
-    console.log(yellow('  Skipped. You will need to set API_KEY manually for hooks to authenticate.'));
+    console.log(
+      yellow('  Skipped. You will need to set API_KEY manually for hooks to authenticate.')
+    );
     console.log(dim(`  Add this to your shell profile:  export API_KEY="<your key from .env>"`));
   }
   console.log('');
@@ -474,7 +514,9 @@ function testHealth() {
 
     // Capture stderr/stdout for "listening" signal; try health after delay
     let output = '';
-    const collectOutput = (data) => { output += data.toString(); };
+    const collectOutput = (data) => {
+      output += data.toString();
+    };
     serverProcess.stdout.on('data', collectOutput);
     serverProcess.stderr.on('data', collectOutput);
 
@@ -490,13 +532,20 @@ function testHealth() {
       }
       if (attempts > maxAttempts) {
         clearInterval(poll);
-        finish(false, 'Server did not respond within 15 seconds. You can test manually with: curl http://localhost:' + port + '/api/health');
+        finish(
+          false,
+          'Server did not respond within 15 seconds. You can test manually with: curl http://localhost:' +
+            port +
+            '/api/health'
+        );
         return;
       }
 
       const req = http.get(`http://localhost:${port}/api/health`, (res) => {
         let body = '';
-        res.on('data', (chunk) => { body += chunk; });
+        res.on('data', (chunk) => {
+          body += chunk;
+        });
         res.on('end', () => {
           clearInterval(poll);
           try {
@@ -504,7 +553,10 @@ function testHealth() {
             if (data.status === 'healthy') {
               finish(true, `Health check passed: status=${data.status}`);
             } else {
-              finish(true, `Server running (status=${data.status}). Some optional features may need configuration.`);
+              finish(
+                true,
+                `Server running (status=${data.status}). Some optional features may need configuration.`
+              );
             }
           } catch {
             finish(true, 'Server responded but health response was not JSON.');
@@ -557,7 +609,6 @@ async function main() {
   console.log(green(bold('  Setup complete!')));
   console.log('');
   console.log(`  Start the server:  ${cyan('shooter start')}`);
-  console.log(`  Status:            ${cyan('shooter status')}`);
   console.log(`  Health check:      ${cyan('curl http://localhost:3000/api/health')}`);
   console.log('');
   if (!config.wantIos && !config.wantAndroid) {

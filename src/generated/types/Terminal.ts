@@ -1,1508 +1,299 @@
-import { _decodeArray, _decodeBoolean, _decodeNumber , _decodeString, decodeArray , decodeBoolean, decodeNumber , decodeString, isJSON  } from 'type-decoder';
-
-/**
- * @type { CreateTerminalRequest }
- * @description Request body for creating a new managed terminal session
- */
-export interface CreateTerminalRequest {
-  /**
-   * @description Optional command arguments
-   * @type { string[] }
-   * @memberof CreateTerminalRequest
-  */
-  args: null | string[];
-  /**
-   * @description Terminal width in columns (default 80)
-   * @type { number }
-   * @memberof CreateTerminalRequest
-  */
-  cols: null | number;
-    /**
-   * @description The command to execute (e.g. "zsh", "claude", "opencode")
-   * @type { string }
-   * @memberof CreateTerminalRequest
-  */
-  command: string;
-  /**
-   * @description Working directory for the new terminal
-   * @type { string }
-   * @memberof CreateTerminalRequest
-  */
-  cwd: string;
-    /**
-   * @description Terminal height in rows (default 24)
-   * @type { number }
-   * @memberof CreateTerminalRequest
-  */
-  rows: null | number;
-  }
-
-/**
- * @type { CreateTerminalResponse }
- * @description Response after successfully creating a managed terminal session
- */
-export interface CreateTerminalResponse {
-  /**
-   * @description The command that was launched
-   * @type { string }
-   * @memberof CreateTerminalResponse
-  */
-  command: string;
-  /**
-   * @description ISO 8601 timestamp when the terminal was created
-   * @type { string }
-   * @memberof CreateTerminalResponse
-  */
-  createdAt: string;
-  /**
-   * @description Working directory the terminal was launched in
-   * @type { string }
-   * @memberof CreateTerminalResponse
-  */
-  cwd: string;
-  /**
-   * @description Unique terminal identifier
-   * @type { string }
-   * @memberof CreateTerminalResponse
-  */
-  id: string;
-  /**
-   * @description OS process ID of the spawned process
-   * @type { number }
-   * @memberof CreateTerminalResponse
-  */
-  pid: number;
-  /**
-   * @description WebSocket path for structured session stream, or null if not an AI session
-   * @type { string }
-   * @memberof CreateTerminalResponse
-  */
-  sessionWs: null | string;
-    /**
-   * @description WebSocket path for raw terminal I/O (e.g. "/ws/terminal/term_a1b2c3")
-   * @type { string }
-   * @memberof CreateTerminalResponse
-  */
-  ws: string;
-}
-
-export type HolderClientMessage =
-  |       CHolderClientMessage1
-    |       CHolderClientMessage2
-    |       CHolderClientMessage3
-    |       CHolderClientMessage4
-    |       CHolderClientMessage5
-    |       CHolderClientMessage6
-  ;
-
-/**
- * @type { HolderClientMessage1 }
- * @description Current holder state sent on connection
- */
-export interface HolderClientMessage1 {
-  /**
-   * @description Exit code if process has exited
-   * @type { number }
-   * @memberof HolderClientMessage1
-  */
-  exitCode: null | number;
-  /**
-   * @description Whether the PTY process has exited
-   * @type { boolean }
-   * @memberof HolderClientMessage1
-  */
-  exited: boolean;
-  /**
-   * @description PTY child process ID
-   * @type { number }
-   * @memberof HolderClientMessage1
-  */
-  pid: number;
-  /**
-   * @type { string }
-   * @memberof HolderClientMessage1
-  */
-  type: string;
-  }
-
-/**
- * @type { HolderClientMessage2 }
- * @description Full scrollback replay sent on connection
- */
-export interface HolderClientMessage2 {
-  /**
-   * @description Full scrollback buffer content
-   * @type { string }
-   * @memberof HolderClientMessage2
-  */
-  data: string;
-  /**
-   * @type { string }
-   * @memberof HolderClientMessage2
-  */
-  type: string;
-}
-
-/**
- * @type { HolderClientMessage3 }
- * @description PTY output chunk during normal operation
- */
-export interface HolderClientMessage3 {
-  /**
-   * @description Raw PTY output data
-   * @type { string }
-   * @memberof HolderClientMessage3
-  */
-  data: string;
-  /**
-   * @type { string }
-   * @memberof HolderClientMessage3
-  */
-  type: string;
-}
-
-/**
- * @type { HolderClientMessage4 }
- * @description PTY process has exited
- */
-export interface HolderClientMessage4 {
-  /**
-   * @description Process exit code
-   * @type { number }
-   * @memberof HolderClientMessage4
-  */
-  code: number;
-  /**
-   * @description Signal that caused exit
-   * @type { string }
-   * @memberof HolderClientMessage4
-  */
-  signal: null | string;
-  /**
-   * @type { string }
-   * @memberof HolderClientMessage4
-  */
-  type: string;
-  }
-
-/**
- * @type { HolderClientMessage5 }
- * @description Terminal activity state change (active/idle)
- */
-export interface HolderClientMessage5 {
-  /**
-   * @description Whether the terminal is currently producing output
-   * @type { boolean }
-   * @memberof HolderClientMessage5
-  */
-  active: boolean;
-  /**
-   * @type { string }
-   * @memberof HolderClientMessage5
-  */
-  type: string;
-}
-
-/**
- * @type { HolderClientMessage6 }
- * @description Current working directory change detected via OSC 7
- */
-export interface HolderClientMessage6 {
-  /**
-   * @description Absolute path of the new working directory
-   * @type { string }
-   * @memberof HolderClientMessage6
-  */
-  path: string;
-  /**
-   * @type { string }
-   * @memberof HolderClientMessage6
-  */
-  type: string;
-}
-
-export type HolderServerMessage =
-  |       CHolderServerMessage1
-    |       CHolderServerMessage2
-    |       CHolderServerMessage3
-  ;
-
-/**
- * @type { HolderServerMessage1 }
- * @description Write data to PTY stdin
- */
-export interface HolderServerMessage1 {
-  /**
-   * @description Raw input data to write to PTY
-   * @type { string }
-   * @memberof HolderServerMessage1
-  */
-  data: string;
-  /**
-   * @type { string }
-   * @memberof HolderServerMessage1
-  */
-  type: string;
-}
-
-
-/**
- * @type { HolderServerMessage2 }
- * @description Resize the PTY dimensions
- */
-export interface HolderServerMessage2 {
-  /**
-   * @description New width in columns
-   * @type { number }
-   * @memberof HolderServerMessage2
-  */
-  cols: number;
-  /**
-   * @description New height in rows
-   * @type { number }
-   * @memberof HolderServerMessage2
-  */
-  rows: number;
-  /**
-   * @type { string }
-   * @memberof HolderServerMessage2
-  */
-  type: string;
-}
-
-/**
- * @type { HolderServerMessage3 }
- * @description Send a signal to the PTY process
- */
-export interface HolderServerMessage3 {
-  /**
-   * @description Signal name to send (default SIGTERM)
-   * @type { string }
-   * @memberof HolderServerMessage3
-  */
-  signal: null | string;
-  /**
-   * @type { string }
-   * @memberof HolderServerMessage3
-  */
-  type: string;
-  }
-
-
-/**
- * @type { ManagedTerminalInfo }
- * @description Serializable info about a managed terminal session (excludes runtime handles like PTY, watchers, client sets)
- */
-export interface ManagedTerminalInfo {
-  /**
-   * @description Command arguments passed at launch
-   * @type { string[] }
-   * @memberof ManagedTerminalInfo
-  */
-  args: string[];
-  /**
-   * @description The command that was launched (e.g. "zsh", "claude", "opencode")
-   * @type { string }
-   * @memberof ManagedTerminalInfo
-  */
-  command: string;
-  /**
-   * @description ISO 8601 timestamp when the terminal was created
-   * @type { string }
-   * @memberof ManagedTerminalInfo
-  */
-  createdAt: string;
-  /**
-   * @description Current working directory detected via OSC 7, or null if not yet detected
-   * @type { string }
-   * @memberof ManagedTerminalInfo
-  */
-  currentCwd: null | string;
-  /**
-   * @description Working directory the terminal was launched in
-   * @type { string }
-   * @memberof ManagedTerminalInfo
-  */
-  cwd: string;
-  /**
-   * @description Process exit code (0 = success), or null if still running
-   * @type { number }
-   * @memberof ManagedTerminalInfo
-  */
-  exitCode: null | number;
-  /**
-   * @description ISO 8601 timestamp when the process exited, or null if still running
-   * @type { string }
-   * @memberof ManagedTerminalInfo
-  */
-  exitedAt: null | string;
-    /**
-   * @description PID of the PTY holder process, or null if not using holder architecture
-   * @type { number }
-   * @memberof ManagedTerminalInfo
-  */
-  holderPid: null | number;
-  /**
-   * @description Unique terminal identifier (e.g. "term_a1b2c3")
-   * @type { string }
-   * @memberof ManagedTerminalInfo
-  */
-  id: string;
-    /**
-   * @description Whether the terminal is currently producing output (true) or idle (false)
-   * @type { boolean }
-   * @memberof ManagedTerminalInfo
-  */
-  isActive: boolean | null;
-    /**
-   * @description OS process ID of the terminal process
-   * @type { number }
-   * @memberof ManagedTerminalInfo
-  */
-  pid: number;
-    /**
-   * @description Unix domain socket path for the holder process, or null if not applicable
-   * @type { string }
-   * @memberof ManagedTerminalInfo
-  */
-  socketPath: null | string;
-    /**
-   * @description Current lifecycle status of the terminal
-   * @type { TerminalStatus }
-   * @memberof ManagedTerminalInfo
-  */
-  status: TerminalStatus;
-  }
-
-/**
- * @type { RoleEnum }
- * @description Who sent the message
- */
-export type RoleEnum =
-  | 'assistant'
-  | 'user'
-;
-
-
-/**
- * @type { TerminalListResponse }
- * @description Response for listing all managed terminal sessions
- */
-export interface TerminalListResponse {
-  /**
-   * @description Total number of terminals in the list
-   * @type { number }
-   * @memberof TerminalListResponse
-  */
-  count: number;
-  /**
-   * @description Array of managed terminal info objects
-   * @type { ManagedTerminalInfo[] }
-   * @memberof TerminalListResponse
-  */
-  terminals: ManagedTerminalInfo[];
-}
-
-/**
- * @type { TerminalRecord }
- * @description Persisted terminal metadata stored in SQLite for recovery across server restarts
- */
-export interface TerminalRecord {
-  /**
-   * @description JSON-encoded array of command arguments
-   * @type { string }
-   * @memberof TerminalRecord
-  */
-  args: string;
-  /**
-   * @description Terminal width in columns
-   * @type { number }
-   * @memberof TerminalRecord
-  */
-  cols: number;
-  /**
-   * @description The command that was launched
-   * @type { string }
-   * @memberof TerminalRecord
-  */
-  command: string;
-  /**
-   * @description ISO 8601 timestamp when the terminal was created
-   * @type { string }
-   * @memberof TerminalRecord
-  */
-  createdAt: string;
-  /**
-   * @description Working directory the terminal was launched in
-   * @type { string }
-   * @memberof TerminalRecord
-  */
-  cwd: string;
-  /**
-   * @description Process exit code
-   * @type { number }
-   * @memberof TerminalRecord
-  */
-  exitCode: null | number;
-  /**
-   * @description ISO 8601 timestamp when the process exited
-   * @type { string }
-   * @memberof TerminalRecord
-  */
-  exitedAt: null | string;
-    /**
-   * @description Holder process ID
-   * @type { number }
-   * @memberof TerminalRecord
-  */
-  holderPid: null | number;
-    /**
-   * @description Unique terminal identifier
-   * @type { string }
-   * @memberof TerminalRecord
-  */
-  id: string;
-    /**
-   * @description OpenCode SQLite session ID
-   * @type { string }
-   * @memberof TerminalRecord
-  */
-  opencodeSessionId: null | string;
-    /**
-   * @description PTY child process ID
-   * @type { number }
-   * @memberof TerminalRecord
-  */
-  pid: null | number;
-    /**
-   * @description Terminal height in rows
-   * @type { number }
-   * @memberof TerminalRecord
-  */
-  rows: number;
-  /**
-   * @description Claude Code JSONL session file path
-   * @type { string }
-   * @memberof TerminalRecord
-  */
-  sessionFile: null | string;
-    /**
-   * @description Unix domain socket path for holder communication
-   * @type { string }
-   * @memberof TerminalRecord
-  */
-  socketPath: null | string;
-  /**
-   * @description Terminal lifecycle status
-   * @type { TerminalStatus }
-   * @memberof TerminalRecord
-  */
-  status: TerminalStatus;
-  }
-
+import {
+  type SessionSource,
+  decodeSessionSource,
+  type PermissionDecision,
+  decodePermissionDecision,
+} from './index';
+import {
+  isJSON,
+  decodeString,
+  _decodeString,
+  decodeArray,
+  _decodeArray,
+  decodeNumber,
+  _decodeNumber,
+  decodeBoolean,
+  _decodeBoolean,
+} from 'type-decoder';
 
 /**
  * @type { TerminalStatus }
  * @description Lifecycle status of a terminal session
  */
-export type TerminalStatus =
-  | 'exited'
-  | 'orphaned'
-  | 'running'
-;
+export type TerminalStatus = 'running' | 'exited' | 'orphaned';
 
-/**
- * @type { ToolExecutionStatus }
- * @description Current execution status of a tool invocation
- */
-export type ToolExecutionStatus =
-  | 'done'
-  | 'error'
-  | 'running'
-;
-
-
-/**
- * @type { ToolResultStatus }
- * @description Whether a tool completed successfully or with an error
- */
-export type ToolResultStatus =
-  | 'done'
-  | 'error'
-;
-
-export type WsEvent =
-  |       CWsEvent1
-    |       CWsEvent2
-    |       CWsEvent3
-    |       CWsEvent4
-    |       CWsEvent5
-  ;
-
-
-/**
- * @type { WsEvent1 }
- * @description A new AI session has started
- */
-export interface WsEvent1 {
-  /**
-   * @description Project name or path
-   * @type { string }
-   * @memberof WsEvent1
-  */
-  project: string;
-  /**
-   * @description Unique session identifier
-   * @type { string }
-   * @memberof WsEvent1
-  */
-  sessionId: string;
-  /**
-   * @description Source tool that started the session (e.g. "claude-code", "opencode")
-   * @type { string }
-   * @memberof WsEvent1
-  */
-  source: string;
-  /**
-   * @type { string }
-   * @memberof WsEvent1
-  */
-  type: string;
-}
-
-/**
- * @type { WsEvent2 }
- * @description An AI session has ended
- */
-export interface WsEvent2 {
-  /**
-   * @description Session identifier that ended
-   * @type { string }
-   * @memberof WsEvent2
-  */
-  sessionId: string;
-  /**
-   * @description Optional summary of what happened in the session
-   * @type { string }
-   * @memberof WsEvent2
-  */
-  summary: null | string;
-  /**
-   * @type { string }
-   * @memberof WsEvent2
-  */
-  type: string;
-  }
-
-
-
-
-/**
- * @type { WsEvent3 }
- * @description A permission request is awaiting approval
- */
-export interface WsEvent3 {
-  /**
-   * @description Tool input that requires approval
-   * @type { WsEvent3Input }
-   * @memberof WsEvent3
-  */
-  input: WsEvent3Input;
-  /**
-   * @description Unique request identifier for the permission flow
-   * @type { string }
-   * @memberof WsEvent3
-  */
-  requestId: string;
-  /**
-   * @description Tool requesting permission (e.g. "Bash", "Edit")
-   * @type { string }
-   * @memberof WsEvent3
-  */
-  tool: string;
-  /**
-   * @type { string }
-   * @memberof WsEvent3
-  */
-  type: string;
-}
-
-/**
- * @type { WsEvent3Input }
- * @description Tool input that requires approval
- */
-export type WsEvent3Input = Record<string, unknown>;
-
-
-
-/**
- * @type { WsEvent4 }
- * @description A new managed terminal has been created
- */
-export interface WsEvent4 {
-  /**
-   * @description Command that was launched
-   * @type { string }
-   * @memberof WsEvent4
-  */
-  command: string;
-  /**
-   * @description Unique terminal identifier
-   * @type { string }
-   * @memberof WsEvent4
-  */
-  terminalId: string;
-  /**
-   * @type { string }
-   * @memberof WsEvent4
-  */
-  type: string;
-}
-
-/**
- * @type { WsEvent5 }
- * @description A managed terminal process has exited
- */
-export interface WsEvent5 {
-  /**
-   * @description Process exit code
-   * @type { number }
-   * @memberof WsEvent5
-  */
-  code: number;
-  /**
-   * @description Terminal identifier that exited
-   * @type { string }
-   * @memberof WsEvent5
-  */
-  terminalId: string;
-  /**
-   * @type { string }
-   * @memberof WsEvent5
-  */
-  type: string;
-}
-
-
-
-export type WsSessionMessage =
-  |       CWsSessionMessage1
-    |       CWsSessionMessage2
-    |       CWsSessionMessage3
-  ;
-
-/**
- * @type { WsSessionMessage1 }
- * @description Subscribe to a live AI session stream
- */
-export interface WsSessionMessage1 {
-  /**
-   * @description Session ID to subscribe to
-   * @type { string }
-   * @memberof WsSessionMessage1
-  */
-  sessionId: string;
-  /**
-   * @type { string }
-   * @memberof WsSessionMessage1
-  */
-  type: string;
-}
-
-
-
-/**
- * @type { WsSessionMessage2 }
- * @description Send text input to the AI session (writes to PTY stdin with newline)
- */
-export interface WsSessionMessage2 {
-  /**
-   * @description Text to send to the AI session
-   * @type { string }
-   * @memberof WsSessionMessage2
-  */
-  text: string;
-  /**
-   * @type { string }
-   * @memberof WsSessionMessage2
-  */
-  type: string;
-}
-
-/**
- * @type { WsSessionMessage3 }
- * @description Cancel the current AI operation (sends SIGINT to PTY)
- */
-export interface WsSessionMessage3 {
-  /**
-   * @type { string }
-   * @memberof WsSessionMessage3
-  */
-  type: string;
-}
-
-
-
-export type WsSessionOutput =
-  |       CWsSessionOutput1
-    |       CWsSessionOutput2
-    |       CWsSessionOutput3
-    |       CWsSessionOutput4
-    |       CWsSessionOutput5
-    |       CWsSessionOutput6
-  ;
-
-/**
- * @type { WsSessionOutput1 }
- * @description Full conversation history sent on connect
- */
-export interface WsSessionOutput1 {
-  /**
-   * @description All session messages from the beginning up to the current point
-   * @type { messagesItem[] }
-   * @memberof WsSessionOutput1
-  */
-  messages: messagesItem[];
-  /**
-   * @type { string }
-   * @memberof WsSessionOutput1
-  */
-  type: string;
-}
-
-
-
-/**
- * @type { WsSessionOutput2 }
- * @description A new conversation message (user or assistant)
- */
-export interface WsSessionOutput2 {
-  /**
-   * @description Message content blocks
-   * @type { contentItem[] }
-   * @memberof WsSessionOutput2
-  */
-  content: contentItem[];
-  /**
-   * @description Who sent the message
-   * @type { RoleEnum }
-   * @memberof WsSessionOutput2
-  */
-  role: RoleEnum;
-  /**
-   * @description ISO 8601 timestamp of the message
-   * @type { string }
-   * @memberof WsSessionOutput2
-  */
-  timestamp: string;
-  /**
-   * @type { string }
-   * @memberof WsSessionOutput2
-  */
-  type: string;
-}
-
-/**
- * @type { WsSessionOutput3 }
- * @description A tool invocation by the AI assistant
- */
-export interface WsSessionOutput3 {
-  /**
-   * @description Tool input parameters
-   * @type { WsSessionOutput3Input }
-   * @memberof WsSessionOutput3
-  */
-  input: WsSessionOutput3Input;
-  /**
-   * @description Tool name (e.g. "Edit", "Bash", "Read")
-   * @type { string }
-   * @memberof WsSessionOutput3
-  */
-  name: string;
-  /**
-   * @description Current execution status of the tool
-   * @type { ToolExecutionStatus }
-   * @memberof WsSessionOutput3
-  */
-  status: ToolExecutionStatus;
-  /**
-   * @type { string }
-   * @memberof WsSessionOutput3
-  */
-  type: string;
-}
-
-
-/**
- * @type { WsSessionOutput3Input }
- * @description Tool input parameters
- */
-export type WsSessionOutput3Input = Record<string, unknown>;
-
-/**
- * @type { WsSessionOutput4 }
- * @description Result from a completed tool invocation
- */
-export interface WsSessionOutput4 {
-  /**
-   * @description Tool use ID this result corresponds to
-   * @type { string }
-   * @memberof WsSessionOutput4
-  */
-  id: string;
-  /**
-   * @description Tool output text
-   * @type { string }
-   * @memberof WsSessionOutput4
-  */
-  output: string;
-  /**
-   * @description Whether the tool completed successfully
-   * @type { ToolResultStatus }
-   * @memberof WsSessionOutput4
-  */
-  status: ToolResultStatus;
-  /**
-   * @type { string }
-   * @memberof WsSessionOutput4
-  */
-  type: string;
-}
-
-
-
-
-/**
- * @type { WsSessionOutput5 }
- * @description AI thinking/reasoning block (extended thinking)
- */
-export interface WsSessionOutput5 {
-  /**
-   * @description Thinking content text
-   * @type { string }
-   * @memberof WsSessionOutput5
-  */
-  text: string;
-  /**
-   * @type { string }
-   * @memberof WsSessionOutput5
-  */
-  type: string;
-}
-
-/**
- * @type { WsSessionOutput6 }
- * @description Session has ended (process exited or session file closed)
- */
-export interface WsSessionOutput6 {
-  /**
-   * @type { string }
-   * @memberof WsSessionOutput6
-  */
-  type: string;
-}
-
-
-
-/**
- * @type { WsStatusResponse }
- * @description Response indicating how many WebSocket clients are currently connected
- */
-export interface WsStatusResponse {
-  /**
-   * @description Number of active WebSocket connections across all channels
-   * @type { number }
-   * @memberof WsStatusResponse
-  */
-  connectedClients: number;
-}
-
-export type WsTerminalMessage =
-  |       CWsTerminalMessage1
-    |       CWsTerminalMessage2
-    |       CWsTerminalMessage3
-  ;
-
-
-
-/**
- * @type { WsTerminalMessage1 }
- * @description Send keyboard input to the terminal PTY
- */
-export interface WsTerminalMessage1 {
-  /**
-   * @description Raw terminal input data (keystrokes, pasted text)
-   * @type { string }
-   * @memberof WsTerminalMessage1
-  */
-  data: string;
-  /**
-   * @type { string }
-   * @memberof WsTerminalMessage1
-  */
-  type: string;
-}
-
-/**
- * @type { WsTerminalMessage2 }
- * @description Resize the terminal PTY dimensions
- */
-export interface WsTerminalMessage2 {
-  /**
-   * @description New terminal width in columns
-   * @type { number }
-   * @memberof WsTerminalMessage2
-  */
-  cols: number;
-  /**
-   * @description New terminal height in rows
-   * @type { number }
-   * @memberof WsTerminalMessage2
-  */
-  rows: number;
-  /**
-   * @type { string }
-   * @memberof WsTerminalMessage2
-  */
-  type: string;
-}
-
-
-
-/**
- * @type { WsTerminalMessage3 }
- * @description Send a signal to the terminal process
- */
-export interface WsTerminalMessage3 {
-  /**
-   * @description Signal name to send (e.g. "SIGINT", "SIGTERM", "SIGTSTP")
-   * @type { string }
-   * @memberof WsTerminalMessage3
-  */
-  signal: string;
-  /**
-   * @type { string }
-   * @memberof WsTerminalMessage3
-  */
-  type: string;
-}
-
-export type WsTerminalOutput =
-  |       CWsTerminalOutput1
-    |       CWsTerminalOutput2
-    |       CWsTerminalOutput3
-    |       CWsTerminalOutput4
-  ;
-
-
-
-/**
- * @type { WsTerminalOutput1 }
- * @description Terminal output data from the PTY
- */
-export interface WsTerminalOutput1 {
-  /**
-   * @description Raw terminal output data
-   * @type { string }
-   * @memberof WsTerminalOutput1
-  */
-  data: string;
-  /**
-   * @type { string }
-   * @memberof WsTerminalOutput1
-  */
-  type: string;
-}
-
-/**
- * @type { WsTerminalOutput2 }
- * @description Terminal process has exited
- */
-export interface WsTerminalOutput2 {
-  /**
-   * @description Process exit code
-   * @type { number }
-   * @memberof WsTerminalOutput2
-  */
-  code: number;
-  /**
-   * @description Signal that caused the exit, or null if exited normally
-   * @type { string }
-   * @memberof WsTerminalOutput2
-  */
-  signal: null | string;
-  /**
-   * @type { string }
-   * @memberof WsTerminalOutput2
-  */
-  type: string;
-  }
-
-
-
-/**
- * @type { WsTerminalOutput3 }
- * @description Scrollback chunk sent on reconnection
- */
-export interface WsTerminalOutput3 {
-  /**
-   * @description 1-based chunk index
-   * @type { number }
-   * @memberof WsTerminalOutput3
-  */
-  chunk: number;
-  /**
-   * @description Scrollback content for this chunk (max 50KB)
-   * @type { string }
-   * @memberof WsTerminalOutput3
-  */
-  data: string;
-  /**
-   * @description Total number of scrollback chunks
-   * @type { number }
-   * @memberof WsTerminalOutput3
-  */
-  total: number;
-  /**
-   * @type { string }
-   * @memberof WsTerminalOutput3
-  */
-  type: string;
-}
-
-/**
- * @type { WsTerminalOutput4 }
- * @description Error message from the terminal server
- */
-export interface WsTerminalOutput4 {
-  /**
-   * @description Human-readable error message
-   * @type { string }
-   * @memberof WsTerminalOutput4
-  */
-  message: string;
-  /**
-   * @type { string }
-   * @memberof WsTerminalOutput4
-  */
-  type: string;
-}
-
-
-
-/**
- * @type { WsTicketResponse }
- * @description Response containing a short-lived ticket for WebSocket authentication
- */
-export interface WsTicketResponse {
-  /**
-   * @description ISO 8601 timestamp when the ticket expires
-   * @type { string }
-   * @memberof WsTicketResponse
-  */
-  expiresAt: string;
-  /**
-   * @description Single-use random ticket string (expires in 30 seconds)
-   * @type { string }
-   * @memberof WsTicketResponse
-  */
-  ticket: string;
-}
-
-export class CHolderClientMessageHolderClientMessage1 {
-  data: HolderClientMessage1;
-  constructor(data: HolderClientMessage1) {
-    this.data = data;
-  }
-}
-
-
-
-export class CHolderClientMessageHolderClientMessage2 {
-  data: HolderClientMessage2;
-  constructor(data: HolderClientMessage2) {
-    this.data = data;
-  }
-}
-
-export class CHolderClientMessageHolderClientMessage3 {
-  data: HolderClientMessage3;
-  constructor(data: HolderClientMessage3) {
-    this.data = data;
-  }
-}
-
-
-export class CHolderClientMessageHolderClientMessage4 {
-  data: HolderClientMessage4;
-  constructor(data: HolderClientMessage4) {
-    this.data = data;
-  }
-}
-
-export class CHolderClientMessageHolderClientMessage5 {
-  data: HolderClientMessage5;
-  constructor(data: HolderClientMessage5) {
-    this.data = data;
-  }
-}
-
-
-
-
-export class CHolderClientMessageHolderClientMessage6 {
-  data: HolderClientMessage6;
-  constructor(data: HolderClientMessage6) {
-    this.data = data;
-  }
-}
-
-export class CHolderServerMessageHolderServerMessage1 {
-  data: HolderServerMessage1;
-  constructor(data: HolderServerMessage1) {
-    this.data = data;
-  }
-}
-
-
-
-export class CHolderServerMessageHolderServerMessage2 {
-  data: HolderServerMessage2;
-  constructor(data: HolderServerMessage2) {
-    this.data = data;
-  }
-}
-
-export class CHolderServerMessageHolderServerMessage3 {
-  data: HolderServerMessage3;
-  constructor(data: HolderServerMessage3) {
-    this.data = data;
-  }
-}
-
-
-
-export class CWsEventWsEvent1 {
-  data: WsEvent1;
-  constructor(data: WsEvent1) {
-    this.data = data;
-  }
-}
-
-export class CWsEventWsEvent2 {
-  data: WsEvent2;
-  constructor(data: WsEvent2) {
-    this.data = data;
-  }
-}
-
-
-
-export class CWsEventWsEvent3 {
-  data: WsEvent3;
-  constructor(data: WsEvent3) {
-    this.data = data;
-  }
-}
-
-export class CWsEventWsEvent4 {
-  data: WsEvent4;
-  constructor(data: WsEvent4) {
-    this.data = data;
-  }
-}
-
-
-
-export class CWsEventWsEvent5 {
-  data: WsEvent5;
-  constructor(data: WsEvent5) {
-    this.data = data;
-  }
-}
-
-export class CWsSessionMessageWsSessionMessage1 {
-  data: WsSessionMessage1;
-  constructor(data: WsSessionMessage1) {
-    this.data = data;
-  }
-}
-
-
-
-export class CWsSessionMessageWsSessionMessage2 {
-  data: WsSessionMessage2;
-  constructor(data: WsSessionMessage2) {
-    this.data = data;
-  }
-}
-
-export class CWsSessionMessageWsSessionMessage3 {
-  data: WsSessionMessage3;
-  constructor(data: WsSessionMessage3) {
-    this.data = data;
-  }
-}
-
-
-export class CWsSessionOutputWsSessionOutput1 {
-  data: WsSessionOutput1;
-  constructor(data: WsSessionOutput1) {
-    this.data = data;
-  }
-}
-
-export class CWsSessionOutputWsSessionOutput2 {
-  data: WsSessionOutput2;
-  constructor(data: WsSessionOutput2) {
-    this.data = data;
-  }
-}
-
-
-
-
-export class CWsSessionOutputWsSessionOutput3 {
-  data: WsSessionOutput3;
-  constructor(data: WsSessionOutput3) {
-    this.data = data;
-  }
-}
-
-export class CWsSessionOutputWsSessionOutput4 {
-  data: WsSessionOutput4;
-  constructor(data: WsSessionOutput4) {
-    this.data = data;
-  }
-}
-
-
-
-export class CWsSessionOutputWsSessionOutput5 {
-  data: WsSessionOutput5;
-  constructor(data: WsSessionOutput5) {
-    this.data = data;
-  }
-}
-
-export class CWsSessionOutputWsSessionOutput6 {
-  data: WsSessionOutput6;
-  constructor(data: WsSessionOutput6) {
-    this.data = data;
-  }
-}
-
-
-
-export class CWsTerminalMessageWsTerminalMessage1 {
-  data: WsTerminalMessage1;
-  constructor(data: WsTerminalMessage1) {
-    this.data = data;
-  }
-}
-
-export class CWsTerminalMessageWsTerminalMessage2 {
-  data: WsTerminalMessage2;
-  constructor(data: WsTerminalMessage2) {
-    this.data = data;
-  }
-}
-
-export class CWsTerminalMessageWsTerminalMessage3 {
-  data: WsTerminalMessage3;
-  constructor(data: WsTerminalMessage3) {
-    this.data = data;
-  }
-}
-
-export class CWsTerminalOutputWsTerminalOutput1 {
-  data: WsTerminalOutput1;
-  constructor(data: WsTerminalOutput1) {
-    this.data = data;
-  }
-}
-
-export class CWsTerminalOutputWsTerminalOutput2 {
-  data: WsTerminalOutput2;
-  constructor(data: WsTerminalOutput2) {
-    this.data = data;
-  }
-}
-
-
-export class CWsTerminalOutputWsTerminalOutput3 {
-  data: WsTerminalOutput3;
-  constructor(data: WsTerminalOutput3) {
-    this.data = data;
-  }
-}
-
-export class CWsTerminalOutputWsTerminalOutput4 {
-  data: WsTerminalOutput4;
-  constructor(data: WsTerminalOutput4) {
-    this.data = data;
-  }
-}
-
-
-
-export function _decodeRoleEnum(rawInput: unknown): RoleEnum | undefined {
+export function decodeTerminalStatus(rawInput: unknown): TerminalStatus | null {
   switch (rawInput) {
-    case 'assistant':
-    case 'user':
-    return rawInput;
+    case 'running':
+    case 'exited':
+    case 'orphaned':
+      return rawInput;
   }
-  return;
+  return null;
 }
 
 export function _decodeTerminalStatus(rawInput: unknown): TerminalStatus | undefined {
   switch (rawInput) {
+    case 'running':
     case 'exited':
     case 'orphaned':
-    case 'running':
-    return rawInput;
+      return rawInput;
   }
   return;
 }
 
-export function _decodeToolExecutionStatus(rawInput: unknown): ToolExecutionStatus | undefined {
-  switch (rawInput) {
-    case 'done':
-    case 'error':
-    case 'running':
-    return rawInput;
-  }
-  return;
-}
+/**
+ * @type { ManagedTerminalInfo }
+ * @description Serializable info about a managed terminal session (excludes runtime handles like PTY, watchers, client sets)
+ */
+export type ManagedTerminalInfo = {
+  /**
+   * @description Unique terminal identifier (e.g. "term_a1b2c3")
+   * @type { string }
+   * @memberof ManagedTerminalInfo
+   */
+  id: string;
+  /**
+   * @description The command that was launched (e.g. "zsh", "claude", "opencode")
+   * @type { string }
+   * @memberof ManagedTerminalInfo
+   */
+  command: string;
+  /**
+   * @description Command arguments passed at launch
+   * @type { string[] }
+   * @memberof ManagedTerminalInfo
+   */
+  args: string[];
+  /**
+   * @description Working directory the terminal was launched in
+   * @type { string }
+   * @memberof ManagedTerminalInfo
+   */
+  cwd: string;
+  /**
+   * @description OS process ID of the terminal process
+   * @type { number }
+   * @memberof ManagedTerminalInfo
+   */
+  pid: number;
+  /**
+   * @description ISO 8601 timestamp when the terminal was created
+   * @type { string }
+   * @memberof ManagedTerminalInfo
+   */
+  createdAt: string;
+  /**
+   * @description ISO 8601 timestamp when the process exited, or null if still running
+   * @type { string }
+   * @memberof ManagedTerminalInfo
+   */
+  exitedAt: string | null;
+  /**
+   * @description Current lifecycle status of the terminal
+   * @type { TerminalStatus }
+   * @memberof ManagedTerminalInfo
+   */
+  status: TerminalStatus;
+  /**
+   * @description Process exit code (0 = success), or null if still running
+   * @type { number }
+   * @memberof ManagedTerminalInfo
+   */
+  exitCode: number | null;
+  /**
+   * @description PID of the PTY holder process, or null if not using holder architecture
+   * @type { number }
+   * @memberof ManagedTerminalInfo
+   */
+  holderPid: number | null;
+  /**
+   * @description Unix domain socket path for the holder process, or null if not applicable
+   * @type { string }
+   * @memberof ManagedTerminalInfo
+   */
+  socketPath: string | null;
+  /**
+   * @description Whether the terminal is currently producing output (true) or idle (false)
+   * @type { boolean }
+   * @memberof ManagedTerminalInfo
+   */
+  isActive: boolean;
+  /**
+   * @description Current working directory detected via OSC 7, or null if not yet detected
+   * @type { string }
+   * @memberof ManagedTerminalInfo
+   */
+  currentCwd: string;
+};
 
-export function _decodeToolResultStatus(rawInput: unknown): ToolResultStatus | undefined {
-  switch (rawInput) {
-    case 'done':
-    case 'error':
-    return rawInput;
-  }
-  return;
-}
-
-
-
-export function decodeCHolderClientMessage1(rawInput: unknown) {
-  const result = decodeHolderClientMessage1(rawInput);
-  if (result === null) {
-    return null;
-  }
-  return new CHolderClientMessageHolderClientMessage1(result);
-}
-
-export function decodeCHolderClientMessage2(rawInput: unknown) {
-  const result = decodeHolderClientMessage2(rawInput);
-  if (result === null) {
-    return null;
-  }
-  return new CHolderClientMessageHolderClientMessage2(result);
-}
-
-
-
-export function decodeCHolderClientMessage3(rawInput: unknown) {
-  const result = decodeHolderClientMessage3(rawInput);
-  if (result === null) {
-    return null;
-  }
-  return new CHolderClientMessageHolderClientMessage3(result);
-}
-
-export function decodeCHolderClientMessage4(rawInput: unknown) {
-  const result = decodeHolderClientMessage4(rawInput);
-  if (result === null) {
-    return null;
-  }
-  return new CHolderClientMessageHolderClientMessage4(result);
-}
-
-
-
-export function decodeCHolderClientMessage5(rawInput: unknown) {
-  const result = decodeHolderClientMessage5(rawInput);
-  if (result === null) {
-    return null;
-  }
-  return new CHolderClientMessageHolderClientMessage5(result);
-}
-
-export function decodeCHolderClientMessage6(rawInput: unknown) {
-  const result = decodeHolderClientMessage6(rawInput);
-  if (result === null) {
-    return null;
-  }
-  return new CHolderClientMessageHolderClientMessage6(result);
-}
-
-
-
-export function decodeCHolderServerMessage1(rawInput: unknown) {
-  const result = decodeHolderServerMessage1(rawInput);
-  if (result === null) {
-    return null;
-  }
-  return new CHolderServerMessageHolderServerMessage1(result);
-}
-
-export function decodeCHolderServerMessage2(rawInput: unknown) {
-  const result = decodeHolderServerMessage2(rawInput);
-  if (result === null) {
-    return null;
-  }
-  return new CHolderServerMessageHolderServerMessage2(result);
-}
-
-
-
-export function decodeCHolderServerMessage3(rawInput: unknown) {
-  const result = decodeHolderServerMessage3(rawInput);
-  if (result === null) {
-    return null;
-  }
-  return new CHolderServerMessageHolderServerMessage3(result);
-}
-
-export function decodeCreateTerminalRequest(rawInput: unknown): CreateTerminalRequest | null {
+export function decodeManagedTerminalInfo(rawInput: unknown): ManagedTerminalInfo | null {
   if (isJSON(rawInput)) {
-    const decodedCommand = decodeString(rawInput.command);
-    const decodedArgs = decodeArray(rawInput.args, decodeString);
-    const decodedCwd = decodeString(rawInput.cwd);
-    const decodedCols = decodeNumber(rawInput.cols);
-    const decodedRows = decodeNumber(rawInput.rows);
+    const decodedId = decodeString(rawInput['id']);
+    const decodedCommand = decodeString(rawInput['command']);
+    const decodedArgs = decodeArray(rawInput['args'], decodeString);
+    const decodedCwd = decodeString(rawInput['cwd']);
+    const decodedPid = decodeNumber(rawInput['pid']);
+    const decodedCreatedAt = decodeString(rawInput['createdAt']);
+    const decodedExitedAt = decodeString(rawInput['exitedAt']);
+    const decodedStatus = decodeTerminalStatus(rawInput['status']);
+    const decodedExitCode = decodeNumber(rawInput['exitCode']);
+    const decodedHolderPid = decodeNumber(rawInput['holderPid']);
+    const decodedSocketPath = decodeString(rawInput['socketPath']);
+    const decodedIsActive = decodeBoolean(rawInput['isActive']);
+    const decodedCurrentCwd = decodeString(rawInput['currentCwd']);
 
     if (
+      decodedId === null ||
       decodedCommand === null ||
-      decodedCwd === null
+      decodedArgs === null ||
+      decodedCwd === null ||
+      decodedPid === null ||
+      decodedCreatedAt === null ||
+      decodedStatus === null ||
+      decodedIsActive === null ||
+      decodedCurrentCwd === null
     ) {
       return null;
     }
 
     return {
-      args: decodedArgs,
-      cols: decodedCols,
+      id: decodedId,
       command: decodedCommand,
+      args: decodedArgs,
       cwd: decodedCwd,
-      rows: decodedRows
+      pid: decodedPid,
+      createdAt: decodedCreatedAt,
+      exitedAt: decodedExitedAt,
+      status: decodedStatus,
+      exitCode: decodedExitCode,
+      holderPid: decodedHolderPid,
+      socketPath: decodedSocketPath,
+      isActive: decodedIsActive,
+      currentCwd: decodedCurrentCwd,
     };
   }
   return null;
 }
 
+/**
+ * @type { CreateTerminalRequest }
+ * @description Request body for creating a new managed terminal session
+ */
+export type CreateTerminalRequest = {
+  /**
+   * @description The command to execute (e.g. "zsh", "claude", "opencode")
+   * @type { string }
+   * @memberof CreateTerminalRequest
+   */
+  command: string;
+  /**
+   * @description Optional command arguments
+   * @type { string[] }
+   * @memberof CreateTerminalRequest
+   */
+  args: string[] | null;
+  /**
+   * @description Working directory for the new terminal
+   * @type { string }
+   * @memberof CreateTerminalRequest
+   */
+  cwd: string;
+  /**
+   * @description Terminal width in columns (default 80)
+   * @type { number }
+   * @memberof CreateTerminalRequest
+   */
+  cols: number | null;
+  /**
+   * @description Terminal height in rows (default 24)
+   * @type { number }
+   * @memberof CreateTerminalRequest
+   */
+  rows: number | null;
+};
 
+export function decodeCreateTerminalRequest(rawInput: unknown): CreateTerminalRequest | null {
+  if (isJSON(rawInput)) {
+    const decodedCommand = decodeString(rawInput['command']);
+    const decodedArgs = decodeArray(rawInput['args'], decodeString);
+    const decodedCwd = decodeString(rawInput['cwd']);
+    const decodedCols = decodeNumber(rawInput['cols']);
+    const decodedRows = decodeNumber(rawInput['rows']);
+
+    if (decodedCommand === null || decodedCwd === null) {
+      return null;
+    }
+
+    return {
+      command: decodedCommand,
+      args: decodedArgs,
+      cwd: decodedCwd,
+      cols: decodedCols,
+      rows: decodedRows,
+    };
+  }
+  return null;
+}
+
+/**
+ * @type { CreateTerminalResponse }
+ * @description Response after successfully creating a managed terminal session
+ */
+export type CreateTerminalResponse = {
+  /**
+   * @description Unique terminal identifier
+   * @type { string }
+   * @memberof CreateTerminalResponse
+   */
+  id: string;
+  /**
+   * @description OS process ID of the spawned process
+   * @type { number }
+   * @memberof CreateTerminalResponse
+   */
+  pid: number;
+  /**
+   * @description The command that was launched
+   * @type { string }
+   * @memberof CreateTerminalResponse
+   */
+  command: string;
+  /**
+   * @description Working directory the terminal was launched in
+   * @type { string }
+   * @memberof CreateTerminalResponse
+   */
+  cwd: string;
+  /**
+   * @description WebSocket path for raw terminal I/O (e.g. "/ws/terminal/term_a1b2c3")
+   * @type { string }
+   * @memberof CreateTerminalResponse
+   */
+  ws: string;
+  /**
+   * @description WebSocket path for structured session stream, or null if not an AI session
+   * @type { string }
+   * @memberof CreateTerminalResponse
+   */
+  sessionWs: string | null;
+  /**
+   * @description ISO 8601 timestamp when the terminal was created
+   * @type { string }
+   * @memberof CreateTerminalResponse
+   */
+  createdAt: string;
+};
 
 export function decodeCreateTerminalResponse(rawInput: unknown): CreateTerminalResponse | null {
   if (isJSON(rawInput)) {
-    const decodedId = decodeString(rawInput.id);
-    const decodedPid = decodeNumber(rawInput.pid);
-    const decodedCommand = decodeString(rawInput.command);
-    const decodedCwd = decodeString(rawInput.cwd);
-    const decodedWs = decodeString(rawInput.ws);
-    const decodedSessionWs = decodeString(rawInput.sessionWs);
-    const decodedCreatedAt = decodeString(rawInput.createdAt);
+    const decodedId = decodeString(rawInput['id']);
+    const decodedPid = decodeNumber(rawInput['pid']);
+    const decodedCommand = decodeString(rawInput['command']);
+    const decodedCwd = decodeString(rawInput['cwd']);
+    const decodedWs = decodeString(rawInput['ws']);
+    const decodedSessionWs = decodeString(rawInput['sessionWs']);
+    const decodedCreatedAt = decodeString(rawInput['createdAt']);
 
     if (
       decodedId === null ||
@@ -1516,531 +307,1978 @@ export function decodeCreateTerminalResponse(rawInput: unknown): CreateTerminalR
     }
 
     return {
-      command: decodedCommand,
-      createdAt: decodedCreatedAt,
-      cwd: decodedCwd,
       id: decodedId,
       pid: decodedPid,
+      command: decodedCommand,
+      cwd: decodedCwd,
+      ws: decodedWs,
       sessionWs: decodedSessionWs,
-      ws: decodedWs
+      createdAt: decodedCreatedAt,
     };
   }
   return null;
 }
 
-export function decodeCWsEvent1(rawInput: unknown) {
-  const result = decodeWsEvent1(rawInput);
-  if (result === null) {
-    return null;
-  }
-  return new CWsEventWsEvent1(result);
-}
+/**
+ * @type { TerminalListResponse }
+ * @description Response for listing all managed terminal sessions
+ */
+export type TerminalListResponse = {
+  /**
+   * @description Array of managed terminal info objects
+   * @type { ManagedTerminalInfo[] }
+   * @memberof TerminalListResponse
+   */
+  terminals: ManagedTerminalInfo[];
+  /**
+   * @description Total number of terminals in the list
+   * @type { number }
+   * @memberof TerminalListResponse
+   */
+  count: number;
+};
 
-
-
-export function decodeCWsEvent2(rawInput: unknown) {
-  const result = decodeWsEvent2(rawInput);
-  if (result === null) {
-    return null;
-  }
-  return new CWsEventWsEvent2(result);
-}
-
-export function decodeCWsEvent3(rawInput: unknown) {
-  const result = decodeWsEvent3(rawInput);
-  if (result === null) {
-    return null;
-  }
-  return new CWsEventWsEvent3(result);
-}
-
-
-export function decodeCWsEvent4(rawInput: unknown) {
-  const result = decodeWsEvent4(rawInput);
-  if (result === null) {
-    return null;
-  }
-  return new CWsEventWsEvent4(result);
-}
-
-export function decodeCWsEvent5(rawInput: unknown) {
-  const result = decodeWsEvent5(rawInput);
-  if (result === null) {
-    return null;
-  }
-  return new CWsEventWsEvent5(result);
-}
-
-
-
-
-export function decodeCWsSessionMessage1(rawInput: unknown) {
-  const result = decodeWsSessionMessage1(rawInput);
-  if (result === null) {
-    return null;
-  }
-  return new CWsSessionMessageWsSessionMessage1(result);
-}
-
-export function decodeCWsSessionMessage2(rawInput: unknown) {
-  const result = decodeWsSessionMessage2(rawInput);
-  if (result === null) {
-    return null;
-  }
-  return new CWsSessionMessageWsSessionMessage2(result);
-}
-
-
-
-export function decodeCWsSessionMessage3(rawInput: unknown) {
-  const result = decodeWsSessionMessage3(rawInput);
-  if (result === null) {
-    return null;
-  }
-  return new CWsSessionMessageWsSessionMessage3(result);
-}
-
-export function decodeCWsSessionOutput1(rawInput: unknown) {
-  const result = decodeWsSessionOutput1(rawInput);
-  if (result === null) {
-    return null;
-  }
-  return new CWsSessionOutputWsSessionOutput1(result);
-}
-
-
-
-export function decodeCWsSessionOutput2(rawInput: unknown) {
-  const result = decodeWsSessionOutput2(rawInput);
-  if (result === null) {
-    return null;
-  }
-  return new CWsSessionOutputWsSessionOutput2(result);
-}
-
-export function decodeCWsSessionOutput3(rawInput: unknown) {
-  const result = decodeWsSessionOutput3(rawInput);
-  if (result === null) {
-    return null;
-  }
-  return new CWsSessionOutputWsSessionOutput3(result);
-}
-
-
-
-export function decodeCWsSessionOutput4(rawInput: unknown) {
-  const result = decodeWsSessionOutput4(rawInput);
-  if (result === null) {
-    return null;
-  }
-  return new CWsSessionOutputWsSessionOutput4(result);
-}
-
-export function decodeCWsSessionOutput5(rawInput: unknown) {
-  const result = decodeWsSessionOutput5(rawInput);
-  if (result === null) {
-    return null;
-  }
-  return new CWsSessionOutputWsSessionOutput5(result);
-}
-
-
-
-export function decodeCWsSessionOutput6(rawInput: unknown) {
-  const result = decodeWsSessionOutput6(rawInput);
-  if (result === null) {
-    return null;
-  }
-  return new CWsSessionOutputWsSessionOutput6(result);
-}
-
-export function decodeCWsTerminalMessage1(rawInput: unknown) {
-  const result = decodeWsTerminalMessage1(rawInput);
-  if (result === null) {
-    return null;
-  }
-  return new CWsTerminalMessageWsTerminalMessage1(result);
-}
-
-export function decodeCWsTerminalMessage2(rawInput: unknown) {
-  const result = decodeWsTerminalMessage2(rawInput);
-  if (result === null) {
-    return null;
-  }
-  return new CWsTerminalMessageWsTerminalMessage2(result);
-}
-
-export function decodeCWsTerminalMessage3(rawInput: unknown) {
-  const result = decodeWsTerminalMessage3(rawInput);
-  if (result === null) {
-    return null;
-  }
-  return new CWsTerminalMessageWsTerminalMessage3(result);
-}
-
-
-
-export function decodeCWsTerminalOutput1(rawInput: unknown) {
-  const result = decodeWsTerminalOutput1(rawInput);
-  if (result === null) {
-    return null;
-  }
-  return new CWsTerminalOutputWsTerminalOutput1(result);
-}
-
-export function decodeCWsTerminalOutput2(rawInput: unknown) {
-  const result = decodeWsTerminalOutput2(rawInput);
-  if (result === null) {
-    return null;
-  }
-  return new CWsTerminalOutputWsTerminalOutput2(result);
-}
-
-
-
-export function decodeCWsTerminalOutput3(rawInput: unknown) {
-  const result = decodeWsTerminalOutput3(rawInput);
-  if (result === null) {
-    return null;
-  }
-  return new CWsTerminalOutputWsTerminalOutput3(result);
-}
-
-export function decodeCWsTerminalOutput4(rawInput: unknown) {
-  const result = decodeWsTerminalOutput4(rawInput);
-  if (result === null) {
-    return null;
-  }
-  return new CWsTerminalOutputWsTerminalOutput4(result);
-}
-
-
-
-export function decodeHolderClientMessage(rawInput: unknown): HolderClientMessage | null {
-  const result: HolderClientMessage | null =
-    decodeCHolderClientMessage1(rawInput)
-??
-      decodeCHolderClientMessage2(rawInput)
-??
-      decodeCHolderClientMessage3(rawInput)
-??
-      decodeCHolderClientMessage4(rawInput)
-??
-      decodeCHolderClientMessage5(rawInput)
-??
-      decodeCHolderClientMessage6(rawInput)
-
-  ;
-  return result;
-}
-
-export function decodeHolderClientMessage1(rawInput: unknown): HolderClientMessage1 | null {
+export function decodeTerminalListResponse(rawInput: unknown): TerminalListResponse | null {
   if (isJSON(rawInput)) {
-    const decodedType = decodeString(rawInput.type);
-    const decodedPid = decodeNumber(rawInput.pid);
-    const decodedExited = decodeBoolean(rawInput.exited);
-    const decodedExitCode = decodeNumber(rawInput.exitCode);
+    const decodedTerminals = decodeArray(rawInput['terminals'], decodeManagedTerminalInfo);
+    const decodedCount = decodeNumber(rawInput['count']);
 
-    if (
-      decodedType === null ||
-      decodedPid === null ||
-      decodedExited === null
-    ) {
+    if (decodedTerminals === null || decodedCount === null) {
       return null;
     }
 
     return {
-      exitCode: decodedExitCode,
-      exited: decodedExited,
-      pid: decodedPid,
-      type: decodedType
+      terminals: decodedTerminals,
+      count: decodedCount,
     };
   }
   return null;
 }
 
+/**
+ * @type { WsTicketResponse }
+ * @description Response containing a short-lived ticket for WebSocket authentication
+ */
+export type WsTicketResponse = {
+  /**
+   * @description Single-use random ticket string (expires in 30 seconds)
+   * @type { string }
+   * @memberof WsTicketResponse
+   */
+  ticket: string;
+  /**
+   * @description ISO 8601 timestamp when the ticket expires
+   * @type { string }
+   * @memberof WsTicketResponse
+   */
+  expiresAt: string;
+};
 
-
-export function decodeHolderClientMessage2(rawInput: unknown): HolderClientMessage2 | null {
+export function decodeWsTicketResponse(rawInput: unknown): WsTicketResponse | null {
   if (isJSON(rawInput)) {
-    const decodedType = decodeString(rawInput.type);
-    const decodedData = decodeString(rawInput.data);
+    const decodedTicket = decodeString(rawInput['ticket']);
+    const decodedExpiresAt = decodeString(rawInput['expiresAt']);
 
-    if (
-      decodedType === null ||
-      decodedData === null
-    ) {
+    if (decodedTicket === null || decodedExpiresAt === null) {
       return null;
     }
 
     return {
+      ticket: decodedTicket,
+      expiresAt: decodedExpiresAt,
+    };
+  }
+  return null;
+}
+
+/**
+ * @type { WsStatusResponse }
+ * @description Response indicating how many WebSocket clients are currently connected
+ */
+export type WsStatusResponse = {
+  /**
+   * @description Number of active WebSocket connections across all channels
+   * @type { number }
+   * @memberof WsStatusResponse
+   */
+  connectedClients: number;
+};
+
+export function decodeWsStatusResponse(rawInput: unknown): WsStatusResponse | null {
+  if (isJSON(rawInput)) {
+    const decodedConnectedClients = decodeNumber(rawInput['connectedClients']);
+
+    if (decodedConnectedClients === null) {
+      return null;
+    }
+
+    return {
+      connectedClients: decodedConnectedClients,
+    };
+  }
+  return null;
+}
+
+/**
+ * @type { WsTerminalInputMessage }
+ * @description Send keyboard input to the terminal PTY
+ */
+export type WsTerminalInputMessage = {
+  /**
+   * @type { string }
+   * @memberof WsTerminalInputMessage
+   */
+  type: string;
+  /**
+   * @description Raw terminal input data (keystrokes, pasted text)
+   * @type { string }
+   * @memberof WsTerminalInputMessage
+   */
+  data: string;
+};
+
+export function decodeWsTerminalInputMessage(rawInput: unknown): WsTerminalInputMessage | null {
+  if (isJSON(rawInput)) {
+    const decodedType = decodeString(rawInput['type']);
+    const decodedData = decodeString(rawInput['data']);
+
+    if (decodedType === null || decodedData === null) {
+      return null;
+    }
+
+    return {
+      type: decodedType,
       data: decodedData,
-      type: decodedType
     };
   }
   return null;
 }
 
-export function decodeHolderClientMessage3(rawInput: unknown): HolderClientMessage3 | null {
-  if (isJSON(rawInput)) {
-    const decodedType = decodeString(rawInput.type);
-    const decodedData = decodeString(rawInput.data);
+/**
+ * @type { WsTerminalResizeMessage }
+ * @description Resize the terminal PTY dimensions
+ */
+export type WsTerminalResizeMessage = {
+  /**
+   * @type { string }
+   * @memberof WsTerminalResizeMessage
+   */
+  type: string;
+  /**
+   * @description New terminal width in columns (1-500)
+   * @type { number }
+   * @memberof WsTerminalResizeMessage
+   */
+  cols: number;
+  /**
+   * @description New terminal height in rows (1-200)
+   * @type { number }
+   * @memberof WsTerminalResizeMessage
+   */
+  rows: number;
+};
 
-    if (
-      decodedType === null ||
-      decodedData === null
-    ) {
+export function decodeWsTerminalResizeMessage(rawInput: unknown): WsTerminalResizeMessage | null {
+  if (isJSON(rawInput)) {
+    const decodedType = decodeString(rawInput['type']);
+    const decodedCols = decodeNumber(rawInput['cols']);
+    const decodedRows = decodeNumber(rawInput['rows']);
+
+    if (decodedType === null || decodedCols === null || decodedRows === null) {
       return null;
     }
 
     return {
-      data: decodedData,
-      type: decodedType
-    };
-  }
-  return null;
-}
-
-
-
-export function decodeHolderClientMessage4(rawInput: unknown): HolderClientMessage4 | null {
-  if (isJSON(rawInput)) {
-    const decodedType = decodeString(rawInput.type);
-    const decodedCode = decodeNumber(rawInput.code);
-    const decodedSignal = decodeString(rawInput.signal);
-
-    if (
-      decodedType === null ||
-      decodedCode === null
-    ) {
-      return null;
-    }
-
-    return {
-      code: decodedCode,
-      signal: decodedSignal,
-      type: decodedType
-    };
-  }
-  return null;
-}
-
-export function decodeHolderClientMessage5(rawInput: unknown): HolderClientMessage5 | null {
-  if (isJSON(rawInput)) {
-    const decodedType = decodeString(rawInput.type);
-    const decodedActive = decodeBoolean(rawInput.active);
-
-    if (
-      decodedType === null ||
-      decodedActive === null
-    ) {
-      return null;
-    }
-
-    return {
-      active: decodedActive,
-      type: decodedType
-    };
-  }
-  return null;
-}
-
-
-export function decodeHolderClientMessage6(rawInput: unknown): HolderClientMessage6 | null {
-  if (isJSON(rawInput)) {
-    const decodedType = decodeString(rawInput.type);
-    const decodedPath = decodeString(rawInput.path);
-
-    if (
-      decodedType === null ||
-      decodedPath === null
-    ) {
-      return null;
-    }
-
-    return {
-      path: decodedPath,
-      type: decodedType
-    };
-  }
-  return null;
-}
-
-export function decodeHolderServerMessage(rawInput: unknown): HolderServerMessage | null {
-  const result: HolderServerMessage | null =
-    decodeCHolderServerMessage1(rawInput)
-??
-      decodeCHolderServerMessage2(rawInput)
-??
-      decodeCHolderServerMessage3(rawInput)
-
-  ;
-  return result;
-}
-
-
-export function decodeHolderServerMessage1(rawInput: unknown): HolderServerMessage1 | null {
-  if (isJSON(rawInput)) {
-    const decodedType = decodeString(rawInput.type);
-    const decodedData = decodeString(rawInput.data);
-
-    if (
-      decodedType === null ||
-      decodedData === null
-    ) {
-      return null;
-    }
-
-    return {
-      data: decodedData,
-      type: decodedType
-    };
-  }
-  return null;
-}
-
-export function decodeHolderServerMessage2(rawInput: unknown): HolderServerMessage2 | null {
-  if (isJSON(rawInput)) {
-    const decodedType = decodeString(rawInput.type);
-    const decodedCols = decodeNumber(rawInput.cols);
-    const decodedRows = decodeNumber(rawInput.rows);
-
-    if (
-      decodedType === null ||
-      decodedCols === null ||
-      decodedRows === null
-    ) {
-      return null;
-    }
-
-    return {
+      type: decodedType,
       cols: decodedCols,
       rows: decodedRows,
-      type: decodedType
     };
   }
   return null;
 }
 
+/**
+ * @type { WsTerminalSignalMessage }
+ * @description Send a signal to the terminal process
+ */
+export type WsTerminalSignalMessage = {
+  /**
+   * @type { string }
+   * @memberof WsTerminalSignalMessage
+   */
+  type: string;
+  /**
+   * @description Signal name to send to the terminal process
+   * @type { SignalEnum }
+   * @memberof WsTerminalSignalMessage
+   */
+  signal: SignalEnum;
+};
 
-
-
-export function decodeHolderServerMessage3(rawInput: unknown): HolderServerMessage3 | null {
+export function decodeWsTerminalSignalMessage(rawInput: unknown): WsTerminalSignalMessage | null {
   if (isJSON(rawInput)) {
-    const decodedType = decodeString(rawInput.type);
-    const decodedSignal = decodeString(rawInput.signal);
+    const decodedType = decodeString(rawInput['type']);
+    const decodedSignal = decodeSignalEnum(rawInput['signal']);
+
+    if (decodedType === null || decodedSignal === null) {
+      return null;
+    }
+
+    return {
+      type: decodedType,
+      signal: decodedSignal,
+    };
+  }
+  return null;
+}
+
+/**
+ * @type { SignalEnum }
+ * @description Signal name to send to the terminal process
+ */
+export type SignalEnum = 'SIGINT' | 'SIGTERM' | 'SIGTSTP';
+
+export function decodeSignalEnum(rawInput: unknown): SignalEnum | null {
+  switch (rawInput) {
+    case 'SIGINT':
+    case 'SIGTERM':
+    case 'SIGTSTP':
+      return rawInput;
+  }
+  return null;
+}
+
+export function _decodeSignalEnum(rawInput: unknown): SignalEnum | undefined {
+  switch (rawInput) {
+    case 'SIGINT':
+    case 'SIGTERM':
+    case 'SIGTSTP':
+      return rawInput;
+  }
+  return;
+}
+
+export type WsTerminalMessage =
+  | CWsTerminalMessageWsTerminalInputMessage
+  | CWsTerminalMessageWsTerminalResizeMessage
+  | CWsTerminalMessageWsTerminalSignalMessage;
+
+export function decodeWsTerminalMessage(rawInput: unknown): WsTerminalMessage | null {
+  const result: WsTerminalMessage | null =
+    decodeCWsTerminalMessageWsTerminalInputMessage(rawInput) ??
+    decodeCWsTerminalMessageWsTerminalResizeMessage(rawInput) ??
+    decodeCWsTerminalMessageWsTerminalSignalMessage(rawInput);
+
+  return result;
+}
+
+export class CWsTerminalMessageWsTerminalInputMessage {
+  data: WsTerminalInputMessage;
+  constructor(data: WsTerminalInputMessage) {
+    this.data = data;
+  }
+}
+
+export function decodeCWsTerminalMessageWsTerminalInputMessage(
+  rawInput: unknown
+): CWsTerminalMessageWsTerminalInputMessage | null {
+  const result = decodeWsTerminalInputMessage(rawInput);
+  if (result === null) {
+    return null;
+  }
+  return new CWsTerminalMessageWsTerminalInputMessage(result);
+}
+
+export class CWsTerminalMessageWsTerminalResizeMessage {
+  data: WsTerminalResizeMessage;
+  constructor(data: WsTerminalResizeMessage) {
+    this.data = data;
+  }
+}
+
+export function decodeCWsTerminalMessageWsTerminalResizeMessage(
+  rawInput: unknown
+): CWsTerminalMessageWsTerminalResizeMessage | null {
+  const result = decodeWsTerminalResizeMessage(rawInput);
+  if (result === null) {
+    return null;
+  }
+  return new CWsTerminalMessageWsTerminalResizeMessage(result);
+}
+
+export class CWsTerminalMessageWsTerminalSignalMessage {
+  data: WsTerminalSignalMessage;
+  constructor(data: WsTerminalSignalMessage) {
+    this.data = data;
+  }
+}
+
+export function decodeCWsTerminalMessageWsTerminalSignalMessage(
+  rawInput: unknown
+): CWsTerminalMessageWsTerminalSignalMessage | null {
+  const result = decodeWsTerminalSignalMessage(rawInput);
+  if (result === null) {
+    return null;
+  }
+  return new CWsTerminalMessageWsTerminalSignalMessage(result);
+}
+
+/**
+ * @type { WsTerminalOutputData }
+ * @description Terminal output data from the PTY
+ */
+export type WsTerminalOutputData = {
+  /**
+   * @type { string }
+   * @memberof WsTerminalOutputData
+   */
+  type: string;
+  /**
+   * @description Raw terminal output data
+   * @type { string }
+   * @memberof WsTerminalOutputData
+   */
+  data: string;
+};
+
+export function decodeWsTerminalOutputData(rawInput: unknown): WsTerminalOutputData | null {
+  if (isJSON(rawInput)) {
+    const decodedType = decodeString(rawInput['type']);
+    const decodedData = decodeString(rawInput['data']);
+
+    if (decodedType === null || decodedData === null) {
+      return null;
+    }
+
+    return {
+      type: decodedType,
+      data: decodedData,
+    };
+  }
+  return null;
+}
+
+/**
+ * @type { WsTerminalExitData }
+ * @description Terminal process has exited
+ */
+export type WsTerminalExitData = {
+  /**
+   * @type { string }
+   * @memberof WsTerminalExitData
+   */
+  type: string;
+  /**
+   * @description Process exit code, or null if terminated by signal
+   * @type { number }
+   * @memberof WsTerminalExitData
+   */
+  code: number | null;
+  /**
+   * @description Signal that caused the exit, or null if exited normally
+   * @type { string }
+   * @memberof WsTerminalExitData
+   */
+  signal: string | null;
+};
+
+export function decodeWsTerminalExitData(rawInput: unknown): WsTerminalExitData | null {
+  if (isJSON(rawInput)) {
+    const decodedType = decodeString(rawInput['type']);
+    const decodedCode = decodeNumber(rawInput['code']);
+    const decodedSignal = decodeString(rawInput['signal']);
+
+    if (decodedType === null) {
+      return null;
+    }
+
+    return {
+      type: decodedType,
+      code: decodedCode,
+      signal: decodedSignal,
+    };
+  }
+  return null;
+}
+
+/**
+ * @type { WsTerminalScrollbackData }
+ * @description Scrollback chunk sent on reconnection
+ */
+export type WsTerminalScrollbackData = {
+  /**
+   * @type { string }
+   * @memberof WsTerminalScrollbackData
+   */
+  type: string;
+  /**
+   * @description Scrollback content for this chunk (max 50KB)
+   * @type { string }
+   * @memberof WsTerminalScrollbackData
+   */
+  data: string;
+  /**
+   * @description 1-based chunk index
+   * @type { number }
+   * @memberof WsTerminalScrollbackData
+   */
+  chunk: number;
+  /**
+   * @description Total number of scrollback chunks
+   * @type { number }
+   * @memberof WsTerminalScrollbackData
+   */
+  total: number;
+};
+
+export function decodeWsTerminalScrollbackData(rawInput: unknown): WsTerminalScrollbackData | null {
+  if (isJSON(rawInput)) {
+    const decodedType = decodeString(rawInput['type']);
+    const decodedData = decodeString(rawInput['data']);
+    const decodedChunk = decodeNumber(rawInput['chunk']);
+    const decodedTotal = decodeNumber(rawInput['total']);
 
     if (
-      decodedType === null
+      decodedType === null ||
+      decodedData === null ||
+      decodedChunk === null ||
+      decodedTotal === null
     ) {
       return null;
     }
 
     return {
-      signal: decodedSignal,
-      type: decodedType
+      type: decodedType,
+      data: decodedData,
+      chunk: decodedChunk,
+      total: decodedTotal,
     };
   }
   return null;
 }
 
-export function decodeManagedTerminalInfo(rawInput: unknown): ManagedTerminalInfo | null {
+/**
+ * @type { WsTerminalErrorData }
+ * @description Error message from the terminal server
+ */
+export type WsTerminalErrorData = {
+  /**
+   * @type { string }
+   * @memberof WsTerminalErrorData
+   */
+  type: string;
+  /**
+   * @description Human-readable error message
+   * @type { string }
+   * @memberof WsTerminalErrorData
+   */
+  message: string;
+};
+
+export function decodeWsTerminalErrorData(rawInput: unknown): WsTerminalErrorData | null {
   if (isJSON(rawInput)) {
-    const decodedId = decodeString(rawInput.id);
-    const decodedCommand = decodeString(rawInput.command);
-    const decodedArgs = decodeArray(rawInput.args, decodeString);
-    const decodedCwd = decodeString(rawInput.cwd);
-    const decodedPid = decodeNumber(rawInput.pid);
-    const decodedCreatedAt = decodeString(rawInput.createdAt);
-    const decodedExitedAt = decodeString(rawInput.exitedAt);
-    const decodedStatus = decodeTerminalStatus(rawInput.status);
-    const decodedExitCode = decodeNumber(rawInput.exitCode);
-    const decodedHolderPid = decodeNumber(rawInput.holderPid);
-    const decodedSocketPath = decodeString(rawInput.socketPath);
-    const decodedIsActive = decodeBoolean(rawInput.isActive);
-    const decodedCurrentCwd = decodeString(rawInput.currentCwd);
+    const decodedType = decodeString(rawInput['type']);
+    const decodedMessage = decodeString(rawInput['message']);
+
+    if (decodedType === null || decodedMessage === null) {
+      return null;
+    }
+
+    return {
+      type: decodedType,
+      message: decodedMessage,
+    };
+  }
+  return null;
+}
+
+/**
+ * @type { WsTerminalOutputDroppedData }
+ * @description Notification that output was dropped due to backpressure
+ */
+export type WsTerminalOutputDroppedData = {
+  /**
+   * @type { string }
+   * @memberof WsTerminalOutputDroppedData
+   */
+  type: string;
+  /**
+   * @description Number of bytes that were dropped
+   * @type { number }
+   * @memberof WsTerminalOutputDroppedData
+   */
+  bytes: number;
+};
+
+export function decodeWsTerminalOutputDroppedData(
+  rawInput: unknown
+): WsTerminalOutputDroppedData | null {
+  if (isJSON(rawInput)) {
+    const decodedType = decodeString(rawInput['type']);
+    const decodedBytes = decodeNumber(rawInput['bytes']);
+
+    if (decodedType === null || decodedBytes === null) {
+      return null;
+    }
+
+    return {
+      type: decodedType,
+      bytes: decodedBytes,
+    };
+  }
+  return null;
+}
+
+/**
+ * @type { WsTerminalActivityData }
+ * @description Terminal activity state change (active/idle)
+ */
+export type WsTerminalActivityData = {
+  /**
+   * @type { string }
+   * @memberof WsTerminalActivityData
+   */
+  type: string;
+  /**
+   * @description Whether the terminal is currently producing output
+   * @type { boolean }
+   * @memberof WsTerminalActivityData
+   */
+  active: boolean;
+};
+
+export function decodeWsTerminalActivityData(rawInput: unknown): WsTerminalActivityData | null {
+  if (isJSON(rawInput)) {
+    const decodedType = decodeString(rawInput['type']);
+    const decodedActive = decodeBoolean(rawInput['active']);
+
+    if (decodedType === null || decodedActive === null) {
+      return null;
+    }
+
+    return {
+      type: decodedType,
+      active: decodedActive,
+    };
+  }
+  return null;
+}
+
+/**
+ * @type { WsTerminalCwdData }
+ * @description Current working directory change detected via OSC 7
+ */
+export type WsTerminalCwdData = {
+  /**
+   * @type { string }
+   * @memberof WsTerminalCwdData
+   */
+  type: string;
+  /**
+   * @description Absolute path of the new working directory
+   * @type { string }
+   * @memberof WsTerminalCwdData
+   */
+  path: string;
+};
+
+export function decodeWsTerminalCwdData(rawInput: unknown): WsTerminalCwdData | null {
+  if (isJSON(rawInput)) {
+    const decodedType = decodeString(rawInput['type']);
+    const decodedPath = decodeString(rawInput['path']);
+
+    if (decodedType === null || decodedPath === null) {
+      return null;
+    }
+
+    return {
+      type: decodedType,
+      path: decodedPath,
+    };
+  }
+  return null;
+}
+
+export type WsTerminalOutput =
+  | CWsTerminalOutputWsTerminalOutputData
+  | CWsTerminalOutputWsTerminalExitData
+  | CWsTerminalOutputWsTerminalScrollbackData
+  | CWsTerminalOutputWsTerminalErrorData
+  | CWsTerminalOutputWsTerminalOutputDroppedData
+  | CWsTerminalOutputWsTerminalActivityData
+  | CWsTerminalOutputWsTerminalCwdData;
+
+export function decodeWsTerminalOutput(rawInput: unknown): WsTerminalOutput | null {
+  const result: WsTerminalOutput | null =
+    decodeCWsTerminalOutputWsTerminalOutputData(rawInput) ??
+    decodeCWsTerminalOutputWsTerminalExitData(rawInput) ??
+    decodeCWsTerminalOutputWsTerminalScrollbackData(rawInput) ??
+    decodeCWsTerminalOutputWsTerminalErrorData(rawInput) ??
+    decodeCWsTerminalOutputWsTerminalOutputDroppedData(rawInput) ??
+    decodeCWsTerminalOutputWsTerminalActivityData(rawInput) ??
+    decodeCWsTerminalOutputWsTerminalCwdData(rawInput);
+
+  return result;
+}
+
+export class CWsTerminalOutputWsTerminalOutputData {
+  data: WsTerminalOutputData;
+  constructor(data: WsTerminalOutputData) {
+    this.data = data;
+  }
+}
+
+export function decodeCWsTerminalOutputWsTerminalOutputData(
+  rawInput: unknown
+): CWsTerminalOutputWsTerminalOutputData | null {
+  const result = decodeWsTerminalOutputData(rawInput);
+  if (result === null) {
+    return null;
+  }
+  return new CWsTerminalOutputWsTerminalOutputData(result);
+}
+
+export class CWsTerminalOutputWsTerminalExitData {
+  data: WsTerminalExitData;
+  constructor(data: WsTerminalExitData) {
+    this.data = data;
+  }
+}
+
+export function decodeCWsTerminalOutputWsTerminalExitData(
+  rawInput: unknown
+): CWsTerminalOutputWsTerminalExitData | null {
+  const result = decodeWsTerminalExitData(rawInput);
+  if (result === null) {
+    return null;
+  }
+  return new CWsTerminalOutputWsTerminalExitData(result);
+}
+
+export class CWsTerminalOutputWsTerminalScrollbackData {
+  data: WsTerminalScrollbackData;
+  constructor(data: WsTerminalScrollbackData) {
+    this.data = data;
+  }
+}
+
+export function decodeCWsTerminalOutputWsTerminalScrollbackData(
+  rawInput: unknown
+): CWsTerminalOutputWsTerminalScrollbackData | null {
+  const result = decodeWsTerminalScrollbackData(rawInput);
+  if (result === null) {
+    return null;
+  }
+  return new CWsTerminalOutputWsTerminalScrollbackData(result);
+}
+
+export class CWsTerminalOutputWsTerminalErrorData {
+  data: WsTerminalErrorData;
+  constructor(data: WsTerminalErrorData) {
+    this.data = data;
+  }
+}
+
+export function decodeCWsTerminalOutputWsTerminalErrorData(
+  rawInput: unknown
+): CWsTerminalOutputWsTerminalErrorData | null {
+  const result = decodeWsTerminalErrorData(rawInput);
+  if (result === null) {
+    return null;
+  }
+  return new CWsTerminalOutputWsTerminalErrorData(result);
+}
+
+export class CWsTerminalOutputWsTerminalOutputDroppedData {
+  data: WsTerminalOutputDroppedData;
+  constructor(data: WsTerminalOutputDroppedData) {
+    this.data = data;
+  }
+}
+
+export function decodeCWsTerminalOutputWsTerminalOutputDroppedData(
+  rawInput: unknown
+): CWsTerminalOutputWsTerminalOutputDroppedData | null {
+  const result = decodeWsTerminalOutputDroppedData(rawInput);
+  if (result === null) {
+    return null;
+  }
+  return new CWsTerminalOutputWsTerminalOutputDroppedData(result);
+}
+
+export class CWsTerminalOutputWsTerminalActivityData {
+  data: WsTerminalActivityData;
+  constructor(data: WsTerminalActivityData) {
+    this.data = data;
+  }
+}
+
+export function decodeCWsTerminalOutputWsTerminalActivityData(
+  rawInput: unknown
+): CWsTerminalOutputWsTerminalActivityData | null {
+  const result = decodeWsTerminalActivityData(rawInput);
+  if (result === null) {
+    return null;
+  }
+  return new CWsTerminalOutputWsTerminalActivityData(result);
+}
+
+export class CWsTerminalOutputWsTerminalCwdData {
+  data: WsTerminalCwdData;
+  constructor(data: WsTerminalCwdData) {
+    this.data = data;
+  }
+}
+
+export function decodeCWsTerminalOutputWsTerminalCwdData(
+  rawInput: unknown
+): CWsTerminalOutputWsTerminalCwdData | null {
+  const result = decodeWsTerminalCwdData(rawInput);
+  if (result === null) {
+    return null;
+  }
+  return new CWsTerminalOutputWsTerminalCwdData(result);
+}
+
+/**
+ * @type { WsSessionSubscribeMessage }
+ * @description Subscribe to a live AI session stream
+ */
+export type WsSessionSubscribeMessage = {
+  /**
+   * @type { string }
+   * @memberof WsSessionSubscribeMessage
+   */
+  type: string;
+  /**
+   * @description Terminal ID used to find the associated session file for streaming
+   * @type { string }
+   * @memberof WsSessionSubscribeMessage
+   */
+  sessionId: string;
+};
+
+export function decodeWsSessionSubscribeMessage(
+  rawInput: unknown
+): WsSessionSubscribeMessage | null {
+  if (isJSON(rawInput)) {
+    const decodedType = decodeString(rawInput['type']);
+    const decodedSessionId = decodeString(rawInput['sessionId']);
+
+    if (decodedType === null || decodedSessionId === null) {
+      return null;
+    }
+
+    return {
+      type: decodedType,
+      sessionId: decodedSessionId,
+    };
+  }
+  return null;
+}
+
+/**
+ * @type { WsSessionSendInputMessage }
+ * @description Send text input to the AI session (writes to PTY stdin with newline)
+ */
+export type WsSessionSendInputMessage = {
+  /**
+   * @type { string }
+   * @memberof WsSessionSendInputMessage
+   */
+  type: string;
+  /**
+   * @description Text to send to the AI session (max 10KB)
+   * @type { string }
+   * @memberof WsSessionSendInputMessage
+   */
+  text: string;
+};
+
+export function decodeWsSessionSendInputMessage(
+  rawInput: unknown
+): WsSessionSendInputMessage | null {
+  if (isJSON(rawInput)) {
+    const decodedType = decodeString(rawInput['type']);
+    const decodedText = decodeString(rawInput['text']);
+
+    if (decodedType === null || decodedText === null) {
+      return null;
+    }
+
+    return {
+      type: decodedType,
+      text: decodedText,
+    };
+  }
+  return null;
+}
+
+/**
+ * @type { WsSessionCancelMessage }
+ * @description Cancel the current AI operation (sends SIGINT to PTY)
+ */
+export type WsSessionCancelMessage = {
+  /**
+   * @type { string }
+   * @memberof WsSessionCancelMessage
+   */
+  type: string;
+};
+
+export function decodeWsSessionCancelMessage(rawInput: unknown): WsSessionCancelMessage | null {
+  if (isJSON(rawInput)) {
+    const decodedType = decodeString(rawInput['type']);
+
+    if (decodedType === null) {
+      return null;
+    }
+
+    return {
+      type: decodedType,
+    };
+  }
+  return null;
+}
+
+export type WsSessionMessage =
+  | CWsSessionMessageWsSessionSubscribeMessage
+  | CWsSessionMessageWsSessionSendInputMessage
+  | CWsSessionMessageWsSessionCancelMessage;
+
+export function decodeWsSessionMessage(rawInput: unknown): WsSessionMessage | null {
+  const result: WsSessionMessage | null =
+    decodeCWsSessionMessageWsSessionSubscribeMessage(rawInput) ??
+    decodeCWsSessionMessageWsSessionSendInputMessage(rawInput) ??
+    decodeCWsSessionMessageWsSessionCancelMessage(rawInput);
+
+  return result;
+}
+
+export class CWsSessionMessageWsSessionSubscribeMessage {
+  data: WsSessionSubscribeMessage;
+  constructor(data: WsSessionSubscribeMessage) {
+    this.data = data;
+  }
+}
+
+export function decodeCWsSessionMessageWsSessionSubscribeMessage(
+  rawInput: unknown
+): CWsSessionMessageWsSessionSubscribeMessage | null {
+  const result = decodeWsSessionSubscribeMessage(rawInput);
+  if (result === null) {
+    return null;
+  }
+  return new CWsSessionMessageWsSessionSubscribeMessage(result);
+}
+
+export class CWsSessionMessageWsSessionSendInputMessage {
+  data: WsSessionSendInputMessage;
+  constructor(data: WsSessionSendInputMessage) {
+    this.data = data;
+  }
+}
+
+export function decodeCWsSessionMessageWsSessionSendInputMessage(
+  rawInput: unknown
+): CWsSessionMessageWsSessionSendInputMessage | null {
+  const result = decodeWsSessionSendInputMessage(rawInput);
+  if (result === null) {
+    return null;
+  }
+  return new CWsSessionMessageWsSessionSendInputMessage(result);
+}
+
+export class CWsSessionMessageWsSessionCancelMessage {
+  data: WsSessionCancelMessage;
+  constructor(data: WsSessionCancelMessage) {
+    this.data = data;
+  }
+}
+
+export function decodeCWsSessionMessageWsSessionCancelMessage(
+  rawInput: unknown
+): CWsSessionMessageWsSessionCancelMessage | null {
+  const result = decodeWsSessionCancelMessage(rawInput);
+  if (result === null) {
+    return null;
+  }
+  return new CWsSessionMessageWsSessionCancelMessage(result);
+}
+
+/**
+ * @type { SessionMessageItem }
+ * @description A session message entry
+ */
+export type SessionMessageItem = Record<string, unknown>;
+
+export function decodeSessionMessageItem(rawInput: unknown): SessionMessageItem | null {
+  if (isJSON(rawInput)) {
+    return {
+      ...rawInput,
+    };
+  }
+  return null;
+}
+
+/**
+ * @type { WsSessionHistoryOutput }
+ * @description Full conversation history sent on connect
+ */
+export type WsSessionHistoryOutput = {
+  /**
+   * @type { string }
+   * @memberof WsSessionHistoryOutput
+   */
+  type: string;
+  /**
+   * @description All session messages from the beginning up to the current point
+   * @type { SessionMessageItem[] }
+   * @memberof WsSessionHistoryOutput
+   */
+  messages: SessionMessageItem[];
+};
+
+export function decodeWsSessionHistoryOutput(rawInput: unknown): WsSessionHistoryOutput | null {
+  if (isJSON(rawInput)) {
+    const decodedType = decodeString(rawInput['type']);
+    const decodedMessages = decodeArray(rawInput['messages'], decodeSessionMessageItem);
+
+    if (decodedType === null || decodedMessages === null) {
+      return null;
+    }
+
+    return {
+      type: decodedType,
+      messages: decodedMessages,
+    };
+  }
+  return null;
+}
+
+/**
+ * @type { ContentBlockItem }
+ * @description A content block (text, code, etc.)
+ */
+export type ContentBlockItem = Record<string, unknown>;
+
+export function decodeContentBlockItem(rawInput: unknown): ContentBlockItem | null {
+  if (isJSON(rawInput)) {
+    return {
+      ...rawInput,
+    };
+  }
+  return null;
+}
+
+/**
+ * @type { WsSessionMessageOutput }
+ * @description A new conversation message (user or assistant)
+ */
+export type WsSessionMessageOutput = {
+  /**
+   * @type { string }
+   * @memberof WsSessionMessageOutput
+   */
+  type: string;
+  /**
+   * @description Who sent the message
+   * @type { RoleEnum }
+   * @memberof WsSessionMessageOutput
+   */
+  role: RoleEnum;
+  /**
+   * @description Message content blocks
+   * @type { ContentBlockItem[] }
+   * @memberof WsSessionMessageOutput
+   */
+  content: ContentBlockItem[];
+  /**
+   * @description ISO 8601 timestamp of the message
+   * @type { string }
+   * @memberof WsSessionMessageOutput
+   */
+  timestamp: string;
+};
+
+export function decodeWsSessionMessageOutput(rawInput: unknown): WsSessionMessageOutput | null {
+  if (isJSON(rawInput)) {
+    const decodedType = decodeString(rawInput['type']);
+    const decodedRole = decodeRoleEnum(rawInput['role']);
+    const decodedContent = decodeArray(rawInput['content'], decodeContentBlockItem);
+    const decodedTimestamp = decodeString(rawInput['timestamp']);
 
     if (
+      decodedType === null ||
+      decodedRole === null ||
+      decodedContent === null ||
+      decodedTimestamp === null
+    ) {
+      return null;
+    }
+
+    return {
+      type: decodedType,
+      role: decodedRole,
+      content: decodedContent,
+      timestamp: decodedTimestamp,
+    };
+  }
+  return null;
+}
+
+/**
+ * @type { RoleEnum }
+ * @description Who sent the message
+ */
+export type RoleEnum = 'user' | 'assistant';
+
+export function decodeRoleEnum(rawInput: unknown): RoleEnum | null {
+  switch (rawInput) {
+    case 'user':
+    case 'assistant':
+      return rawInput;
+  }
+  return null;
+}
+
+export function _decodeRoleEnum(rawInput: unknown): RoleEnum | undefined {
+  switch (rawInput) {
+    case 'user':
+    case 'assistant':
+      return rawInput;
+  }
+  return;
+}
+
+/**
+ * @type { WsSessionToolUseOutput }
+ * @description A tool invocation by the AI assistant
+ */
+export type WsSessionToolUseOutput = {
+  /**
+   * @type { string }
+   * @memberof WsSessionToolUseOutput
+   */
+  type: string;
+  /**
+   * @description Unique tool use identifier for correlating with tool-result
+   * @type { string }
+   * @memberof WsSessionToolUseOutput
+   */
+  id: string;
+  /**
+   * @description Tool name (e.g. "Edit", "Bash", "Read")
+   * @type { string }
+   * @memberof WsSessionToolUseOutput
+   */
+  name: string;
+  /**
+   * @description Tool input parameters
+   * @type { WsSessionToolUseOutputInput }
+   * @memberof WsSessionToolUseOutput
+   */
+  input: WsSessionToolUseOutputInput;
+  /**
+   * @description Tool use is always emitted with running status
+   * @type { string }
+   * @memberof WsSessionToolUseOutput
+   */
+  status: string;
+};
+
+export function decodeWsSessionToolUseOutput(rawInput: unknown): WsSessionToolUseOutput | null {
+  if (isJSON(rawInput)) {
+    const decodedType = decodeString(rawInput['type']);
+    const decodedId = decodeString(rawInput['id']);
+    const decodedName = decodeString(rawInput['name']);
+    const decodedInput = decodeWsSessionToolUseOutputInput(rawInput['input']);
+    const decodedStatus = decodeString(rawInput['status']);
+
+    if (
+      decodedType === null ||
       decodedId === null ||
-      decodedCommand === null ||
-      decodedArgs === null ||
-      decodedCwd === null ||
-      decodedPid === null ||
-      decodedCreatedAt === null ||
+      decodedName === null ||
+      decodedInput === null ||
       decodedStatus === null
     ) {
       return null;
     }
 
     return {
-      args: decodedArgs,
-      command: decodedCommand,
-      createdAt: decodedCreatedAt,
-      currentCwd: decodedCurrentCwd,
-      cwd: decodedCwd,
-      exitCode: decodedExitCode,
-      exitedAt: decodedExitedAt,
-      holderPid: decodedHolderPid,
+      type: decodedType,
       id: decodedId,
-      isActive: decodedIsActive,
-      pid: decodedPid,
-      socketPath: decodedSocketPath,
-      status: decodedStatus
+      name: decodedName,
+      input: decodedInput,
+      status: decodedStatus,
     };
   }
   return null;
 }
 
+/**
+ * @type { WsSessionToolUseOutputInput }
+ * @description Tool input parameters
+ */
+export type WsSessionToolUseOutputInput = Record<string, unknown>;
 
-
-export function decodeRoleEnum(rawInput: unknown): null | RoleEnum {
-  switch (rawInput) {
-    case 'assistant':
-    case 'user':
-     return rawInput;
+export function decodeWsSessionToolUseOutputInput(
+  rawInput: unknown
+): WsSessionToolUseOutputInput | null {
+  if (isJSON(rawInput)) {
+    return {
+      ...rawInput,
+    };
   }
   return null;
 }
 
-export function decodeTerminalListResponse(rawInput: unknown): null | TerminalListResponse {
+/**
+ * @type { WsSessionToolResultOutput }
+ * @description Result from a completed tool invocation
+ */
+export type WsSessionToolResultOutput = {
+  /**
+   * @type { string }
+   * @memberof WsSessionToolResultOutput
+   */
+  type: string;
+  /**
+   * @description Tool use ID this result corresponds to
+   * @type { string }
+   * @memberof WsSessionToolResultOutput
+   */
+  id: string;
+  /**
+   * @description Tool output text
+   * @type { string }
+   * @memberof WsSessionToolResultOutput
+   */
+  output: string;
+  /**
+   * @description Whether the tool execution resulted in an error
+   * @type { boolean }
+   * @memberof WsSessionToolResultOutput
+   */
+  isError: boolean;
+  /**
+   * @description Tool result is always emitted with done status
+   * @type { string }
+   * @memberof WsSessionToolResultOutput
+   */
+  status: string;
+};
+
+export function decodeWsSessionToolResultOutput(
+  rawInput: unknown
+): WsSessionToolResultOutput | null {
   if (isJSON(rawInput)) {
-    const decodedTerminals = decodeArray(rawInput.terminals, decodeManagedTerminalInfo);
-    const decodedCount = decodeNumber(rawInput.count);
+    const decodedType = decodeString(rawInput['type']);
+    const decodedId = decodeString(rawInput['id']);
+    const decodedOutput = decodeString(rawInput['output']);
+    const decodedIsError = decodeBoolean(rawInput['isError']);
+    const decodedStatus = decodeString(rawInput['status']);
 
     if (
-      decodedTerminals === null ||
-      decodedCount === null
+      decodedType === null ||
+      decodedId === null ||
+      decodedOutput === null ||
+      decodedIsError === null ||
+      decodedStatus === null
     ) {
       return null;
     }
 
     return {
-      count: decodedCount,
-      terminals: decodedTerminals
+      type: decodedType,
+      id: decodedId,
+      output: decodedOutput,
+      isError: decodedIsError,
+      status: decodedStatus,
     };
   }
   return null;
 }
 
+/**
+ * @type { WsSessionThinkingOutput }
+ * @description AI thinking/reasoning block (extended thinking)
+ */
+export type WsSessionThinkingOutput = {
+  /**
+   * @type { string }
+   * @memberof WsSessionThinkingOutput
+   */
+  type: string;
+  /**
+   * @description Thinking content text
+   * @type { string }
+   * @memberof WsSessionThinkingOutput
+   */
+  text: string;
+};
 
-
-export function decodeTerminalRecord(rawInput: unknown): null | TerminalRecord {
+export function decodeWsSessionThinkingOutput(rawInput: unknown): WsSessionThinkingOutput | null {
   if (isJSON(rawInput)) {
-    const decodedId = decodeString(rawInput.id);
-    const decodedCommand = decodeString(rawInput.command);
-    const decodedArgs = decodeString(rawInput.args);
-    const decodedCwd = decodeString(rawInput.cwd);
-    const decodedCols = decodeNumber(rawInput.cols);
-    const decodedRows = decodeNumber(rawInput.rows);
-    const decodedPid = decodeNumber(rawInput.pid);
-    const decodedHolderPid = decodeNumber(rawInput.holderPid);
-    const decodedSocketPath = decodeString(rawInput.socketPath);
-    const decodedSessionFile = decodeString(rawInput.sessionFile);
-    const decodedOpencodeSessionId = decodeString(rawInput.opencodeSessionId);
-    const decodedStatus = decodeTerminalStatus(rawInput.status);
-    const decodedExitCode = decodeNumber(rawInput.exitCode);
-    const decodedCreatedAt = decodeString(rawInput.createdAt);
-    const decodedExitedAt = decodeString(rawInput.exitedAt);
+    const decodedType = decodeString(rawInput['type']);
+    const decodedText = decodeString(rawInput['text']);
+
+    if (decodedType === null || decodedText === null) {
+      return null;
+    }
+
+    return {
+      type: decodedType,
+      text: decodedText,
+    };
+  }
+  return null;
+}
+
+/**
+ * @type { WsSessionEndOutput }
+ * @description Session has ended (process exited or session file closed)
+ */
+export type WsSessionEndOutput = {
+  /**
+   * @type { string }
+   * @memberof WsSessionEndOutput
+   */
+  type: string;
+};
+
+export function decodeWsSessionEndOutput(rawInput: unknown): WsSessionEndOutput | null {
+  if (isJSON(rawInput)) {
+    const decodedType = decodeString(rawInput['type']);
+
+    if (decodedType === null) {
+      return null;
+    }
+
+    return {
+      type: decodedType,
+    };
+  }
+  return null;
+}
+
+/**
+ * @type { WsSessionErrorOutput }
+ * @description Error message from the session handler
+ */
+export type WsSessionErrorOutput = {
+  /**
+   * @type { string }
+   * @memberof WsSessionErrorOutput
+   */
+  type: string;
+  /**
+   * @description Human-readable error message
+   * @type { string }
+   * @memberof WsSessionErrorOutput
+   */
+  message: string;
+};
+
+export function decodeWsSessionErrorOutput(rawInput: unknown): WsSessionErrorOutput | null {
+  if (isJSON(rawInput)) {
+    const decodedType = decodeString(rawInput['type']);
+    const decodedMessage = decodeString(rawInput['message']);
+
+    if (decodedType === null || decodedMessage === null) {
+      return null;
+    }
+
+    return {
+      type: decodedType,
+      message: decodedMessage,
+    };
+  }
+  return null;
+}
+
+export type WsSessionOutput =
+  | CWsSessionOutputWsSessionHistoryOutput
+  | CWsSessionOutputWsSessionMessageOutput
+  | CWsSessionOutputWsSessionToolUseOutput
+  | CWsSessionOutputWsSessionToolResultOutput
+  | CWsSessionOutputWsSessionThinkingOutput
+  | CWsSessionOutputWsSessionEndOutput
+  | CWsSessionOutputWsSessionErrorOutput;
+
+export function decodeWsSessionOutput(rawInput: unknown): WsSessionOutput | null {
+  const result: WsSessionOutput | null =
+    decodeCWsSessionOutputWsSessionHistoryOutput(rawInput) ??
+    decodeCWsSessionOutputWsSessionMessageOutput(rawInput) ??
+    decodeCWsSessionOutputWsSessionToolUseOutput(rawInput) ??
+    decodeCWsSessionOutputWsSessionToolResultOutput(rawInput) ??
+    decodeCWsSessionOutputWsSessionThinkingOutput(rawInput) ??
+    decodeCWsSessionOutputWsSessionEndOutput(rawInput) ??
+    decodeCWsSessionOutputWsSessionErrorOutput(rawInput);
+
+  return result;
+}
+
+export class CWsSessionOutputWsSessionHistoryOutput {
+  data: WsSessionHistoryOutput;
+  constructor(data: WsSessionHistoryOutput) {
+    this.data = data;
+  }
+}
+
+export function decodeCWsSessionOutputWsSessionHistoryOutput(
+  rawInput: unknown
+): CWsSessionOutputWsSessionHistoryOutput | null {
+  const result = decodeWsSessionHistoryOutput(rawInput);
+  if (result === null) {
+    return null;
+  }
+  return new CWsSessionOutputWsSessionHistoryOutput(result);
+}
+
+export class CWsSessionOutputWsSessionMessageOutput {
+  data: WsSessionMessageOutput;
+  constructor(data: WsSessionMessageOutput) {
+    this.data = data;
+  }
+}
+
+export function decodeCWsSessionOutputWsSessionMessageOutput(
+  rawInput: unknown
+): CWsSessionOutputWsSessionMessageOutput | null {
+  const result = decodeWsSessionMessageOutput(rawInput);
+  if (result === null) {
+    return null;
+  }
+  return new CWsSessionOutputWsSessionMessageOutput(result);
+}
+
+export class CWsSessionOutputWsSessionToolUseOutput {
+  data: WsSessionToolUseOutput;
+  constructor(data: WsSessionToolUseOutput) {
+    this.data = data;
+  }
+}
+
+export function decodeCWsSessionOutputWsSessionToolUseOutput(
+  rawInput: unknown
+): CWsSessionOutputWsSessionToolUseOutput | null {
+  const result = decodeWsSessionToolUseOutput(rawInput);
+  if (result === null) {
+    return null;
+  }
+  return new CWsSessionOutputWsSessionToolUseOutput(result);
+}
+
+export class CWsSessionOutputWsSessionToolResultOutput {
+  data: WsSessionToolResultOutput;
+  constructor(data: WsSessionToolResultOutput) {
+    this.data = data;
+  }
+}
+
+export function decodeCWsSessionOutputWsSessionToolResultOutput(
+  rawInput: unknown
+): CWsSessionOutputWsSessionToolResultOutput | null {
+  const result = decodeWsSessionToolResultOutput(rawInput);
+  if (result === null) {
+    return null;
+  }
+  return new CWsSessionOutputWsSessionToolResultOutput(result);
+}
+
+export class CWsSessionOutputWsSessionThinkingOutput {
+  data: WsSessionThinkingOutput;
+  constructor(data: WsSessionThinkingOutput) {
+    this.data = data;
+  }
+}
+
+export function decodeCWsSessionOutputWsSessionThinkingOutput(
+  rawInput: unknown
+): CWsSessionOutputWsSessionThinkingOutput | null {
+  const result = decodeWsSessionThinkingOutput(rawInput);
+  if (result === null) {
+    return null;
+  }
+  return new CWsSessionOutputWsSessionThinkingOutput(result);
+}
+
+export class CWsSessionOutputWsSessionEndOutput {
+  data: WsSessionEndOutput;
+  constructor(data: WsSessionEndOutput) {
+    this.data = data;
+  }
+}
+
+export function decodeCWsSessionOutputWsSessionEndOutput(
+  rawInput: unknown
+): CWsSessionOutputWsSessionEndOutput | null {
+  const result = decodeWsSessionEndOutput(rawInput);
+  if (result === null) {
+    return null;
+  }
+  return new CWsSessionOutputWsSessionEndOutput(result);
+}
+
+export class CWsSessionOutputWsSessionErrorOutput {
+  data: WsSessionErrorOutput;
+  constructor(data: WsSessionErrorOutput) {
+    this.data = data;
+  }
+}
+
+export function decodeCWsSessionOutputWsSessionErrorOutput(
+  rawInput: unknown
+): CWsSessionOutputWsSessionErrorOutput | null {
+  const result = decodeWsSessionErrorOutput(rawInput);
+  if (result === null) {
+    return null;
+  }
+  return new CWsSessionOutputWsSessionErrorOutput(result);
+}
+
+/**
+ * @type { WsSessionStartedEvent }
+ * @description A new AI session has started
+ */
+export type WsSessionStartedEvent = {
+  /**
+   * @type { string }
+   * @memberof WsSessionStartedEvent
+   */
+  type: string;
+  /**
+   * @description Unique session identifier
+   * @type { string }
+   * @memberof WsSessionStartedEvent
+   */
+  sessionId: string;
+  /**
+   * @description Project name or path
+   * @type { string }
+   * @memberof WsSessionStartedEvent
+   */
+  project: string;
+  /**
+   * @description Source tool that started the session
+   * @type { SessionSource }
+   * @memberof WsSessionStartedEvent
+   */
+  source: SessionSource;
+};
+
+export function decodeWsSessionStartedEvent(rawInput: unknown): WsSessionStartedEvent | null {
+  if (isJSON(rawInput)) {
+    const decodedType = decodeString(rawInput['type']);
+    const decodedSessionId = decodeString(rawInput['sessionId']);
+    const decodedProject = decodeString(rawInput['project']);
+    const decodedSource = decodeSessionSource(rawInput['source']);
+
+    if (
+      decodedType === null ||
+      decodedSessionId === null ||
+      decodedProject === null ||
+      decodedSource === null
+    ) {
+      return null;
+    }
+
+    return {
+      type: decodedType,
+      sessionId: decodedSessionId,
+      project: decodedProject,
+      source: decodedSource,
+    };
+  }
+  return null;
+}
+
+/**
+ * @type { WsSessionEndedEvent }
+ * @description An AI session has ended
+ */
+export type WsSessionEndedEvent = {
+  /**
+   * @type { string }
+   * @memberof WsSessionEndedEvent
+   */
+  type: string;
+  /**
+   * @description Session identifier that ended
+   * @type { string }
+   * @memberof WsSessionEndedEvent
+   */
+  sessionId: string;
+  /**
+   * @description Summary of what happened in the session
+   * @type { string }
+   * @memberof WsSessionEndedEvent
+   */
+  summary: string;
+};
+
+export function decodeWsSessionEndedEvent(rawInput: unknown): WsSessionEndedEvent | null {
+  if (isJSON(rawInput)) {
+    const decodedType = decodeString(rawInput['type']);
+    const decodedSessionId = decodeString(rawInput['sessionId']);
+    const decodedSummary = decodeString(rawInput['summary']);
+
+    if (decodedType === null || decodedSessionId === null || decodedSummary === null) {
+      return null;
+    }
+
+    return {
+      type: decodedType,
+      sessionId: decodedSessionId,
+      summary: decodedSummary,
+    };
+  }
+  return null;
+}
+
+/**
+ * @type { WsPermissionRequestedEvent }
+ * @description A permission request is awaiting approval
+ */
+export type WsPermissionRequestedEvent = {
+  /**
+   * @type { string }
+   * @memberof WsPermissionRequestedEvent
+   */
+  type: string;
+  /**
+   * @description Unique request identifier for the permission flow
+   * @type { string }
+   * @memberof WsPermissionRequestedEvent
+   */
+  requestId: string;
+  /**
+   * @description Tool requesting permission (e.g. "Bash", "Edit")
+   * @type { string }
+   * @memberof WsPermissionRequestedEvent
+   */
+  tool: string;
+  /**
+   * @description Tool input that requires approval
+   * @type { WsPermissionRequestedEventInput }
+   * @memberof WsPermissionRequestedEvent
+   */
+  input: WsPermissionRequestedEventInput;
+};
+
+export function decodeWsPermissionRequestedEvent(
+  rawInput: unknown
+): WsPermissionRequestedEvent | null {
+  if (isJSON(rawInput)) {
+    const decodedType = decodeString(rawInput['type']);
+    const decodedRequestId = decodeString(rawInput['requestId']);
+    const decodedTool = decodeString(rawInput['tool']);
+    const decodedInput = decodeWsPermissionRequestedEventInput(rawInput['input']);
+
+    if (
+      decodedType === null ||
+      decodedRequestId === null ||
+      decodedTool === null ||
+      decodedInput === null
+    ) {
+      return null;
+    }
+
+    return {
+      type: decodedType,
+      requestId: decodedRequestId,
+      tool: decodedTool,
+      input: decodedInput,
+    };
+  }
+  return null;
+}
+
+/**
+ * @type { WsPermissionRequestedEventInput }
+ * @description Tool input that requires approval
+ */
+export type WsPermissionRequestedEventInput = Record<string, unknown>;
+
+export function decodeWsPermissionRequestedEventInput(
+  rawInput: unknown
+): WsPermissionRequestedEventInput | null {
+  if (isJSON(rawInput)) {
+    return {
+      ...rawInput,
+    };
+  }
+  return null;
+}
+
+/**
+ * @type { WsPermissionResolvedEvent }
+ * @description A permission request has been resolved
+ */
+export type WsPermissionResolvedEvent = {
+  /**
+   * @type { string }
+   * @memberof WsPermissionResolvedEvent
+   */
+  type: string;
+  /**
+   * @description Request identifier that was resolved
+   * @type { string }
+   * @memberof WsPermissionResolvedEvent
+   */
+  requestId: string;
+  /**
+   * @description Whether the permission was allowed or denied
+   * @type { PermissionDecision }
+   * @memberof WsPermissionResolvedEvent
+   */
+  decision: PermissionDecision;
+};
+
+export function decodeWsPermissionResolvedEvent(
+  rawInput: unknown
+): WsPermissionResolvedEvent | null {
+  if (isJSON(rawInput)) {
+    const decodedType = decodeString(rawInput['type']);
+    const decodedRequestId = decodeString(rawInput['requestId']);
+    const decodedDecision = decodePermissionDecision(rawInput['decision']);
+
+    if (decodedType === null || decodedRequestId === null || decodedDecision === null) {
+      return null;
+    }
+
+    return {
+      type: decodedType,
+      requestId: decodedRequestId,
+      decision: decodedDecision,
+    };
+  }
+  return null;
+}
+
+/**
+ * @type { WsTerminalCreatedEvent }
+ * @description A new managed terminal has been created
+ */
+export type WsTerminalCreatedEvent = {
+  /**
+   * @type { string }
+   * @memberof WsTerminalCreatedEvent
+   */
+  type: string;
+  /**
+   * @description Unique terminal identifier
+   * @type { string }
+   * @memberof WsTerminalCreatedEvent
+   */
+  terminalId: string;
+  /**
+   * @description Command that was launched
+   * @type { string }
+   * @memberof WsTerminalCreatedEvent
+   */
+  command: string;
+};
+
+export function decodeWsTerminalCreatedEvent(rawInput: unknown): WsTerminalCreatedEvent | null {
+  if (isJSON(rawInput)) {
+    const decodedType = decodeString(rawInput['type']);
+    const decodedTerminalId = decodeString(rawInput['terminalId']);
+    const decodedCommand = decodeString(rawInput['command']);
+
+    if (decodedType === null || decodedTerminalId === null || decodedCommand === null) {
+      return null;
+    }
+
+    return {
+      type: decodedType,
+      terminalId: decodedTerminalId,
+      command: decodedCommand,
+    };
+  }
+  return null;
+}
+
+/**
+ * @type { WsTerminalExitedEvent }
+ * @description A managed terminal process has exited
+ */
+export type WsTerminalExitedEvent = {
+  /**
+   * @type { string }
+   * @memberof WsTerminalExitedEvent
+   */
+  type: string;
+  /**
+   * @description Terminal identifier that exited
+   * @type { string }
+   * @memberof WsTerminalExitedEvent
+   */
+  terminalId: string;
+  /**
+   * @description Process exit code, or null if terminated by signal
+   * @type { number }
+   * @memberof WsTerminalExitedEvent
+   */
+  code: number | null;
+};
+
+export function decodeWsTerminalExitedEvent(rawInput: unknown): WsTerminalExitedEvent | null {
+  if (isJSON(rawInput)) {
+    const decodedType = decodeString(rawInput['type']);
+    const decodedTerminalId = decodeString(rawInput['terminalId']);
+    const decodedCode = decodeNumber(rawInput['code']);
+
+    if (decodedType === null || decodedTerminalId === null) {
+      return null;
+    }
+
+    return {
+      type: decodedType,
+      terminalId: decodedTerminalId,
+      code: decodedCode,
+    };
+  }
+  return null;
+}
+
+export type WsEvent =
+  | CWsEventWsSessionStartedEvent
+  | CWsEventWsSessionEndedEvent
+  | CWsEventWsPermissionRequestedEvent
+  | CWsEventWsPermissionResolvedEvent
+  | CWsEventWsTerminalCreatedEvent
+  | CWsEventWsTerminalExitedEvent;
+
+export function decodeWsEvent(rawInput: unknown): WsEvent | null {
+  const result: WsEvent | null =
+    decodeCWsEventWsSessionStartedEvent(rawInput) ??
+    decodeCWsEventWsSessionEndedEvent(rawInput) ??
+    decodeCWsEventWsPermissionRequestedEvent(rawInput) ??
+    decodeCWsEventWsPermissionResolvedEvent(rawInput) ??
+    decodeCWsEventWsTerminalCreatedEvent(rawInput) ??
+    decodeCWsEventWsTerminalExitedEvent(rawInput);
+
+  return result;
+}
+
+export class CWsEventWsSessionStartedEvent {
+  data: WsSessionStartedEvent;
+  constructor(data: WsSessionStartedEvent) {
+    this.data = data;
+  }
+}
+
+export function decodeCWsEventWsSessionStartedEvent(
+  rawInput: unknown
+): CWsEventWsSessionStartedEvent | null {
+  const result = decodeWsSessionStartedEvent(rawInput);
+  if (result === null) {
+    return null;
+  }
+  return new CWsEventWsSessionStartedEvent(result);
+}
+
+export class CWsEventWsSessionEndedEvent {
+  data: WsSessionEndedEvent;
+  constructor(data: WsSessionEndedEvent) {
+    this.data = data;
+  }
+}
+
+export function decodeCWsEventWsSessionEndedEvent(
+  rawInput: unknown
+): CWsEventWsSessionEndedEvent | null {
+  const result = decodeWsSessionEndedEvent(rawInput);
+  if (result === null) {
+    return null;
+  }
+  return new CWsEventWsSessionEndedEvent(result);
+}
+
+export class CWsEventWsPermissionRequestedEvent {
+  data: WsPermissionRequestedEvent;
+  constructor(data: WsPermissionRequestedEvent) {
+    this.data = data;
+  }
+}
+
+export function decodeCWsEventWsPermissionRequestedEvent(
+  rawInput: unknown
+): CWsEventWsPermissionRequestedEvent | null {
+  const result = decodeWsPermissionRequestedEvent(rawInput);
+  if (result === null) {
+    return null;
+  }
+  return new CWsEventWsPermissionRequestedEvent(result);
+}
+
+export class CWsEventWsPermissionResolvedEvent {
+  data: WsPermissionResolvedEvent;
+  constructor(data: WsPermissionResolvedEvent) {
+    this.data = data;
+  }
+}
+
+export function decodeCWsEventWsPermissionResolvedEvent(
+  rawInput: unknown
+): CWsEventWsPermissionResolvedEvent | null {
+  const result = decodeWsPermissionResolvedEvent(rawInput);
+  if (result === null) {
+    return null;
+  }
+  return new CWsEventWsPermissionResolvedEvent(result);
+}
+
+export class CWsEventWsTerminalCreatedEvent {
+  data: WsTerminalCreatedEvent;
+  constructor(data: WsTerminalCreatedEvent) {
+    this.data = data;
+  }
+}
+
+export function decodeCWsEventWsTerminalCreatedEvent(
+  rawInput: unknown
+): CWsEventWsTerminalCreatedEvent | null {
+  const result = decodeWsTerminalCreatedEvent(rawInput);
+  if (result === null) {
+    return null;
+  }
+  return new CWsEventWsTerminalCreatedEvent(result);
+}
+
+export class CWsEventWsTerminalExitedEvent {
+  data: WsTerminalExitedEvent;
+  constructor(data: WsTerminalExitedEvent) {
+    this.data = data;
+  }
+}
+
+export function decodeCWsEventWsTerminalExitedEvent(
+  rawInput: unknown
+): CWsEventWsTerminalExitedEvent | null {
+  const result = decodeWsTerminalExitedEvent(rawInput);
+  if (result === null) {
+    return null;
+  }
+  return new CWsEventWsTerminalExitedEvent(result);
+}
+
+/**
+ * @type { TerminalRecord }
+ * @description Persisted terminal metadata stored in SQLite for recovery across server restarts
+ */
+export type TerminalRecord = {
+  /**
+   * @description Unique terminal identifier
+   * @type { string }
+   * @memberof TerminalRecord
+   */
+  id: string;
+  /**
+   * @description The command that was launched
+   * @type { string }
+   * @memberof TerminalRecord
+   */
+  command: string;
+  /**
+   * @description JSON-encoded array of command arguments
+   * @type { string }
+   * @memberof TerminalRecord
+   */
+  args: string;
+  /**
+   * @description Working directory the terminal was launched in
+   * @type { string }
+   * @memberof TerminalRecord
+   */
+  cwd: string;
+  /**
+   * @description Terminal width in columns
+   * @type { number }
+   * @memberof TerminalRecord
+   */
+  cols: number;
+  /**
+   * @description Terminal height in rows
+   * @type { number }
+   * @memberof TerminalRecord
+   */
+  rows: number;
+  /**
+   * @description PTY child process ID
+   * @type { number }
+   * @memberof TerminalRecord
+   */
+  pid: number | null;
+  /**
+   * @description Holder process ID
+   * @type { number }
+   * @memberof TerminalRecord
+   */
+  holderPid: number | null;
+  /**
+   * @description Unix domain socket path for holder communication
+   * @type { string }
+   * @memberof TerminalRecord
+   */
+  socketPath: string | null;
+  /**
+   * @description Claude Code JSONL session file path
+   * @type { string }
+   * @memberof TerminalRecord
+   */
+  sessionFile: string | null;
+  /**
+   * @description OpenCode SQLite session ID
+   * @type { string }
+   * @memberof TerminalRecord
+   */
+  opencodeSessionId: string | null;
+  /**
+   * @description Terminal lifecycle status
+   * @type { TerminalStatus }
+   * @memberof TerminalRecord
+   */
+  status: TerminalStatus;
+  /**
+   * @description Process exit code
+   * @type { number }
+   * @memberof TerminalRecord
+   */
+  exitCode: number | null;
+  /**
+   * @description ISO 8601 timestamp when the terminal was created
+   * @type { string }
+   * @memberof TerminalRecord
+   */
+  createdAt: string;
+  /**
+   * @description ISO 8601 timestamp when the process exited
+   * @type { string }
+   * @memberof TerminalRecord
+   */
+  exitedAt: string | null;
+};
+
+export function decodeTerminalRecord(rawInput: unknown): TerminalRecord | null {
+  if (isJSON(rawInput)) {
+    const decodedId = decodeString(rawInput['id']);
+    const decodedCommand = decodeString(rawInput['command']);
+    const decodedArgs = decodeString(rawInput['args']);
+    const decodedCwd = decodeString(rawInput['cwd']);
+    const decodedCols = decodeNumber(rawInput['cols']);
+    const decodedRows = decodeNumber(rawInput['rows']);
+    const decodedPid = decodeNumber(rawInput['pid']);
+    const decodedHolderPid = decodeNumber(rawInput['holderPid']);
+    const decodedSocketPath = decodeString(rawInput['socketPath']);
+    const decodedSessionFile = decodeString(rawInput['sessionFile']);
+    const decodedOpencodeSessionId = decodeString(rawInput['opencodeSessionId']);
+    const decodedStatus = decodeTerminalStatus(rawInput['status']);
+    const decodedExitCode = decodeNumber(rawInput['exitCode']);
+    const decodedCreatedAt = decodeString(rawInput['createdAt']);
+    const decodedExitedAt = decodeString(rawInput['exitedAt']);
 
     if (
       decodedId === null ||
@@ -2056,681 +2294,556 @@ export function decodeTerminalRecord(rawInput: unknown): null | TerminalRecord {
     }
 
     return {
+      id: decodedId,
+      command: decodedCommand,
       args: decodedArgs,
-      cols: decodedCols,
-      command: decodedCommand,
-      createdAt: decodedCreatedAt,
       cwd: decodedCwd,
-      exitCode: decodedExitCode,
-      exitedAt: decodedExitedAt,
-      holderPid: decodedHolderPid,
-      id: decodedId,
-      opencodeSessionId: decodedOpencodeSessionId,
-      pid: decodedPid,
-      rows: decodedRows,
-      sessionFile: decodedSessionFile,
-      socketPath: decodedSocketPath,
-      status: decodedStatus
-    };
-  }
-  return null;
-}
-
-export function decodeTerminalStatus(rawInput: unknown): null | TerminalStatus {
-  switch (rawInput) {
-    case 'exited':
-    case 'orphaned':
-    case 'running':
-     return rawInput;
-  }
-  return null;
-}
-
-
-
-export function decodeToolExecutionStatus(rawInput: unknown): null | ToolExecutionStatus {
-  switch (rawInput) {
-    case 'done':
-    case 'error':
-    case 'running':
-     return rawInput;
-  }
-  return null;
-}
-
-export function decodeToolResultStatus(rawInput: unknown): null | ToolResultStatus {
-  switch (rawInput) {
-    case 'done':
-    case 'error':
-     return rawInput;
-  }
-  return null;
-}
-
-
-
-export function decodeWsEvent(rawInput: unknown): null | WsEvent {
-  const result: null | WsEvent =
-    decodeCWsEvent1(rawInput)
-??
-      decodeCWsEvent2(rawInput)
-??
-      decodeCWsEvent3(rawInput)
-??
-      decodeCWsEvent4(rawInput)
-??
-      decodeCWsEvent5(rawInput)
-
-  ;
-  return result;
-}
-
-export function decodeWsEvent1(rawInput: unknown): null | WsEvent1 {
-  if (isJSON(rawInput)) {
-    const decodedType = decodeString(rawInput.type);
-    const decodedSessionId = decodeString(rawInput.sessionId);
-    const decodedProject = decodeString(rawInput.project);
-    const decodedSource = decodeString(rawInput.source);
-
-    if (
-      decodedType === null ||
-      decodedSessionId === null ||
-      decodedProject === null ||
-      decodedSource === null
-    ) {
-      return null;
-    }
-
-    return {
-      project: decodedProject,
-      sessionId: decodedSessionId,
-      source: decodedSource,
-      type: decodedType
-    };
-  }
-  return null;
-}
-
-
-
-export function decodeWsEvent2(rawInput: unknown): null | WsEvent2 {
-  if (isJSON(rawInput)) {
-    const decodedType = decodeString(rawInput.type);
-    const decodedSessionId = decodeString(rawInput.sessionId);
-    const decodedSummary = decodeString(rawInput.summary);
-
-    if (
-      decodedType === null ||
-      decodedSessionId === null
-    ) {
-      return null;
-    }
-
-    return {
-      sessionId: decodedSessionId,
-      summary: decodedSummary,
-      type: decodedType
-    };
-  }
-  return null;
-}
-
-export function decodeWsEvent3(rawInput: unknown): null | WsEvent3 {
-  if (isJSON(rawInput)) {
-    const decodedType = decodeString(rawInput.type);
-    const decodedRequestId = decodeString(rawInput.requestId);
-    const decodedTool = decodeString(rawInput.tool);
-    const decodedInput = decodeWsEvent3Input(rawInput.input);
-
-    if (
-      decodedType === null ||
-      decodedRequestId === null ||
-      decodedTool === null ||
-      decodedInput === null
-    ) {
-      return null;
-    }
-
-    return {
-      input: decodedInput,
-      requestId: decodedRequestId,
-      tool: decodedTool,
-      type: decodedType
-    };
-  }
-  return null;
-}
-
-
-export function decodeWsEvent3Input(rawInput: unknown): null | WsEvent3Input {
-  if (isJSON(rawInput)) {
-
-
-    return {
-      ...rawInput,
-    };
-  }
-  return null;
-}
-
-export function decodeWsEvent4(rawInput: unknown): null | WsEvent4 {
-  if (isJSON(rawInput)) {
-    const decodedType = decodeString(rawInput.type);
-    const decodedTerminalId = decodeString(rawInput.terminalId);
-    const decodedCommand = decodeString(rawInput.command);
-
-    if (
-      decodedType === null ||
-      decodedTerminalId === null ||
-      decodedCommand === null
-    ) {
-      return null;
-    }
-
-    return {
-      command: decodedCommand,
-      terminalId: decodedTerminalId,
-      type: decodedType
-    };
-  }
-  return null;
-}
-
-
-
-
-export function decodeWsEvent5(rawInput: unknown): null | WsEvent5 {
-  if (isJSON(rawInput)) {
-    const decodedType = decodeString(rawInput.type);
-    const decodedTerminalId = decodeString(rawInput.terminalId);
-    const decodedCode = decodeNumber(rawInput.code);
-
-    if (
-      decodedType === null ||
-      decodedTerminalId === null ||
-      decodedCode === null
-    ) {
-      return null;
-    }
-
-    return {
-      code: decodedCode,
-      terminalId: decodedTerminalId,
-      type: decodedType
-    };
-  }
-  return null;
-}
-
-export function decodeWsSessionMessage(rawInput: unknown): null | WsSessionMessage {
-  const result: null | WsSessionMessage =
-    decodeCWsSessionMessage1(rawInput)
-??
-      decodeCWsSessionMessage2(rawInput)
-??
-      decodeCWsSessionMessage3(rawInput)
-
-  ;
-  return result;
-}
-
-
-
-export function decodeWsSessionMessage1(rawInput: unknown): null | WsSessionMessage1 {
-  if (isJSON(rawInput)) {
-    const decodedType = decodeString(rawInput.type);
-    const decodedSessionId = decodeString(rawInput.sessionId);
-
-    if (
-      decodedType === null ||
-      decodedSessionId === null
-    ) {
-      return null;
-    }
-
-    return {
-      sessionId: decodedSessionId,
-      type: decodedType
-    };
-  }
-  return null;
-}
-
-export function decodeWsSessionMessage2(rawInput: unknown): null | WsSessionMessage2 {
-  if (isJSON(rawInput)) {
-    const decodedType = decodeString(rawInput.type);
-    const decodedText = decodeString(rawInput.text);
-
-    if (
-      decodedType === null ||
-      decodedText === null
-    ) {
-      return null;
-    }
-
-    return {
-      text: decodedText,
-      type: decodedType
-    };
-  }
-  return null;
-}
-
-
-
-export function decodeWsSessionMessage3(rawInput: unknown): null | WsSessionMessage3 {
-  if (isJSON(rawInput)) {
-    const decodedType = decodeString(rawInput.type);
-
-    if (
-      decodedType === null
-    ) {
-      return null;
-    }
-
-    return {
-      type: decodedType
-    };
-  }
-  return null;
-}
-
-export function decodeWsSessionOutput(rawInput: unknown): null | WsSessionOutput {
-  const result: null | WsSessionOutput =
-    decodeCWsSessionOutput1(rawInput)
-??
-      decodeCWsSessionOutput2(rawInput)
-??
-      decodeCWsSessionOutput3(rawInput)
-??
-      decodeCWsSessionOutput4(rawInput)
-??
-      decodeCWsSessionOutput5(rawInput)
-??
-      decodeCWsSessionOutput6(rawInput)
-
-  ;
-  return result;
-}
-
-
-
-export function decodeWsSessionOutput1(rawInput: unknown): null | WsSessionOutput1 {
-  if (isJSON(rawInput)) {
-    const decodedType = decodeString(rawInput.type);
-    const decodedMessages = decodeArray(rawInput.messages, decodeMessagesItem);
-
-    if (
-      decodedType === null ||
-      decodedMessages === null
-    ) {
-      return null;
-    }
-
-    return {
-      messages: decodedMessages,
-      type: decodedType
-    };
-  }
-  return null;
-}
-
-export function decodeWsSessionOutput2(rawInput: unknown): null | WsSessionOutput2 {
-  if (isJSON(rawInput)) {
-    const decodedType = decodeString(rawInput.type);
-    const decodedRole = decodeRoleEnum(rawInput.role);
-    const decodedContent = decodeArray(rawInput.content, decodeContentItem);
-    const decodedTimestamp = decodeString(rawInput.timestamp);
-
-    if (
-      decodedType === null ||
-      decodedRole === null ||
-      decodedContent === null ||
-      decodedTimestamp === null
-    ) {
-      return null;
-    }
-
-    return {
-      content: decodedContent,
-      role: decodedRole,
-      timestamp: decodedTimestamp,
-      type: decodedType
-    };
-  }
-  return null;
-}
-
-
-
-export function decodeWsSessionOutput3(rawInput: unknown): null | WsSessionOutput3 {
-  if (isJSON(rawInput)) {
-    const decodedType = decodeString(rawInput.type);
-    const decodedName = decodeString(rawInput.name);
-    const decodedInput = decodeWsSessionOutput3Input(rawInput.input);
-    const decodedStatus = decodeToolExecutionStatus(rawInput.status);
-
-    if (
-      decodedType === null ||
-      decodedName === null ||
-      decodedInput === null ||
-      decodedStatus === null
-    ) {
-      return null;
-    }
-
-    return {
-      input: decodedInput,
-      name: decodedName,
-      status: decodedStatus,
-      type: decodedType
-    };
-  }
-  return null;
-}
-
-export function decodeWsSessionOutput3Input(rawInput: unknown): null | WsSessionOutput3Input {
-  if (isJSON(rawInput)) {
-
-
-    return {
-      ...rawInput,
-    };
-  }
-  return null;
-}
-
-
-
-export function decodeWsSessionOutput4(rawInput: unknown): null | WsSessionOutput4 {
-  if (isJSON(rawInput)) {
-    const decodedType = decodeString(rawInput.type);
-    const decodedId = decodeString(rawInput.id);
-    const decodedOutput = decodeString(rawInput.output);
-    const decodedStatus = decodeToolResultStatus(rawInput.status);
-
-    if (
-      decodedType === null ||
-      decodedId === null ||
-      decodedOutput === null ||
-      decodedStatus === null
-    ) {
-      return null;
-    }
-
-    return {
-      id: decodedId,
-      output: decodedOutput,
-      status: decodedStatus,
-      type: decodedType
-    };
-  }
-  return null;
-}
-
-export function decodeWsSessionOutput5(rawInput: unknown): null | WsSessionOutput5 {
-  if (isJSON(rawInput)) {
-    const decodedType = decodeString(rawInput.type);
-    const decodedText = decodeString(rawInput.text);
-
-    if (
-      decodedType === null ||
-      decodedText === null
-    ) {
-      return null;
-    }
-
-    return {
-      text: decodedText,
-      type: decodedType
-    };
-  }
-  return null;
-}
-
-
-
-export function decodeWsSessionOutput6(rawInput: unknown): null | WsSessionOutput6 {
-  if (isJSON(rawInput)) {
-    const decodedType = decodeString(rawInput.type);
-
-    if (
-      decodedType === null
-    ) {
-      return null;
-    }
-
-    return {
-      type: decodedType
-    };
-  }
-  return null;
-}
-
-export function decodeWsStatusResponse(rawInput: unknown): null | WsStatusResponse {
-  if (isJSON(rawInput)) {
-    const decodedConnectedClients = decodeNumber(rawInput.connectedClients);
-
-    if (
-      decodedConnectedClients === null
-    ) {
-      return null;
-    }
-
-    return {
-      connectedClients: decodedConnectedClients
-    };
-  }
-  return null;
-}
-
-
-
-export function decodeWsTerminalMessage(rawInput: unknown): null | WsTerminalMessage {
-  const result: null | WsTerminalMessage =
-    decodeCWsTerminalMessage1(rawInput)
-??
-      decodeCWsTerminalMessage2(rawInput)
-??
-      decodeCWsTerminalMessage3(rawInput)
-
-  ;
-  return result;
-}
-
-export function decodeWsTerminalMessage1(rawInput: unknown): null | WsTerminalMessage1 {
-  if (isJSON(rawInput)) {
-    const decodedType = decodeString(rawInput.type);
-    const decodedData = decodeString(rawInput.data);
-
-    if (
-      decodedType === null ||
-      decodedData === null
-    ) {
-      return null;
-    }
-
-    return {
-      data: decodedData,
-      type: decodedType
-    };
-  }
-  return null;
-}
-
-
-
-export function decodeWsTerminalMessage2(rawInput: unknown): null | WsTerminalMessage2 {
-  if (isJSON(rawInput)) {
-    const decodedType = decodeString(rawInput.type);
-    const decodedCols = decodeNumber(rawInput.cols);
-    const decodedRows = decodeNumber(rawInput.rows);
-
-    if (
-      decodedType === null ||
-      decodedCols === null ||
-      decodedRows === null
-    ) {
-      return null;
-    }
-
-    return {
       cols: decodedCols,
       rows: decodedRows,
-      type: decodedType
+      pid: decodedPid,
+      holderPid: decodedHolderPid,
+      socketPath: decodedSocketPath,
+      sessionFile: decodedSessionFile,
+      opencodeSessionId: decodedOpencodeSessionId,
+      status: decodedStatus,
+      exitCode: decodedExitCode,
+      createdAt: decodedCreatedAt,
+      exitedAt: decodedExitedAt,
     };
   }
   return null;
 }
 
-export function decodeWsTerminalMessage3(rawInput: unknown): null | WsTerminalMessage3 {
-  if (isJSON(rawInput)) {
-    const decodedType = decodeString(rawInput.type);
-    const decodedSignal = decodeString(rawInput.signal);
+/**
+ * @type { HolderInputMessage }
+ * @description Write data to PTY stdin
+ */
+export type HolderInputMessage = {
+  /**
+   * @type { string }
+   * @memberof HolderInputMessage
+   */
+  type: string;
+  /**
+   * @description Raw input data to write to PTY
+   * @type { string }
+   * @memberof HolderInputMessage
+   */
+  data: string;
+};
 
-    if (
-      decodedType === null ||
-      decodedSignal === null
-    ) {
+export function decodeHolderInputMessage(rawInput: unknown): HolderInputMessage | null {
+  if (isJSON(rawInput)) {
+    const decodedType = decodeString(rawInput['type']);
+    const decodedData = decodeString(rawInput['data']);
+
+    if (decodedType === null || decodedData === null) {
       return null;
     }
 
     return {
-      signal: decodedSignal,
-      type: decodedType
+      type: decodedType,
+      data: decodedData,
     };
   }
   return null;
 }
 
+/**
+ * @type { HolderResizeMessage }
+ * @description Resize the PTY dimensions
+ */
+export type HolderResizeMessage = {
+  /**
+   * @type { string }
+   * @memberof HolderResizeMessage
+   */
+  type: string;
+  /**
+   * @description New width in columns
+   * @type { number }
+   * @memberof HolderResizeMessage
+   */
+  cols: number;
+  /**
+   * @description New height in rows
+   * @type { number }
+   * @memberof HolderResizeMessage
+   */
+  rows: number;
+};
 
+export function decodeHolderResizeMessage(rawInput: unknown): HolderResizeMessage | null {
+  if (isJSON(rawInput)) {
+    const decodedType = decodeString(rawInput['type']);
+    const decodedCols = decodeNumber(rawInput['cols']);
+    const decodedRows = decodeNumber(rawInput['rows']);
 
-export function decodeWsTerminalOutput(rawInput: unknown): null | WsTerminalOutput {
-  const result: null | WsTerminalOutput =
-    decodeCWsTerminalOutput1(rawInput)
-??
-      decodeCWsTerminalOutput2(rawInput)
-??
-      decodeCWsTerminalOutput3(rawInput)
-??
-      decodeCWsTerminalOutput4(rawInput)
+    if (decodedType === null || decodedCols === null || decodedRows === null) {
+      return null;
+    }
 
-  ;
+    return {
+      type: decodedType,
+      cols: decodedCols,
+      rows: decodedRows,
+    };
+  }
+  return null;
+}
+
+/**
+ * @type { HolderKillMessage }
+ * @description Send a signal to the PTY process
+ */
+export type HolderKillMessage = {
+  /**
+   * @type { string }
+   * @memberof HolderKillMessage
+   */
+  type: string;
+  /**
+   * @description Signal name to send (default SIGTERM)
+   * @type { string }
+   * @memberof HolderKillMessage
+   */
+  signal: string | null;
+};
+
+export function decodeHolderKillMessage(rawInput: unknown): HolderKillMessage | null {
+  if (isJSON(rawInput)) {
+    const decodedType = decodeString(rawInput['type']);
+    const decodedSignal = decodeString(rawInput['signal']);
+
+    if (decodedType === null) {
+      return null;
+    }
+
+    return {
+      type: decodedType,
+      signal: decodedSignal,
+    };
+  }
+  return null;
+}
+
+export type HolderServerMessage =
+  | CHolderServerMessageHolderInputMessage
+  | CHolderServerMessageHolderResizeMessage
+  | CHolderServerMessageHolderKillMessage;
+
+export function decodeHolderServerMessage(rawInput: unknown): HolderServerMessage | null {
+  const result: HolderServerMessage | null =
+    decodeCHolderServerMessageHolderInputMessage(rawInput) ??
+    decodeCHolderServerMessageHolderResizeMessage(rawInput) ??
+    decodeCHolderServerMessageHolderKillMessage(rawInput);
+
   return result;
 }
 
-export function decodeWsTerminalOutput1(rawInput: unknown): null | WsTerminalOutput1 {
-  if (isJSON(rawInput)) {
-    const decodedType = decodeString(rawInput.type);
-    const decodedData = decodeString(rawInput.data);
+export class CHolderServerMessageHolderInputMessage {
+  data: HolderInputMessage;
+  constructor(data: HolderInputMessage) {
+    this.data = data;
+  }
+}
 
-    if (
-      decodedType === null ||
-      decodedData === null
-    ) {
+export function decodeCHolderServerMessageHolderInputMessage(
+  rawInput: unknown
+): CHolderServerMessageHolderInputMessage | null {
+  const result = decodeHolderInputMessage(rawInput);
+  if (result === null) {
+    return null;
+  }
+  return new CHolderServerMessageHolderInputMessage(result);
+}
+
+export class CHolderServerMessageHolderResizeMessage {
+  data: HolderResizeMessage;
+  constructor(data: HolderResizeMessage) {
+    this.data = data;
+  }
+}
+
+export function decodeCHolderServerMessageHolderResizeMessage(
+  rawInput: unknown
+): CHolderServerMessageHolderResizeMessage | null {
+  const result = decodeHolderResizeMessage(rawInput);
+  if (result === null) {
+    return null;
+  }
+  return new CHolderServerMessageHolderResizeMessage(result);
+}
+
+export class CHolderServerMessageHolderKillMessage {
+  data: HolderKillMessage;
+  constructor(data: HolderKillMessage) {
+    this.data = data;
+  }
+}
+
+export function decodeCHolderServerMessageHolderKillMessage(
+  rawInput: unknown
+): CHolderServerMessageHolderKillMessage | null {
+  const result = decodeHolderKillMessage(rawInput);
+  if (result === null) {
+    return null;
+  }
+  return new CHolderServerMessageHolderKillMessage(result);
+}
+
+/**
+ * @type { HolderInfoMessage }
+ * @description Current holder state sent on connection
+ */
+export type HolderInfoMessage = {
+  /**
+   * @type { string }
+   * @memberof HolderInfoMessage
+   */
+  type: string;
+  /**
+   * @description PTY child process ID
+   * @type { number }
+   * @memberof HolderInfoMessage
+   */
+  pid: number;
+  /**
+   * @description Whether the PTY process has exited
+   * @type { boolean }
+   * @memberof HolderInfoMessage
+   */
+  exited: boolean;
+  /**
+   * @description Exit code if process has exited
+   * @type { number }
+   * @memberof HolderInfoMessage
+   */
+  exitCode: number | null;
+};
+
+export function decodeHolderInfoMessage(rawInput: unknown): HolderInfoMessage | null {
+  if (isJSON(rawInput)) {
+    const decodedType = decodeString(rawInput['type']);
+    const decodedPid = decodeNumber(rawInput['pid']);
+    const decodedExited = decodeBoolean(rawInput['exited']);
+    const decodedExitCode = decodeNumber(rawInput['exitCode']);
+
+    if (decodedType === null || decodedPid === null || decodedExited === null) {
       return null;
     }
 
     return {
-      data: decodedData,
-      type: decodedType
+      type: decodedType,
+      pid: decodedPid,
+      exited: decodedExited,
+      exitCode: decodedExitCode,
     };
   }
   return null;
 }
 
+/**
+ * @type { HolderScrollbackMessage }
+ * @description Full scrollback replay sent on connection
+ */
+export type HolderScrollbackMessage = {
+  /**
+   * @type { string }
+   * @memberof HolderScrollbackMessage
+   */
+  type: string;
+  /**
+   * @description Full scrollback buffer content
+   * @type { string }
+   * @memberof HolderScrollbackMessage
+   */
+  data: string;
+};
 
-
-export function decodeWsTerminalOutput2(rawInput: unknown): null | WsTerminalOutput2 {
+export function decodeHolderScrollbackMessage(rawInput: unknown): HolderScrollbackMessage | null {
   if (isJSON(rawInput)) {
-    const decodedType = decodeString(rawInput.type);
-    const decodedCode = decodeNumber(rawInput.code);
-    const decodedSignal = decodeString(rawInput.signal);
+    const decodedType = decodeString(rawInput['type']);
+    const decodedData = decodeString(rawInput['data']);
 
-    if (
-      decodedType === null ||
-      decodedCode === null
-    ) {
+    if (decodedType === null || decodedData === null) {
       return null;
     }
 
     return {
+      type: decodedType,
+      data: decodedData,
+    };
+  }
+  return null;
+}
+
+/**
+ * @type { HolderOutputMessage }
+ * @description PTY output chunk during normal operation
+ */
+export type HolderOutputMessage = {
+  /**
+   * @type { string }
+   * @memberof HolderOutputMessage
+   */
+  type: string;
+  /**
+   * @description Raw PTY output data
+   * @type { string }
+   * @memberof HolderOutputMessage
+   */
+  data: string;
+};
+
+export function decodeHolderOutputMessage(rawInput: unknown): HolderOutputMessage | null {
+  if (isJSON(rawInput)) {
+    const decodedType = decodeString(rawInput['type']);
+    const decodedData = decodeString(rawInput['data']);
+
+    if (decodedType === null || decodedData === null) {
+      return null;
+    }
+
+    return {
+      type: decodedType,
+      data: decodedData,
+    };
+  }
+  return null;
+}
+
+/**
+ * @type { HolderExitMessage }
+ * @description PTY process has exited
+ */
+export type HolderExitMessage = {
+  /**
+   * @type { string }
+   * @memberof HolderExitMessage
+   */
+  type: string;
+  /**
+   * @description Process exit code
+   * @type { number }
+   * @memberof HolderExitMessage
+   */
+  code: number;
+  /**
+   * @description Signal that caused exit
+   * @type { string }
+   * @memberof HolderExitMessage
+   */
+  signal: string | null;
+};
+
+export function decodeHolderExitMessage(rawInput: unknown): HolderExitMessage | null {
+  if (isJSON(rawInput)) {
+    const decodedType = decodeString(rawInput['type']);
+    const decodedCode = decodeNumber(rawInput['code']);
+    const decodedSignal = decodeString(rawInput['signal']);
+
+    if (decodedType === null || decodedCode === null) {
+      return null;
+    }
+
+    return {
+      type: decodedType,
       code: decodedCode,
       signal: decodedSignal,
-      type: decodedType
     };
   }
   return null;
 }
 
-export function decodeWsTerminalOutput3(rawInput: unknown): null | WsTerminalOutput3 {
-  if (isJSON(rawInput)) {
-    const decodedType = decodeString(rawInput.type);
-    const decodedData = decodeString(rawInput.data);
-    const decodedChunk = decodeNumber(rawInput.chunk);
-    const decodedTotal = decodeNumber(rawInput.total);
+/**
+ * @type { HolderActivityMessage }
+ * @description Terminal activity state change (active/idle)
+ */
+export type HolderActivityMessage = {
+  /**
+   * @type { string }
+   * @memberof HolderActivityMessage
+   */
+  type: string;
+  /**
+   * @description Whether the terminal is currently producing output
+   * @type { boolean }
+   * @memberof HolderActivityMessage
+   */
+  active: boolean;
+};
 
-    if (
-      decodedType === null ||
-      decodedData === null ||
-      decodedChunk === null ||
-      decodedTotal === null
-    ) {
+export function decodeHolderActivityMessage(rawInput: unknown): HolderActivityMessage | null {
+  if (isJSON(rawInput)) {
+    const decodedType = decodeString(rawInput['type']);
+    const decodedActive = decodeBoolean(rawInput['active']);
+
+    if (decodedType === null || decodedActive === null) {
       return null;
     }
 
     return {
-      chunk: decodedChunk,
-      data: decodedData,
-      total: decodedTotal,
-      type: decodedType
+      type: decodedType,
+      active: decodedActive,
     };
   }
   return null;
 }
 
+/**
+ * @type { HolderCwdMessage }
+ * @description Current working directory change detected via OSC 7
+ */
+export type HolderCwdMessage = {
+  /**
+   * @type { string }
+   * @memberof HolderCwdMessage
+   */
+  type: string;
+  /**
+   * @description Absolute path of the new working directory
+   * @type { string }
+   * @memberof HolderCwdMessage
+   */
+  path: string;
+};
 
-
-export function decodeWsTerminalOutput4(rawInput: unknown): null | WsTerminalOutput4 {
+export function decodeHolderCwdMessage(rawInput: unknown): HolderCwdMessage | null {
   if (isJSON(rawInput)) {
-    const decodedType = decodeString(rawInput.type);
-    const decodedMessage = decodeString(rawInput.message);
+    const decodedType = decodeString(rawInput['type']);
+    const decodedPath = decodeString(rawInput['path']);
 
-    if (
-      decodedType === null ||
-      decodedMessage === null
-    ) {
+    if (decodedType === null || decodedPath === null) {
       return null;
     }
 
     return {
-      message: decodedMessage,
-      type: decodedType
+      type: decodedType,
+      path: decodedPath,
     };
   }
   return null;
 }
 
-export function decodeWsTicketResponse(rawInput: unknown): null | WsTicketResponse {
-  if (isJSON(rawInput)) {
-    const decodedTicket = decodeString(rawInput.ticket);
-    const decodedExpiresAt = decodeString(rawInput.expiresAt);
+export type HolderClientMessage =
+  | CHolderClientMessageHolderInfoMessage
+  | CHolderClientMessageHolderScrollbackMessage
+  | CHolderClientMessageHolderOutputMessage
+  | CHolderClientMessageHolderExitMessage
+  | CHolderClientMessageHolderActivityMessage
+  | CHolderClientMessageHolderCwdMessage;
 
-    if (
-      decodedTicket === null ||
-      decodedExpiresAt === null
-    ) {
-      return null;
-    }
+export function decodeHolderClientMessage(rawInput: unknown): HolderClientMessage | null {
+  const result: HolderClientMessage | null =
+    decodeCHolderClientMessageHolderInfoMessage(rawInput) ??
+    decodeCHolderClientMessageHolderScrollbackMessage(rawInput) ??
+    decodeCHolderClientMessageHolderOutputMessage(rawInput) ??
+    decodeCHolderClientMessageHolderExitMessage(rawInput) ??
+    decodeCHolderClientMessageHolderActivityMessage(rawInput) ??
+    decodeCHolderClientMessageHolderCwdMessage(rawInput);
 
-    return {
-      expiresAt: decodedExpiresAt,
-      ticket: decodedTicket
-    };
-  }
-  return null;
+  return result;
 }
 
+export class CHolderClientMessageHolderInfoMessage {
+  data: HolderInfoMessage;
+  constructor(data: HolderInfoMessage) {
+    this.data = data;
+  }
+}
 
+export function decodeCHolderClientMessageHolderInfoMessage(
+  rawInput: unknown
+): CHolderClientMessageHolderInfoMessage | null {
+  const result = decodeHolderInfoMessage(rawInput);
+  if (result === null) {
+    return null;
+  }
+  return new CHolderClientMessageHolderInfoMessage(result);
+}
 
+export class CHolderClientMessageHolderScrollbackMessage {
+  data: HolderScrollbackMessage;
+  constructor(data: HolderScrollbackMessage) {
+    this.data = data;
+  }
+}
 
+export function decodeCHolderClientMessageHolderScrollbackMessage(
+  rawInput: unknown
+): CHolderClientMessageHolderScrollbackMessage | null {
+  const result = decodeHolderScrollbackMessage(rawInput);
+  if (result === null) {
+    return null;
+  }
+  return new CHolderClientMessageHolderScrollbackMessage(result);
+}
+
+export class CHolderClientMessageHolderOutputMessage {
+  data: HolderOutputMessage;
+  constructor(data: HolderOutputMessage) {
+    this.data = data;
+  }
+}
+
+export function decodeCHolderClientMessageHolderOutputMessage(
+  rawInput: unknown
+): CHolderClientMessageHolderOutputMessage | null {
+  const result = decodeHolderOutputMessage(rawInput);
+  if (result === null) {
+    return null;
+  }
+  return new CHolderClientMessageHolderOutputMessage(result);
+}
+
+export class CHolderClientMessageHolderExitMessage {
+  data: HolderExitMessage;
+  constructor(data: HolderExitMessage) {
+    this.data = data;
+  }
+}
+
+export function decodeCHolderClientMessageHolderExitMessage(
+  rawInput: unknown
+): CHolderClientMessageHolderExitMessage | null {
+  const result = decodeHolderExitMessage(rawInput);
+  if (result === null) {
+    return null;
+  }
+  return new CHolderClientMessageHolderExitMessage(result);
+}
+
+export class CHolderClientMessageHolderActivityMessage {
+  data: HolderActivityMessage;
+  constructor(data: HolderActivityMessage) {
+    this.data = data;
+  }
+}
+
+export function decodeCHolderClientMessageHolderActivityMessage(
+  rawInput: unknown
+): CHolderClientMessageHolderActivityMessage | null {
+  const result = decodeHolderActivityMessage(rawInput);
+  if (result === null) {
+    return null;
+  }
+  return new CHolderClientMessageHolderActivityMessage(result);
+}
+
+export class CHolderClientMessageHolderCwdMessage {
+  data: HolderCwdMessage;
+  constructor(data: HolderCwdMessage) {
+    this.data = data;
+  }
+}
+
+export function decodeCHolderClientMessageHolderCwdMessage(
+  rawInput: unknown
+): CHolderClientMessageHolderCwdMessage | null {
+  const result = decodeHolderCwdMessage(rawInput);
+  if (result === null) {
+    return null;
+  }
+  return new CHolderClientMessageHolderCwdMessage(result);
+}

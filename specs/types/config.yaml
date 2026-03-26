@@ -1,0 +1,29 @@
+# Configuration Type Definitions
+# Non-top file - referenced from index.yaml
+# Contains the client-side configuration type stored in localStorage
+
+Config:
+  # ─── Client Configuration ───────────────────────────────────────
+
+  ShooterConfig:
+    type: object
+    description: Client-side configuration stored in localStorage for API authentication and device registration
+    required:
+      - apiKey
+    properties:
+      apiKey:
+        type: string
+        minLength: 1
+        description: API key for authenticating requests to the Shooter server
+      deviceToken:
+        type: string
+        nullable: true
+        description: Device token for push notification delivery (APNs or FCM)
+      serverUrl:
+        type: string
+        nullable: true
+        description: Base URL of the Shooter server, or null to use the current origin
+      lastUpdated:
+        type: number
+        nullable: true
+        description: Unix timestamp (milliseconds) of the last configuration update

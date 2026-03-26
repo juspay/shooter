@@ -95,16 +95,16 @@ The Chat view parses the session's JSONL file in real time, so new messages stre
 
 When the Raw view has focus, standard terminal keyboard shortcuts work:
 
-| Keys | Action |
-|------|--------|
-| **Ctrl+C** | Send SIGINT (interrupt the running process) |
-| **Tab** | Trigger shell tab completion |
-| **Up / Down arrows** | Navigate command history |
-| **Ctrl+L** | Clear the terminal screen |
-| **Ctrl+D** | Send EOF (exit the shell if empty prompt) |
-| **Ctrl+Z** | Suspend the foreground process (SIGTSTP) |
-| **Ctrl+A / Ctrl+E** | Jump to beginning / end of line |
-| **Ctrl+R** | Reverse history search |
+| Keys                 | Action                                      |
+| -------------------- | ------------------------------------------- |
+| **Ctrl+C**           | Send SIGINT (interrupt the running process) |
+| **Tab**              | Trigger shell tab completion                |
+| **Up / Down arrows** | Navigate command history                    |
+| **Ctrl+L**           | Clear the terminal screen                   |
+| **Ctrl+D**           | Send EOF (exit the shell if empty prompt)   |
+| **Ctrl+Z**           | Suspend the foreground process (SIGTSTP)    |
+| **Ctrl+A / Ctrl+E**  | Jump to beginning / end of line             |
+| **Ctrl+R**           | Reverse history search                      |
 
 ## Managing Terminals
 
