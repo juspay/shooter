@@ -11,7 +11,8 @@ set -e
 
 # ── Globals ───────────────────────────────────────────────────────────
 
-SHOOTER_DIR="$HOME/.shooter"
+SHOOTER_HOME="$HOME/.shooter"
+SHOOTER_REPO="$SHOOTER_HOME/repo"
 REPO_URL="https://github.com/juspay/shooter.git"
 REPO_BRANCH="release"
 REQUIRED_NODE_MAJOR=20
@@ -48,9 +49,9 @@ CLEANUP_CLONED=0
 
 cleanup() {
     exit_code=$?
-    if [ "$CLEANUP_CLONED" -eq 1 ] && [ -d "$SHOOTER_DIR" ]; then
-        warn "Installation did not complete. Removing $SHOOTER_DIR ..."
-        rm -rf "$SHOOTER_DIR"
+    if [ "$CLEANUP_CLONED" -eq 1 ] && [ -d "$SHOOTER_REPO" ]; then
+        warn "Installation did not complete. Removing $SHOOTER_REPO ..."
+        rm -rf "$SHOOTER_REPO"
     fi
     if [ "$exit_code" -ne 0 ]; then
         error "Installation failed. Please check the errors above and try again."
@@ -139,52 +140,136 @@ check_git() {
     success "git $(git --version | sed 's/git version //')"
 }
 
-check_node() {
-    if ! command -v node >/dev/null 2>&1; then
-        error "Node.js is not installed."
-        printf '  Install Node.js %d+ from: https://nodejs.org\n' "$REQUIRED_NODE_MAJOR"
-        exit 1
-    fi
-
-    node_version="$(node --version)"
-    node_major="$(printf '%s' "$node_version" | sed 's/^v//' | cut -d. -f1)"
-
-    if [ "$node_major" -lt "$REQUIRED_NODE_MAJOR" ]; then
-        error "Node.js $node_version is too old. Version $REQUIRED_NODE_MAJOR+ is required."
-        printf '  Update from: https://nodejs.org\n'
-        exit 1
-    fi
-    success "Node.js $node_version"
-}
-
-check_pnpm() {
-    if ! command -v pnpm >/dev/null 2>&1; then
-        warn "pnpm is not installed."
-        if ask_yes_no "  Install pnpm via 'npm install -g pnpm'?" "y"; then
-            info "Installing pnpm..."
-            npm install -g pnpm
-            if ! command -v pnpm >/dev/null 2>&1; then
-                error "pnpm installation failed. Please install it manually:"
-                printf '  npm install -g pnpm\n'
-                exit 1
-            fi
-            success "pnpm $(pnpm --version) (just installed)"
+check_xcode_clt() {
+    if ! xcode-select -p >/dev/null 2>&1; then
+        warn "Xcode Command Line Tools are required for native modules (node-pty, better-sqlite3)."
+        if ask_yes_no "  Install Xcode Command Line Tools now?" "y"; then
+            info "Running xcode-select --install..."
+            xcode-select --install 2>/dev/null
+            info "Follow the system dialog to complete installation, then re-run this script."
+            exit 0
         else
-            error "pnpm is required. Install it and try again:"
-            printf '  npm install -g pnpm\n'
+            error "Cannot continue without Xcode Command Line Tools."
             exit 1
         fi
-    else
-        success "pnpm $(pnpm --version)"
     fi
+    success "Xcode Command Line Tools installed"
+}
+
+# ── Node detection chain ────────────────────────────────────────────
+
+check_node_version() {
+    candidate="$1"
+    ver="$("$candidate" --version 2>/dev/null | sed 's/^v//' | cut -d. -f1)"
+    [ -n "$ver" ] && [ "$ver" -ge "$REQUIRED_NODE_MAJOR" ] 2>/dev/null
+}
+
+find_node() {
+    # 1. PATH
+    candidate="$(command -v node 2>/dev/null)"
+    if [ -n "$candidate" ] && check_node_version "$candidate"; then
+        printf '%s' "$candidate"
+        return 0
+    fi
+
+    # 2. nvm
+    NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+    if [ -s "$NVM_DIR/nvm.sh" ]; then
+        . "$NVM_DIR/nvm.sh"
+        candidate="$(command -v node 2>/dev/null)"
+        if [ -n "$candidate" ] && check_node_version "$candidate"; then
+            printf '%s' "$candidate"
+            return 0
+        fi
+    fi
+
+    # 3. fnm
+    if command -v fnm >/dev/null 2>&1; then
+        eval "$(fnm env 2>/dev/null)"
+        candidate="$(command -v node 2>/dev/null)"
+        if [ -n "$candidate" ] && check_node_version "$candidate"; then
+            printf '%s' "$candidate"
+            return 0
+        fi
+    fi
+
+    # 4. volta
+    if [ -x "$HOME/.volta/bin/node" ] && check_node_version "$HOME/.volta/bin/node"; then
+        printf '%s' "$HOME/.volta/bin/node"
+        return 0
+    fi
+
+    # 5. Homebrew (installed but not linked)
+    for brew_node in /opt/homebrew/bin/node /usr/local/bin/node; do
+        if [ -x "$brew_node" ] && check_node_version "$brew_node"; then
+            printf '%s' "$brew_node"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+check_node() {
+    NODE_BIN="$(find_node)"
+    if [ -n "$NODE_BIN" ]; then
+        node_version="$("$NODE_BIN" --version)"
+        success "Node.js $node_version ($NODE_BIN)"
+        local dir_path
+        dir_path="$(dirname "$NODE_BIN")"
+        export PATH="$dir_path:$PATH"
+        return 0
+    fi
+
+    # Fallback: install via Homebrew
+    if command -v brew >/dev/null 2>&1; then
+        warn "Node.js >= $REQUIRED_NODE_MAJOR not found."
+        if ask_yes_no "  Install Node.js via Homebrew?" "y"; then
+            info "Installing Node.js..."
+            brew install node
+            NODE_BIN="$(command -v node)"
+            if [ -n "$NODE_BIN" ] && check_node_version "$NODE_BIN"; then
+                success "Node.js $("$NODE_BIN" --version) (installed via Homebrew)"
+                return 0
+            fi
+        fi
+    fi
+
+    error "Node.js >= $REQUIRED_NODE_MAJOR is required."
+    printf '  Install from: https://nodejs.org\n'
+    exit 1
+}
+
+bootstrap_pnpm() {
+    # Try corepack first
+    if command -v corepack >/dev/null 2>&1; then
+        if corepack enable 2>/dev/null; then
+            success "pnpm enabled via corepack"
+            return 0
+        fi
+    fi
+
+    # Try npm install -g pnpm
+    if command -v npm >/dev/null 2>&1; then
+        info "Installing pnpm via npm..."
+        npm install -g pnpm 2>/dev/null
+        if command -v pnpm >/dev/null 2>&1; then
+            success "pnpm $(pnpm --version) (installed via npm)"
+            return 0
+        fi
+    fi
+
+    # Will use npx pnpm as last resort during install
+    warn "pnpm not available globally. Will use npx pnpm."
+    return 0
 }
 
 # ── Handle existing installation ─────────────────────────────────────
 
 handle_existing() {
-    if [ -d "$SHOOTER_DIR" ]; then
+    if [ -d "$SHOOTER_REPO" ]; then
         printf '\n'
-        warn "$SHOOTER_DIR already exists."
+        warn "$SHOOTER_REPO already exists."
         printf '\n'
         printf '  %s1)%s Update  — pull latest changes and reinstall\n' "$BOLD" "$RESET"
         printf '  %s2)%s Fresh   — remove and clone fresh\n' "$BOLD" "$RESET"
@@ -205,15 +290,15 @@ handle_existing() {
         case "$choice" in
             1)
                 step "Updating existing installation"
-                cd "$SHOOTER_DIR"
+                cd "$SHOOTER_REPO"
                 git pull --rebase origin "$REPO_BRANCH"
                 success "Repository updated."
                 return 0
                 ;;
             2)
                 step "Removing existing installation"
-                rm -rf "$SHOOTER_DIR"
-                success "Removed $SHOOTER_DIR"
+                rm -rf "$SHOOTER_REPO"
+                success "Removed $SHOOTER_REPO"
                 return 1
                 ;;
             *)
@@ -232,18 +317,25 @@ handle_existing() {
 clone_repo() {
     step "Cloning Shooter"
     CLEANUP_CLONED=1
-    git clone --branch "$REPO_BRANCH" --single-branch "$REPO_URL" "$SHOOTER_DIR"
+    git clone --branch "$REPO_BRANCH" --single-branch "$REPO_URL" "$SHOOTER_REPO"
     CLEANUP_CLONED=0
-    success "Cloned to $SHOOTER_DIR"
+    success "Cloned to $SHOOTER_REPO"
 }
 
 # ── Install dependencies ─────────────────────────────────────────────
 
 install_deps() {
     step "Installing dependencies"
-    cd "$SHOOTER_DIR"
-    pnpm install
-    success "Dependencies installed."
+    cd "$SHOOTER_REPO"
+    if command -v pnpm >/dev/null 2>&1; then
+        pnpm install
+    elif command -v npx >/dev/null 2>&1; then
+        npx pnpm install
+    else
+        error "Neither pnpm nor npx found. Cannot install dependencies."
+        exit 1
+    fi
+    success "Dependencies installed"
 }
 
 # ── Setup wizard ──────────────────────────────────────────────────────
@@ -251,17 +343,17 @@ install_deps() {
 run_setup_wizard() {
     step "Running setup wizard"
 
-    if [ -f "$SHOOTER_DIR/scripts/setup.cjs" ]; then
-        cd "$SHOOTER_DIR"
+    if [ -f "$SHOOTER_REPO/scripts/setup.cjs" ]; then
+        cd "$SHOOTER_REPO"
         node scripts/setup.cjs
     else
         warn "Setup wizard (scripts/setup.cjs) not found. Skipping."
         info "Creating .env from template..."
-        if [ ! -f "$SHOOTER_DIR/.env" ]; then
-            if [ -f "$SHOOTER_DIR/.env.example" ]; then
-                cp "$SHOOTER_DIR/.env.example" "$SHOOTER_DIR/.env"
+        if [ ! -f "$SHOOTER_HOME/.env" ]; then
+            if [ -f "$SHOOTER_REPO/.env.example" ]; then
+                cp "$SHOOTER_REPO/.env.example" "$SHOOTER_HOME/.env"
                 success "Created .env from .env.example"
-                warn "Edit $SHOOTER_DIR/.env to add your credentials."
+                warn "Edit $SHOOTER_HOME/.env to add your credentials."
             else
                 warn "No .env.example found. You will need to create .env manually."
             fi
@@ -270,7 +362,7 @@ run_setup_wizard() {
         fi
 
         info "Building the project..."
-        cd "$SHOOTER_DIR"
+        cd "$SHOOTER_REPO"
         pnpm build
         success "Build complete."
     fi
@@ -280,137 +372,28 @@ run_setup_wizard() {
 
 offer_global_command() {
     step "Global command"
+    BIN_DIR="$HOME/.local/bin"
+    SHOOTER_BIN="$BIN_DIR/shooter"
 
-    if ask_yes_no "  Install 'shooter' as a global command (via npm link)?" "y"; then
-        cd "$SHOOTER_DIR"
-
-        # Ensure package.json has a bin entry for the link to work.
-        # If there is no bin field we create a thin wrapper.
-        if ! grep -q '"bin"' "$SHOOTER_DIR/package.json" 2>/dev/null; then
-            info "Creating global launcher script..."
-            mkdir -p "$SHOOTER_DIR/bin"
-            cat > "$SHOOTER_DIR/bin/shooter" <<'LAUNCHER'
-#!/usr/bin/env node
-
-import { execSync } from 'child_process';
-import { dirname, join } from 'path';
-import { fileURLToPath } from 'url';
-
-const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const cmd = process.argv[2] || 'start';
-
-const commands = {
-    start:   'pnpm start',
-    dev:     'pnpm dev',
-    build:   'pnpm build',
-    status:  'echo "Shooter root: ' + root + '"',
-};
-
-const toRun = commands[cmd] || `pnpm ${cmd}`;
-try {
-    execSync(toRun, { cwd: root, stdio: 'inherit' });
-} catch { process.exit(1); }
-LAUNCHER
-            chmod +x "$SHOOTER_DIR/bin/shooter"
-
-            # Patch package.json to add bin field via node (avoids jq dependency)
-            node -e "
-                const fs = require('fs');
-                const p = JSON.parse(fs.readFileSync('$SHOOTER_DIR/package.json','utf8'));
-                p.bin = { shooter: './bin/shooter' };
-                fs.writeFileSync('$SHOOTER_DIR/package.json', JSON.stringify(p, null, 2) + '\n');
-            "
-        fi
-
-        npm link 2>/dev/null || {
-            warn "npm link failed (may need sudo on some systems)."
-            warn "You can run it manually: cd $SHOOTER_DIR && sudo npm link"
-        }
-        success "'shooter' command installed globally."
-    else
-        info "Skipped. You can always run: cd $SHOOTER_DIR && npm link"
-    fi
-}
-
-# ── Auto-start (macOS launchd) ────────────────────────────────────────
-
-offer_autostart() {
-    if [ "$OS" != "macos" ]; then
+    if [ -x "$SHOOTER_BIN" ]; then
+        success "'shooter' command already linked."
         return
     fi
 
-    step "Auto-start (macOS)"
+    if ask_yes_no "  Install 'shooter' as a global command?" "y"; then
+        mkdir -p "$BIN_DIR"
+        ln -sf "$SHOOTER_REPO/bin/shooter.cjs" "$SHOOTER_BIN"
+        chmod +x "$SHOOTER_BIN"
+        success "'shooter' linked to $SHOOTER_BIN"
 
-    PLIST_LABEL="com.shooter.server"
-    PLIST_DIR="$HOME/Library/LaunchAgents"
-    PLIST_FILE="$PLIST_DIR/$PLIST_LABEL.plist"
-
-    if ask_yes_no "  Start Shooter automatically on login?" "n"; then
-        mkdir -p "$PLIST_DIR"
-
-        # Resolve paths
-        NODE_PATH="$(command -v node)"
-        TSX_PATH="$(command -v tsx || printf '%s' "$SHOOTER_DIR/node_modules/.bin/tsx")"
-        LOG_DIR="$HOME/Library/Logs/Shooter"
-        mkdir -p "$LOG_DIR"
-
-        cat > "$PLIST_FILE" <<PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>${PLIST_LABEL}</string>
-
-    <key>ProgramArguments</key>
-    <array>
-        <string>${TSX_PATH}</string>
-        <string>${SHOOTER_DIR}/server.ts</string>
-    </array>
-
-    <key>WorkingDirectory</key>
-    <string>${SHOOTER_DIR}</string>
-
-    <key>EnvironmentVariables</key>
-    <dict>
-        <key>PATH</key>
-        <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:$(dirname "$NODE_PATH")</string>
-    </dict>
-
-    <key>RunAtLoad</key>
-    <true/>
-
-    <key>KeepAlive</key>
-    <dict>
-        <key>SuccessfulExit</key>
-        <false/>
-    </dict>
-
-    <key>StandardOutPath</key>
-    <string>${LOG_DIR}/stdout.log</string>
-
-    <key>StandardErrorPath</key>
-    <string>${LOG_DIR}/stderr.log</string>
-
-    <key>ThrottleInterval</key>
-    <integer>10</integer>
-</dict>
-</plist>
-PLIST
-
-        launchctl bootout "gui/$(id -u)/$PLIST_LABEL" 2>/dev/null || true
-        launchctl bootstrap "gui/$(id -u)" "$PLIST_FILE"
-
-        success "LaunchAgent installed. Shooter will start on login."
-        info "  Logs: $LOG_DIR/"
-        info "  Stop:    launchctl bootout gui/$(id -u)/$PLIST_LABEL"
-        info "  Restart: launchctl kickstart -k gui/$(id -u)/$PLIST_LABEL"
-    else
-        info "Skipped. To start manually:"
-        printf '  cd %s && pnpm start\n' "$SHOOTER_DIR"
-        printf '\n'
-        info "To set up auto-start later, create a LaunchAgent plist at:"
-        printf '  %s\n' "$PLIST_FILE"
+        # Check if ~/.local/bin is in PATH
+        case ":$PATH:" in
+            *":$BIN_DIR:"*) ;;
+            *)
+                warn "$BIN_DIR is not in your PATH."
+                info "Add to your shell profile: export PATH=\"\$HOME/.local/bin:\$PATH\""
+                ;;
+        esac
     fi
 }
 
@@ -424,17 +407,18 @@ print_success() {
     printf '  ================================================\n'
     printf '%s' "$RESET"
     printf '\n'
-    printf '  %sInstall directory:%s  %s\n' "$BOLD" "$RESET" "$SHOOTER_DIR"
+    printf '  %sInstall directory:%s  %s\n' "$BOLD" "$RESET" "$SHOOTER_REPO"
+    printf '  %sData directory:%s     %s\n' "$BOLD" "$RESET" "$SHOOTER_HOME"
     printf '  %sServer URL:%s         http://localhost:%s\n' "$BOLD" "$RESET" "$DEFAULT_PORT"
     printf '\n'
     printf '  %sGet started:%s\n' "$BOLD" "$RESET"
-    printf '    cd %s\n' "$SHOOTER_DIR"
-    printf '    pnpm start              %s# start the server%s\n' "$DIM" "$RESET"
-    printf '    pnpm dev                %s# development mode%s\n' "$DIM" "$RESET"
+    printf '    shooter start           %s# start the server%s\n' "$DIM" "$RESET"
+    printf '    shooter status          %s# check status%s\n' "$DIM" "$RESET"
+    printf '    shooter setup           %s# reconfigure%s\n' "$DIM" "$RESET"
     printf '\n'
     printf '  %sConfigure:%s\n' "$BOLD" "$RESET"
-    printf '    Edit %s/.env with your credentials\n' "$SHOOTER_DIR"
-    printf '    See  %s/.env.example for reference\n' "$SHOOTER_DIR"
+    printf '    Edit %s/.env with your credentials\n' "$SHOOTER_HOME"
+    printf '    See  %s/.env.example for reference\n' "$SHOOTER_REPO"
     printf '\n'
     printf '  %sDocs:%s https://github.com/juspay/shooter\n' "$BOLD" "$RESET"
     printf '\n'
@@ -449,8 +433,14 @@ main() {
 
     # Prerequisites
     check_git
+    if [ "$OS" = "macos" ]; then
+        check_xcode_clt
+    fi
     check_node
-    check_pnpm
+    bootstrap_pnpm
+
+    # Create data directory
+    mkdir -p "$SHOOTER_HOME"
 
     # Clone or update
     already_installed=0
@@ -468,7 +458,13 @@ main() {
 
     # Optional extras
     offer_global_command
-    offer_autostart
+
+    # Suggest autostart
+    if [ "$OS" = "macos" ]; then
+        step "Auto-start"
+        info "To start Shooter automatically on login, run:"
+        printf '  shooter autostart on\n\n'
+    fi
 
     # Done
     print_success

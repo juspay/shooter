@@ -2,25 +2,26 @@
 // Wraps the SvelteKit build output with a WebSocket server for terminal I/O,
 // live session streaming, and a global event bus. NOT compiled by SvelteKit.
 
-// Load .env into process.env before anything else (adapter-node reads process.env at runtime).
-import 'dotenv/config';
+// Load .env before any other imports so all modules see populated process.env.
+import './src/lib/env.js';
 
 import { createServer, type Server } from 'http';
-import { WebSocketServer, type WebSocket } from 'ws';
+import { type WebSocket, WebSocketServer } from 'ws';
+
+import type { ConversationMessage } from './src/lib/modules/server/sessions/types.js';
 
 import { handler } from './build/handler.js';
-import { validateTicket } from './src/lib/modules/server/ws/ticket-store.js';
-import { setupWebSocketHandlers } from './src/lib/modules/server/ws/server.js';
+import { openCodeWatcher } from './src/lib/modules/server/terminal/opencode-watcher.js';
+import { ptyManager } from './src/lib/modules/server/terminal/pty-manager.js';
+import { sessionWatcher } from './src/lib/modules/server/terminal/session-watcher.js';
 import { startKeepalive, stopKeepalive } from './src/lib/modules/server/ws/keepalive.js';
-import { setPtyManager as setTerminalHandlerPtyManager } from './src/lib/modules/server/ws/terminal-handler.js';
+import { setupWebSocketHandlers } from './src/lib/modules/server/ws/server.js';
 import {
 	setPtyManager as setSessionHandlerPtyManager,
 	setSessionWatcher,
 } from './src/lib/modules/server/ws/session-handler.js';
-import { ptyManager } from './src/lib/modules/server/terminal/pty-manager.js';
-import { sessionWatcher } from './src/lib/modules/server/terminal/session-watcher.js';
-import { openCodeWatcher } from './src/lib/modules/server/terminal/opencode-watcher.js';
-import type { ConversationMessage } from './src/lib/modules/server/sessions/types.js';
+import { setPtyManager as setTerminalHandlerPtyManager } from './src/lib/modules/server/ws/terminal-handler.js';
+import { validateTicket } from './src/lib/modules/server/ws/ticket-store.js';
 
 // ── Adapters ─────────────────────────────────────────────────────────
 // The WS handlers define their own duck-typed interfaces (PtyManagerLike,
@@ -29,14 +30,14 @@ import type { ConversationMessage } from './src/lib/modules/server/sessions/type
 
 /** Adapt PtyManager (`.get()`) to the handlers' expected `.getTerminal()`. */
 const ptyManagerAdapter = {
-	getTerminal(id: string) {
-		return ptyManager.get(id) ?? undefined;
-	},
 	attach(id: string, ws: WebSocket) {
 		return ptyManager.attach(id, ws);
 	},
 	detach(id: string, ws: WebSocket) {
 		return ptyManager.detach(id, ws);
+	},
+	getTerminal(id: string) {
+		return ptyManager.get(id) ?? undefined;
 	},
 };
 

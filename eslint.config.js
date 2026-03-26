@@ -120,6 +120,14 @@ export default tseslint.config(
     ...tseslint.configs.disableTypeChecked,
   },
 
+  // server.ts is the custom Node.js entry point — it lives outside src/ and is
+  // not included in tsconfig.json, so type-aware rules cannot run on it.
+  // Non-type-aware rules (style, correctness) still apply.
+  {
+    files: ['server.ts'],
+    ...tseslint.configs.disableTypeChecked,
+  },
+
   // Ignore patterns (must be a standalone object)
   {
     ignores: [
@@ -140,7 +148,6 @@ export default tseslint.config(
       'src/generated/',
       'android/',
       'bin/',
-      'server.ts',
       'src/lib/modules/server/terminal/pty-holder.cjs',
     ],
   }
