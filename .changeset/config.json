@@ -12,11 +12,5 @@
   "access": "public",
   "baseBranch": "release",
   "updateInternalDependencies": "patch",
-  "ignore": [
-    "docs/**",
-    "ios/**",
-    "android/**",
-    "plans/**",
-    "specs/**"
-  ]
+  "ignore": ["docs/**", "ios/**", "android/**", "plans/**", "specs/**"]
 }

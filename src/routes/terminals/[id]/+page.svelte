@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { ShooterConfig, TerminalDetailView } from '$generated/types';
   import type {
     ConversationMessage,
     MessagePart,
@@ -18,29 +19,13 @@
   import { Button, Input, Pill, Tabs, Tooltip } from '@juspay/svelte-ui-components';
   import { onDestroy, onMount } from 'svelte';
 
-  // ------- Interfaces -------
-
-  interface TerminalDetail {
-    args: string[];
-    command: string;
-    createdAt: string;
-    cwd: string;
-    exitCode: null | number;
-    exitedAt: null | string;
-    id: string;
-    pid: number;
-    sessionWs: string;
-    status: 'exited' | 'running';
-    ws: string;
-  }
-
   // ------- Constants -------
 
   const AI_COMMANDS = ['claude', 'opencode'];
 
   // ------- Reactive state -------
 
-  let terminal = $state<null | TerminalDetail>(null);
+  let terminal = $state<null | TerminalDetailView>(null);
   let loading = $state(true);
   let error = $state<null | string>(null);
   let killing = $state(false);
@@ -48,7 +33,8 @@
   let isActive = $state(false);
   let currentCwd = $state<null | string>(null);
   let viewMode = $state<'chat' | 'raw'>('raw');
-  let connectionStatus = $state<'connected' | 'disconnected' | 'reconnecting'>('disconnected');
+  let rawConnectionStatus = $state<'connected' | 'disconnected' | 'reconnecting'>('disconnected');
+  let chatConnectionStatus = $state<'connected' | 'disconnected' | 'reconnecting'>('disconnected');
   let inputText = $state('');
   let chatMessages = $state<ConversationMessage[]>([]);
   let chatSessionEnded = $state(false);
@@ -58,11 +44,16 @@
   const inputRef = $state<HTMLInputElement | null>(null);
 
   // WebSocket and terminal instance refs (not reactive)
-  let termInstance: null | { dispose: () => void; sendInput: (data: string) => void; term: { cols: number; rows: number }; } = null;
+  let termInstance: null | {
+    dispose: () => void;
+    sendInput: (data: string) => void;
+    term: { cols: number; rows: number };
+  } = null;
   let shortcutManager: null | { destroy: () => void } = null;
   let showShortcutsHelp = $state(false);
   let showCommandPalette = $state(false);
   let sessionWs: null | WebSocket = null;
+  let sessionReconnectTimer: null | ReturnType<typeof setTimeout> = null;
   let disposed = false;
 
   // ------- Derived -------
@@ -76,6 +67,9 @@
   const badgeLabel = $derived(isAI ? 'AI' : 'SHELL');
   const badgeClass = $derived(isAI ? 'pill-badge-ai' : 'pill-badge-shell');
   const tabItems = ['Raw', 'Chat'];
+  const connectionStatus = $derived(
+    viewMode === 'raw' ? rawConnectionStatus : chatConnectionStatus
+  );
   const tabActiveIndex = $derived(viewMode === 'raw' ? 0 : 1);
   const displayCwd = $derived(shortenPath(currentCwd || terminal?.cwd || ''));
   const paletteCommands = $derived.by(() => {
@@ -83,7 +77,12 @@
       { action: () => void goto('/'), label: 'Go to Home' },
       { action: () => void goto('/terminals'), label: 'Go to Terminals' },
       { action: () => void goto('/config'), label: 'Go to Settings' },
-      { action: () => { showShortcutsHelp = true; }, label: 'Show keyboard shortcuts' },
+      {
+        action: () => {
+          showShortcutsHelp = true;
+        },
+        label: 'Show keyboard shortcuts',
+      },
     ];
     if (isRunning) {
       cmds.push({ action: () => void killTerminal(), label: 'Kill terminal' });
@@ -94,7 +93,9 @@
   // ------- Helpers -------
 
   function shortenPath(p: string): string {
-    if (!p) {return '';}
+    if (!p) {
+      return '';
+    }
     const home = typeof window !== 'undefined' ? '' : '';
     let display = p;
     // Replace home prefix with ~
@@ -102,16 +103,16 @@
       // Best effort home detection from path
       const parts = p.split('/');
       if (parts.length >= 3 && parts[1] === 'Users') {
-        display = `~/${  parts.slice(3).join('/')}`;
+        display = `~/${parts.slice(3).join('/')}`;
       } else if (parts.length >= 3 && parts[1] === 'home') {
-        display = `~/${  parts.slice(3).join('/')}`;
+        display = `~/${parts.slice(3).join('/')}`;
       }
     }
     // Show last 2 segments if too long
     if (display.length > 30) {
       const segs = display.split('/');
       if (segs.length > 2) {
-        return `.../${  segs.slice(-2).join('/')}`;
+        return `.../${segs.slice(-2).join('/')}`;
       }
     }
     return display || home;
@@ -120,20 +121,25 @@
   function getConfig(): null | { apiKey: string } {
     try {
       const saved = localStorage.getItem('shooter_config');
-      if (!saved) {return null;}
-      const parsed = JSON.parse(saved);
-      if (typeof parsed?.apiKey === 'string' && parsed.apiKey) {return parsed;}
+      if (!saved) {
+        return null;
+      }
+      const parsed = JSON.parse(saved) as ShooterConfig;
+      if (typeof parsed?.apiKey === 'string' && parsed.apiKey) {
+        return parsed;
+      }
       return null;
     } catch {
       return null;
     }
   }
 
-
   // ------- API calls -------
 
   async function fetchTerminal(): Promise<void> {
-    if (!browser) {return;}
+    if (!browser) {
+      return;
+    }
 
     const config = getConfig();
     if (!config) {
@@ -160,13 +166,17 @@
 
   async function getWsTicket(): Promise<null | string> {
     const config = getConfig();
-    if (!config) {return null;}
+    if (!config) {
+      return null;
+    }
     try {
       const res = await fetch('/api/ws-ticket', {
         headers: { Authorization: `Bearer ${config.apiKey}` },
         method: 'POST',
       });
-      if (!res.ok) {return null;}
+      if (!res.ok) {
+        return null;
+      }
       const data: { ticket: string } = await res.json();
       return data.ticket;
     } catch {
@@ -175,9 +185,13 @@
   }
 
   async function killTerminal(): Promise<void> {
-    if (!terminal || killing) {return;}
+    if (!terminal || killing) {
+      return;
+    }
     const config = getConfig();
-    if (!config) {return;}
+    if (!config) {
+      return;
+    }
 
     killing = true;
     try {
@@ -196,9 +210,13 @@
   }
 
   async function removeTerminal(): Promise<void> {
-    if (!terminal || removing) {return;}
+    if (!terminal || removing) {
+      return;
+    }
     const config = getConfig();
-    if (!config) {return;}
+    if (!config) {
+      return;
+    }
 
     removing = true;
     try {
@@ -219,7 +237,9 @@
   // ------- Raw terminal (xterm.js) -------
 
   async function initRawTerminal(): Promise<void> {
-    if (!termContainer || !terminal || disposed) {return;}
+    if (!termContainer || !terminal || disposed) {
+      return;
+    }
 
     // Build the WebSocket URL
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -227,14 +247,18 @@
 
     const getTicket = async (): Promise<string> => {
       const ticket = await getWsTicket();
-      if (!ticket) {throw new Error('Failed to obtain WebSocket ticket');}
+      if (!ticket) {
+        throw new Error('Failed to obtain WebSocket ticket');
+      }
       return ticket;
     };
 
     try {
       const { createTerminal } = await import('$lib/modules/client/terminal/xterm-wrapper');
 
-      if (disposed || !termContainer) {return;}
+      if (disposed || !termContainer) {
+        return;
+      }
 
       const instance = await createTerminal({
         apiKey: getConfig()?.apiKey,
@@ -242,22 +266,35 @@
         fontSize: window.innerWidth < 768 ? 12 : 14,
         getTicket,
         onActivity: (active: boolean) => {
-          if (!disposed) {isActive = active;}
+          if (!disposed) {
+            isActive = active;
+          }
         },
         onCwd: (path: string) => {
-          if (!disposed) {currentCwd = path;}
+          if (!disposed) {
+            currentCwd = path;
+          }
         },
         onDisconnect: () => {
-          if (!disposed) {connectionStatus = 'reconnecting';}
+          if (!disposed) {
+            rawConnectionStatus = 'reconnecting';
+          }
         },
         onExit: (code: number) => {
           if (!disposed && terminal) {
-            terminal = { ...terminal, exitCode: code, exitedAt: new Date().toISOString(), status: 'exited' };
-            connectionStatus = 'disconnected';
+            terminal = {
+              ...terminal,
+              exitCode: code,
+              exitedAt: new Date().toISOString(),
+              status: 'exited',
+            };
+            rawConnectionStatus = 'disconnected';
           }
         },
         onReconnect: () => {
-          if (!disposed) {connectionStatus = 'connected';}
+          if (!disposed) {
+            rawConnectionStatus = 'connected';
+          }
         },
         terminalId,
         wsUrl,
@@ -269,10 +306,10 @@
       }
 
       termInstance = instance;
-      connectionStatus = 'connected';
+      rawConnectionStatus = 'connected';
     } catch (err) {
       console.error('Failed to initialize terminal:', err);
-      connectionStatus = 'disconnected';
+      rawConnectionStatus = 'disconnected';
     }
   }
 
@@ -286,11 +323,21 @@
   // ------- Chat (session WebSocket) -------
 
   async function connectSessionWs(): Promise<void> {
-    if (!terminal || disposed) {return;}
+    if (!terminal || disposed) {
+      return;
+    }
+
+    // Guard against concurrent reconnects: skip if already OPEN or CONNECTING
+    if (
+      sessionWs &&
+      (sessionWs.readyState === WebSocket.OPEN || sessionWs.readyState === WebSocket.CONNECTING)
+    ) {
+      return;
+    }
 
     const ticket = await getWsTicket();
     if (!ticket || disposed || !terminal) {
-      connectionStatus = 'disconnected';
+      chatConnectionStatus = 'disconnected';
       return;
     }
 
@@ -301,13 +348,15 @@
 
     sessionWs.onopen = () => {
       if (!disposed) {
-        connectionStatus = 'connected';
+        chatConnectionStatus = 'connected';
         sessionWs?.send(JSON.stringify({ sessionId: terminalId, type: 'subscribe' }));
       }
     };
 
     sessionWs.onmessage = (event) => {
-      if (disposed) {return;}
+      if (disposed) {
+        return;
+      }
       try {
         const msg = JSON.parse(event.data);
         handleSessionMessage(msg);
@@ -318,16 +367,25 @@
 
     sessionWs.onclose = () => {
       if (!disposed && terminal?.status === 'running') {
-        connectionStatus = 'reconnecting';
+        chatConnectionStatus = 'reconnecting';
+        // Clear any existing reconnect timer to avoid stacking
+        if (sessionReconnectTimer) {
+          clearTimeout(sessionReconnectTimer);
+        }
         // Reconnect after delay (will fetch a fresh ticket)
-        setTimeout(() => {
-          if (!disposed && terminal?.status === 'running') {void connectSessionWs();}
+        sessionReconnectTimer = setTimeout(() => {
+          sessionReconnectTimer = null;
+          if (!disposed && terminal?.status === 'running') {
+            void connectSessionWs();
+          }
         }, 2000);
       }
     };
 
     sessionWs.onerror = () => {
-      if (!disposed) {connectionStatus = 'disconnected';}
+      if (!disposed) {
+        chatConnectionStatus = 'disconnected';
+      }
     };
   }
 
@@ -420,18 +478,26 @@
         ...chatMessages,
         {
           id: `err-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          parts: [{ content: (msg.message as string) || 'Unknown error', type: 'text' } as MessagePart],
+          parts: [
+            { content: (msg.message as string) || 'Unknown error', type: 'text' } as MessagePart,
+          ],
           role: 'system',
           timestamp: new Date().toISOString(),
         },
       ];
     } else if (msg.type === 'session-end') {
       chatSessionEnded = true;
-      if (terminal) { terminal = { ...terminal, status: 'exited' }; }
+      if (terminal) {
+        terminal = { ...terminal, status: 'exited' };
+      }
     }
   }
 
   function disconnectSessionWs(): void {
+    if (sessionReconnectTimer) {
+      clearTimeout(sessionReconnectTimer);
+      sessionReconnectTimer = null;
+    }
     if (sessionWs) {
       sessionWs.onclose = null;
       sessionWs.close();
@@ -442,17 +508,21 @@
   // ------- Input handling -------
 
   function handleRawInput(): void {
-    if (!inputText.trim()) {return;}
+    if (!inputText.trim()) {
+      return;
+    }
     // Send the text as raw PTY input with a newline via the xterm wrapper's WebSocket
-    if (termInstance && connectionStatus === 'connected') {
-      termInstance.sendInput(`${inputText  }\r`);
+    if (termInstance && rawConnectionStatus === 'connected') {
+      termInstance.sendInput(`${inputText}\r`);
     }
     inputText = '';
     inputRef?.focus();
   }
 
   function handleChatSendInput(text: string): void {
-    if (!text.trim() || sessionWs?.readyState !== WebSocket.OPEN) { return; }
+    if (!text.trim() || sessionWs?.readyState !== WebSocket.OPEN) {
+      return;
+    }
     sessionWs.send(JSON.stringify({ text, type: 'send-input' }));
   }
 
@@ -464,7 +534,7 @@
 
   function handleQuickKey(key: string): void {
     if (viewMode === 'raw') {
-      if (termInstance && connectionStatus === 'connected') {
+      if (termInstance && rawConnectionStatus === 'connected') {
         termInstance.sendInput(key);
       }
     } else if (viewMode === 'chat') {
@@ -489,7 +559,9 @@
   let chatInitialized = false;
 
   function setViewMode(mode: 'chat' | 'raw'): void {
-    if (mode === viewMode) {return;}
+    if (mode === viewMode) {
+      return;
+    }
     viewMode = mode;
 
     // Lazily initialize connections on first switch — keep them alive afterwards
@@ -502,7 +574,6 @@
       void connectSessionWs();
       chatInitialized = true;
     }
-
   }
 
   // ------- Retry connection -------
@@ -510,12 +581,12 @@
   function handleRetry(): void {
     if (viewMode === 'raw') {
       disposeRawTerminal();
-      connectionStatus = 'reconnecting';
+      rawConnectionStatus = 'reconnecting';
       void initRawTerminal();
       rawInitialized = true;
     } else {
       disconnectSessionWs();
-      connectionStatus = 'reconnecting';
+      chatConnectionStatus = 'reconnecting';
       void connectSessionWs();
       chatInitialized = true;
     }
@@ -525,13 +596,20 @@
 
   onMount(async () => {
     await fetchTerminal();
+    if (disposed) {
+      return;
+    }
 
     // Set up keyboard shortcuts
     shortcutManager = createShortcutManager({
-      onHelp: () => { showShortcutsHelp = !showShortcutsHelp; },
+      onHelp: () => {
+        showShortcutsHelp = !showShortcutsHelp;
+      },
     });
 
-    if (!terminal || error) {return;}
+    if (!terminal || error) {
+      return;
+    }
 
     // Default view: Chat on mobile for AI sessions, Raw on desktop
     if (isAI && window.innerWidth < 768) {
@@ -610,18 +688,22 @@
           <Tabs
             items={tabItems}
             activeIndex={tabActiveIndex}
-            onchange={(index) => { setViewMode(index === 0 ? 'raw' : 'chat'); }}
+            onchange={(index) => {
+              setViewMode(index === 0 ? 'raw' : 'chat');
+            }}
             classes="term-tabs"
           />
         {/if}
 
         <button
           class="term-shortcuts-btn"
-          onclick={() => { showShortcutsHelp = !showShortcutsHelp; }}
+          onclick={() => {
+            showShortcutsHelp = !showShortcutsHelp;
+          }}
           type="button"
           title="{modLabel}+/ for shortcuts"
-          aria-label="Keyboard shortcuts"
-        >?</button>
+          aria-label="Keyboard shortcuts">?</button
+        >
 
         {#if isRunning}
           <Button
@@ -646,7 +728,11 @@
     <!-- Body: both views always rendered, toggled via CSS display to preserve WebSocket connections -->
 
     <!-- Raw Terminal View -->
-    <div class="term-body" bind:this={termContainer} style:display={viewMode === 'raw' ? 'flex' : 'none'}></div>
+    <div
+      class="term-body"
+      bind:this={termContainer}
+      style:display={viewMode === 'raw' ? 'flex' : 'none'}
+    ></div>
 
     <!-- Raw Input Bar + Quick Keys -->
     {#if isRunning && viewMode === 'raw'}
@@ -687,15 +773,29 @@
       <div class="term-exited-bar">
         <span>Process exited</span>
         {#if terminal.exitCode !== null}
-          <Pill text="code {terminal.exitCode}" classes={terminal.exitCode !== 0 ? 'pill-exit-error' : 'pill-exit-ok'} />
+          <Pill
+            text="code {terminal.exitCode}"
+            classes={terminal.exitCode !== 0 ? 'pill-exit-error' : 'pill-exit-ok'}
+          />
         {/if}
       </div>
     {/if}
   </div>
 {/if}
 
-<ShortcutsHelp open={showShortcutsHelp} onClose={() => { showShortcutsHelp = false; }} />
-<CommandPalette bind:open={showCommandPalette} commands={paletteCommands} onClose={() => { showCommandPalette = false; }} />
+<ShortcutsHelp
+  open={showShortcutsHelp}
+  onClose={() => {
+    showShortcutsHelp = false;
+  }}
+/>
+<CommandPalette
+  bind:open={showCommandPalette}
+  commands={paletteCommands}
+  onClose={() => {
+    showCommandPalette = false;
+  }}
+/>
 
 <style>
   /* ============================================
@@ -839,8 +939,15 @@
   }
 
   @keyframes activity-pulse {
-    0%, 100% { transform: scale(1); opacity: 1; }
-    50% { transform: scale(1.5); opacity: 0.7; }
+    0%,
+    100% {
+      transform: scale(1);
+      opacity: 1;
+    }
+    50% {
+      transform: scale(1.5);
+      opacity: 0.7;
+    }
   }
 
   /* ============================================
@@ -881,7 +988,6 @@
     min-height: 0;
     overflow: hidden;
   }
-
 
   /* ============================================
      Input area (shared between raw + chat)
@@ -932,7 +1038,6 @@
     color: var(--text-tertiary);
     flex-shrink: 0;
   }
-
 
   /* ============================================
      Responsive

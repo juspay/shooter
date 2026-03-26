@@ -1,8 +1,16 @@
 <script lang="ts">
+  import type { NativeBridgeConfig } from '$generated/types';
   import type { ShooterConfig } from '$lib/types/config';
 
   import { browser } from '$app/environment';
-  import { Card, hasScanner, Icon, isShooterConfig, scanQR } from '$lib/modules/client/common';
+  import {
+    Card,
+    hasScanner,
+    Icon,
+    isShooterConfig,
+    scanQR,
+    toErrorMessage,
+  } from '$lib/modules/client/common';
   import { Banner, Button, Input, Stepper } from '@juspay/svelte-ui-components';
   import { onMount } from 'svelte';
 
@@ -19,6 +27,7 @@
   let qrError = $state('');
   let canScan = $state(false);
   let _bridgeCheckDone = $state(false);
+  let bridgeHydrated = false;
   let scanLoading = $state(false);
 
   async function fetchQrCode(): Promise<void> {
@@ -29,6 +38,8 @@
 
     qrLoading = true;
     qrError = '';
+    qrDataUrl = '';
+    qrServerUrl = '';
 
     try {
       const response = await fetch('/api/qr-config', {
@@ -45,8 +56,7 @@
       qrDataUrl = data.dataUrl;
       qrServerUrl = data.serverUrl;
     } catch (error) {
-      const err = error as Error;
-      qrError = `Network error: ${err.message}`;
+      qrError = `Network error: ${toErrorMessage(error)}`;
     } finally {
       qrLoading = false;
     }
@@ -70,16 +80,20 @@
           apiKey = config.apiKey;
         }
         await saveConfiguration();
-        result = 'Configuration updated from QR code';
-        statusType = 'success';
+        // Only show QR success if saveConfiguration() didn't set an error/warning
+        const savedStatus: string = statusType;
+        if (savedStatus !== 'error' && savedStatus !== 'warning') {
+          result = 'Configuration updated from QR code';
+          statusType = 'success';
+        }
       } catch {
         result = 'Invalid QR code data';
         statusType = 'error';
       }
     } catch (error) {
-      const err = error as Error;
-      if (err.message !== 'cancelled') {
-        result = `Scanner error: ${err.message}`;
+      const msg = toErrorMessage(error);
+      if (msg !== 'cancelled') {
+        result = `Scanner error: ${msg}`;
         statusType = 'error';
       }
     } finally {
@@ -87,19 +101,16 @@
     }
   }
 
-  function getNativeBridge(): null | {
-    getConfig(): string;
-    getFcmToken(): string;
-    getPlatform(): string;
-    saveConfig(json: string): void;
-  } {
-    if (typeof window !== 'undefined' && 'ShooterBridge' in window) {
-      return (window as Record<string, unknown>).ShooterBridge as {
-        getConfig(): string;
-        getFcmToken(): string;
-        getPlatform(): string;
-        saveConfig(json: string): void;
-      };
+  function getNativeBridge(): null | typeof window.ShooterBridge {
+    if (typeof window === 'undefined') {
+      return null;
+    }
+    // iOS injects window.ShooterBridge, Android injects window.ShooterNativeBridge
+    if (window.ShooterBridge) {
+      return window.ShooterBridge;
+    }
+    if (window.ShooterNativeBridge) {
+      return window.ShooterNativeBridge;
     }
     return null;
   }
@@ -108,10 +119,45 @@
     return window.location.origin;
   }
 
+  /** Attempt to read config from the native bridge and hydrate state.
+   *  Only performs the full hydration (overwriting form fields) once.
+   *  Subsequent calls only refresh the `canScan` flag so re-polling
+   *  for a late-injected bridge does not clobber user edits. */
+  function hydrateBridge(): void {
+    const bridge = getNativeBridge();
+    if (bridge && !bridgeHydrated) {
+      isNativeApp = true;
+      try {
+        const nativeConfig = JSON.parse(
+          bridge.getConfig?.() ?? '{}'
+        ) as Partial<NativeBridgeConfig>;
+        // If native has config, use it (native is source of truth for credentials).
+        // Native serverUrl always overrides — it is set before the browser
+        // fallback (window.location.origin) so the native value wins.
+        if (nativeConfig.serverUrl) {
+          serverUrl = nativeConfig.serverUrl;
+        }
+        if (nativeConfig.apiKey) {
+          apiKey = nativeConfig.apiKey;
+        }
+        // Auto-populate device token with FCM token
+        const fcmToken = bridge.getFcmToken?.();
+        if (fcmToken) {
+          deviceToken = fcmToken;
+        }
+        // Mark hydrated only after native reads succeeded
+        bridgeHydrated = true;
+      } catch {
+        // Bridge communication failed — leave bridgeHydrated false so
+        // a subsequent poll can retry once the bridge is ready.
+      }
+    }
+    canScan = hasScanner();
+  }
+
   onMount(() => {
     if (browser) {
       try {
-        serverUrl = getDefaultServerUrl();
         const saved = localStorage.getItem('shooter_config');
         if (saved) {
           const parsed: unknown = JSON.parse(saved);
@@ -133,42 +179,28 @@
         // No saved configuration — expected on first visit
       }
 
-      const bridge = getNativeBridge();
-      if (bridge) {
-        isNativeApp = true;
-        try {
-          const nativeConfig = JSON.parse(bridge.getConfig());
-          // If native has config, use it (native is source of truth for credentials)
-          if (nativeConfig.serverUrl && !serverUrl) {
-            serverUrl = nativeConfig.serverUrl;
-          }
-          if (nativeConfig.apiKey) {
-            apiKey = nativeConfig.apiKey;
-          }
-          // Auto-populate device token with FCM token
-          const fcmToken = bridge.getFcmToken();
-          if (fcmToken) {
-            deviceToken = fcmToken;
-          }
-        } catch {
-          // Bridge communication failed
-        }
+      // Hydrate from native bridge BEFORE applying the browser default.
+      // This lets native-provided serverUrl take precedence over
+      // window.location.origin.
+      hydrateBridge();
+      if (!serverUrl) {
+        serverUrl = getDefaultServerUrl();
       }
-
-      canScan = hasScanner();
       _bridgeCheckDone = true;
 
       // The native bridge may be injected after SvelteKit hydration.
       // Re-check periodically for a short window to catch late injection.
       if (!canScan) {
         const recheckInterval = setInterval(() => {
-          canScan = hasScanner();
+          hydrateBridge();
           if (canScan) {
             clearInterval(recheckInterval);
           }
         }, 200);
         // Stop checking after 3 seconds
-        setTimeout(() => { clearInterval(recheckInterval); }, 3000);
+        setTimeout(() => {
+          clearInterval(recheckInterval);
+        }, 3000);
       }
     }
   });
@@ -192,7 +224,7 @@
 
       const bridge = getNativeBridge();
       if (bridge) {
-        bridge.saveConfig(
+        bridge.saveConfig?.(
           JSON.stringify({
             apiKey: apiKey.trim(),
             serverUrl: trimmedUrl || getDefaultServerUrl(),
@@ -210,8 +242,7 @@
         statusType = 'warning';
       }
     } catch (error) {
-      const err = error as Error;
-      result = `Configuration failed: ${err.message}`;
+      result = `Configuration failed: ${toErrorMessage(error)}`;
       statusType = 'error';
     }
 
@@ -264,8 +295,7 @@
         statusType = 'error';
       }
     } catch (error) {
-      const err = error as Error;
-      result = `Network error: ${err.message}`;
+      result = `Network error: ${toErrorMessage(error)}`;
       statusType = 'error';
     }
 
@@ -283,7 +313,7 @@
 
       const bridge = getNativeBridge();
       if (bridge) {
-        bridge.saveConfig(JSON.stringify({ apiKey: '', serverUrl: '' }));
+        bridge.saveConfig?.(JSON.stringify({ apiKey: '', serverUrl: '' }));
       }
     }
   }
@@ -303,7 +333,10 @@
 
     <div class="settings-grid">
       <section class="settings-section">
-        <Card title="Server Configuration" description="Configure server connection and credentials">
+        <Card
+          title="Server Configuration"
+          description="Configure server connection and credentials"
+        >
           <Input
             name="serverUrl"
             label="Server URL"
@@ -328,13 +361,20 @@
             bind:value={deviceToken}
             dataType="text"
             placeholder={isNativeApp ? 'Waiting for token...' : '64-character hex string'}
-            infoMessage={isNativeApp && deviceToken ? 'Auto-detected from app' : 'Device token from app registration'}
+            infoMessage={isNativeApp && deviceToken
+              ? 'Auto-detected from app'
+              : 'Device token from app registration'}
             classes="input-mono"
           />
         </Card>
 
         {#if result}
-          {@const bannerIcon = statusType === 'success' ? 'check-circle' : statusType === 'error' ? 'x-circle' : 'alert-triangle'}
+          {@const bannerIcon =
+            statusType === 'success'
+              ? 'check-circle'
+              : statusType === 'error'
+                ? 'x-circle'
+                : 'alert-triangle'}
           <Banner text={result} classes="banner-{statusType || 'info'}">
             {#snippet icon()}
               <Icon name={bannerIcon} size={16} />
@@ -376,14 +416,20 @@
           />
         </Card>
 
-        <Card title="Mobile App Setup" description={canScan ? 'Scan a QR code to connect' : 'Scan to connect your mobile app'}>
+        <Card
+          title="Mobile App Setup"
+          description={canScan ? 'Scan a QR code to connect' : 'Scan to connect your mobile app'}
+        >
           <div class="qr-section">
             {#if canScan}
               <p class="qr-description">
-                Scan the QR code shown on your server's settings page to auto-configure
-                the connection.
+                Scan the QR code shown on your server's settings page to auto-configure the
+                connection.
               </p>
-              <Button classes="btn-secondary btn-sm" onclick={handleScanQR} disabled={scanLoading}
+              <Button
+                classes="btn-secondary btn-sm"
+                onclick={handleScanQR}
+                disabled={scanLoading}
                 text={scanLoading ? 'Scanning...' : 'Scan QR Code'}
               />
             {:else}
@@ -407,11 +453,14 @@
                 <p class="qr-error">{qrError}</p>
               {:else}
                 <p class="qr-description">
-                  Generate a QR code containing your server URL and API key. Your mobile app can scan
-                  it to auto-configure the connection.
+                  Generate a QR code containing your server URL and API key. Your mobile app can
+                  scan it to auto-configure the connection.
                 </p>
               {/if}
-              <Button classes="btn-secondary btn-sm" onclick={fetchQrCode} disabled={qrLoading || !apiKey.trim()}
+              <Button
+                classes="btn-secondary btn-sm"
+                onclick={fetchQrCode}
+                disabled={qrLoading || !apiKey.trim()}
                 text={qrDataUrl ? 'Regenerate QR Code' : 'Generate QR Code'}
               />
             {/if}
@@ -420,7 +469,9 @@
 
         <Card title="Danger Zone">
           <p class="danger-description">Clear all saved configuration data from this device.</p>
-          <Button classes="btn-danger btn-sm" onclick={clearConfiguration}
+          <Button
+            classes="btn-danger btn-sm"
+            onclick={clearConfiguration}
             text="Clear Configuration"
           />
         </Card>
@@ -433,7 +484,7 @@
   .settings-container {
     max-width: 900px;
     margin: 0 auto;
-    padding-bottom: 80px;
+    padding-bottom: var(--space-6);
   }
 
   .page-header {

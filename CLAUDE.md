@@ -162,6 +162,7 @@ See `.env.example` for the full template. Required environment variables (set in
 - `PORT` - Server port (default: 3000)
 
 Optional (iOS push notifications):
+
 - `APNS_KEY` - APNs private key (.p8 contents)
 - `APNS_KEY_ID` - APNs key ID
 - `APNS_TEAM_ID` - Apple Team ID
@@ -170,6 +171,7 @@ Optional (iOS push notifications):
 - `DEVICE_TOKEN` - Target iOS device token
 
 Optional (Android push notifications):
+
 - `FCM_PROJECT_ID` - Firebase project ID
 - `FCM_CLIENT_EMAIL` - Firebase service account email
 - `FCM_PRIVATE_KEY` - Firebase service account private key

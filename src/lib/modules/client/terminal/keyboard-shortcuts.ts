@@ -6,18 +6,9 @@
  */
 
 export const isMac =
-  typeof navigator !== 'undefined' &&
-  /Mac|iPhone|iPad/.test(navigator.userAgent);
+  typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.userAgent);
 
 export const modLabel = isMac ? '⌘' : 'Ctrl';
-
-export interface ShortcutAction {
-  action: () => void;
-  description: string;
-  key: string;
-  label: string;
-  shift?: boolean;
-}
 
 interface ShortcutManagerOptions {
   onHelp: () => void;
@@ -26,10 +17,14 @@ interface ShortcutManagerOptions {
 export function createShortcutManager(options: ShortcutManagerOptions) {
   function handler(e: KeyboardEvent) {
     const mod = isMac ? e.metaKey : e.ctrlKey;
-    if (!mod) { return; }
+    if (!mod) {
+      return;
+    }
 
     // Don't intercept when a text input or the terminal is focused
-    if (isTextInputFocused()) { return; }
+    if (isTextInputFocused()) {
+      return;
+    }
 
     // Cmd+/ — show help overlay
     if (e.key === '/') {
@@ -60,11 +55,19 @@ export function getShortcutList(): { description: string; keys: string }[] {
 /** Returns true when focus is inside a text input, textarea, or contenteditable. */
 function isTextInputFocused(): boolean {
   const el = document.activeElement;
-  if (!el) { return false; }
+  if (!el) {
+    return false;
+  }
   const tag = el.tagName;
-  if (tag === 'INPUT' || tag === 'TEXTAREA') { return true; }
-  if ((el as HTMLElement).isContentEditable) { return true; }
+  if (tag === 'INPUT' || tag === 'TEXTAREA') {
+    return true;
+  }
+  if ((el as HTMLElement).isContentEditable) {
+    return true;
+  }
   // xterm's terminal container
-  if (el.closest('.xterm')) { return true; }
+  if (el.closest('.xterm')) {
+    return true;
+  }
   return false;
 }

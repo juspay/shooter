@@ -27,7 +27,9 @@
   {#each keys as k (k.label)}
     <Button
       classes="btn-quick-key"
-      onclick={() => { onKey(k.escape); }}
+      onclick={() => {
+        onKey(k.escape);
+      }}
       text={k.label}
     />
   {/each}

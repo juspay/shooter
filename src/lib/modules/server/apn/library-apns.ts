@@ -4,6 +4,8 @@ import apn from '@parse/node-apn';
 
 import type { LibraryResult as APNsLibraryResult, NotificationPayload } from './types';
 
+import { toErrorMessage } from '../utils/error';
+
 export class LibraryAPNsService {
   private bundleId: string | undefined;
   private configured = false;
@@ -41,8 +43,7 @@ export class LibraryAPNsService {
       this.configured = true;
       console.log(`[apns] Provider initialized (${production ? 'production' : 'sandbox'} mode)`);
     } catch (error) {
-      const err = error as Error;
-      console.error('[apns] Failed to create provider:', err.message);
+      console.error('[apns] Failed to create provider:', toErrorMessage(error));
       this.configured = false;
     }
   }

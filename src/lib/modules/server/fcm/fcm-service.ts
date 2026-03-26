@@ -30,7 +30,9 @@ export async function sendFCMNotification(
       },
       data: {
         body: payload.body || payload.message || '',
-        category: payload.category ?? (typeof payload.data?.category === 'string' ? payload.data.category : ''),
+        category:
+          payload.category ??
+          (typeof payload.data?.category === 'string' ? payload.data.category : ''),
         project: typeof payload.data?.project === 'string' ? payload.data.project : '',
         requestId: typeof payload.data?.requestId === 'string' ? payload.data.requestId : '',
         source: typeof payload.data?.source === 'string' ? payload.data.source : '',

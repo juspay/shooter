@@ -53,13 +53,13 @@ The wizard generates your `.env` file, offers to export `API_KEY` into your shel
 
 ## 2. Setup Methods Compared
 
-| Method | Best For | Installs To | Requires | Push-notification config |
-| --- | --- | --- | --- | --- |
-| **Wizard** (`pnpm setup`) | First-time setup, guided experience | Current clone | Node 20+, pnpm | Prompted interactively |
-| **curl installer** (`curl \| sh`) | Fresh machines, one command | `~/.shooter/` | Node 20+, git | Runs wizard after clone |
-| **Docker** (`docker compose up`) | Isolated, reproducible environments | Container | Docker, Docker Compose | Via `.env` file |
-| **npm global** (`npm i -g @juspay/shooter`) | Using `shooter` as a CLI from anywhere | Global `node_modules` | Node 20+, npm | Via `.env` in working dir |
-| **Manual** | Power users, custom layouts | Wherever you choose | Node 20+, pnpm | Edit `.env` by hand |
+| Method                                      | Best For                               | Installs To           | Requires               | Push-notification config  |
+| ------------------------------------------- | -------------------------------------- | --------------------- | ---------------------- | ------------------------- |
+| **Wizard** (`pnpm setup`)                   | First-time setup, guided experience    | Current clone         | Node 20+, pnpm         | Prompted interactively    |
+| **curl installer** (`curl \| sh`)           | Fresh machines, one command            | `~/.shooter/`         | Node 20+, git          | Runs wizard after clone   |
+| **Docker** (`docker compose up`)            | Isolated, reproducible environments    | Container             | Docker, Docker Compose | Via `.env` file           |
+| **npm global** (`npm i -g @juspay/shooter`) | Using `shooter` as a CLI from anywhere | Global `node_modules` | Node 20+, npm          | Via `.env` in working dir |
+| **Manual**                                  | Power users, custom layouts            | Wherever you choose   | Node 20+, pnpm         | Edit `.env` by hand       |
 
 All methods produce the same running server. Choose whichever fits your workflow.
 
@@ -77,22 +77,23 @@ node scripts/setup.cjs
 
 ### What it does, step by step
 
-| Step | What happens |
-| --- | --- |
-| **1. Check prerequisites** | Verifies Node.js >= 20, pnpm is installed, and `node_modules` exist (runs `pnpm install` if missing). |
-| **2. Server authentication** | Asks for an `API_KEY`. Press Enter to auto-generate a 64-character hex key. |
-| **3. iOS push notifications** | Asks whether you want iOS push. If yes, prompts for APNs `.p8` key contents, Key ID (10 chars), Team ID (10 chars), Bundle ID, Device Token (64 hex chars), and whether to use the production APNs gateway. |
-| **4. Android push notifications** | Asks whether you want Android push. If yes, prompts for FCM Project ID, Client Email, service-account private key, and optionally an Android device token. |
-| **5. Write `.env`** | Generates a `.env` file from your answers. If `.env` already exists, asks before overwriting. Commented-out stubs are written for any platform you did not configure. |
-| **6. Shell environment** | Detects your shell profile (`~/.zshrc`, `~/.bash_profile`, etc.) and offers to append `export API_KEY="..."`. This is required for Claude Code hooks to authenticate with the server. |
-| **7. Build** | Runs `pnpm build` (SvelteKit with adapter-node). |
-| **8. Health check** | Starts the server temporarily, polls `http://localhost:3000/api/health` for up to 15 seconds, reports the result, then stops the server. |
+| Step                              | What happens                                                                                                                                                                                                |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **1. Check prerequisites**        | Verifies Node.js >= 20, pnpm is installed, and `node_modules` exist (runs `pnpm install` if missing).                                                                                                       |
+| **2. Server authentication**      | Asks for an `API_KEY`. Press Enter to auto-generate a 64-character hex key.                                                                                                                                 |
+| **3. iOS push notifications**     | Asks whether you want iOS push. If yes, prompts for APNs `.p8` key contents, Key ID (10 chars), Team ID (10 chars), Bundle ID, Device Token (64 hex chars), and whether to use the production APNs gateway. |
+| **4. Android push notifications** | Asks whether you want Android push. If yes, prompts for FCM Project ID, Client Email, service-account private key, and optionally an Android device token.                                                  |
+| **5. Write `.env`**               | Generates a `.env` file from your answers. If `.env` already exists, asks before overwriting. Commented-out stubs are written for any platform you did not configure.                                       |
+| **6. Shell environment**          | Detects your shell profile (`~/.zshrc`, `~/.bash_profile`, etc.) and offers to append `export API_KEY="..."`. This is required for Claude Code hooks to authenticate with the server.                       |
+| **7. Build**                      | Runs `pnpm build` (SvelteKit with adapter-node).                                                                                                                                                            |
+| **8. Health check**               | Starts the server temporarily, polls `http://localhost:3000/api/health` for up to 15 seconds, reports the result, then stops the server.                                                                    |
 
 After all steps complete, the wizard prints the commands to start the server (`pnpm start`) and run in dev mode (`pnpm dev`).
 
 ### Validation
 
 The wizard validates all inputs:
+
 - Device tokens must be exactly 64 hex characters.
 - APNs Key ID and Team ID must be exactly 10 alphanumeric characters.
 - Bundle ID must follow reverse-domain format.
@@ -150,10 +151,10 @@ curl http://localhost:3000/api/health
 
 The Docker build uses a two-stage approach:
 
-| Stage | Purpose |
-| --- | --- |
-| **builder** (`node:20-slim`) | Installs build tools (`python3`, `make`, `g++`) for native addons (`node-pty`, `better-sqlite3`), runs `pnpm install`, `pnpm build`, then prunes to production dependencies. |
-| **production** (`node:20-slim`) | Copies built output, production `node_modules`, `server.ts`, and server-side source modules. Exposes port 3000 and runs `node --import tsx server.ts`. |
+| Stage                           | Purpose                                                                                                                                                                      |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **builder** (`node:20-slim`)    | Installs build tools (`python3`, `make`, `g++`) for native addons (`node-pty`, `better-sqlite3`), runs `pnpm install`, `pnpm build`, then prunes to production dependencies. |
+| **production** (`node:20-slim`) | Copies built output, production `node_modules`, `server.ts`, and server-side source modules. Exposes port 3000 and runs `node --import tsx server.ts`.                       |
 
 ### docker-compose.yml details
 
@@ -162,7 +163,7 @@ services:
   shooter:
     build: .
     ports:
-      - "3000:3000"
+      - '3000:3000'
     env_file:
       - .env
     volumes:
@@ -174,6 +175,7 @@ volumes:
 ```
 
 **Key points:**
+
 - `env_file: .env` -- all environment variables are loaded from your `.env` file.
 - `shooter-data` volume -- persists SQLite database and session data across container restarts. Mounted at `/root/.shooter` inside the container.
 - `restart: unless-stopped` -- the container restarts automatically if it crashes or the host reboots (unless you explicitly stop it).
@@ -316,33 +318,33 @@ curl http://localhost:3000/api/health
 
 ### Server variables (set in `.env`)
 
-| Variable | Required | Default | Description | Example |
-| --- | --- | --- | --- | --- |
-| `API_KEY` | **Yes** | -- | Bearer token for authenticating all API requests. Used by hooks, the iOS app, and the web UI. | `a1b2c3d4e5f6...` (64 hex chars) |
-| `PORT` | No | `3000` | Port the server listens on. | `3000` |
-| `APNS_KEY` | For iOS | -- | Full contents of the APNs `.p8` private key file, including `BEGIN`/`END` markers. Newlines escaped as `\n` when stored in `.env`. | `"-----BEGIN PRIVATE KEY-----\nMIGT...\n-----END PRIVATE KEY-----"` |
-| `APNS_KEY_ID` | For iOS | -- | 10-character Key ID from the Apple Developer portal (Certificates, Identifiers & Profiles > Keys). | `ABC123DEF4` |
-| `APNS_TEAM_ID` | For iOS | -- | 10-character Apple Developer Team ID (Membership page). | `9ABCDEF012` |
-| `APNS_BUNDLE_ID` | For iOS | -- | iOS app bundle identifier. Must match the Xcode project. | `com.example.shooter` |
-| `APNS_PRODUCTION` | No | `false` | Set `true` to use the production APNs gateway (`api.push.apple.com`). Required for TestFlight and App Store builds. When `false`, uses the sandbox gateway. | `true` |
-| `DEVICE_TOKEN` | For iOS | -- | 64-character hex token from the iOS device after push-notification registration. Tokens can rotate; always use the latest. | `a1b2c3d4...` (64 hex chars) |
-| `DEVICE_PLATFORM` | No | `ios` | Which platform to send push notifications to. | `ios` or `android` |
-| `FCM_PROJECT_ID` | For Android | -- | Firebase project ID from the Firebase Console. | `my-project-12345` |
-| `FCM_CLIENT_EMAIL` | For Android | -- | Service account email from the Firebase Admin SDK JSON key file. | `firebase-adminsdk-xxxxx@my-project.iam.gserviceaccount.com` |
-| `FCM_PRIVATE_KEY` | For Android | -- | Service account private key (PEM format) from the Firebase Admin SDK JSON key file. | `"-----BEGIN RSA PRIVATE KEY-----\n..."` |
-| `ANDROID_DEVICE_TOKEN` | For Android | -- | FCM registration token from the Android device. | `dGhpcyBpcyBh...` |
+| Variable               | Required    | Default | Description                                                                                                                                                 | Example                                                             |
+| ---------------------- | ----------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `API_KEY`              | **Yes**     | --      | Bearer token for authenticating all API requests. Used by hooks, the iOS app, and the web UI.                                                               | `a1b2c3d4e5f6...` (64 hex chars)                                    |
+| `PORT`                 | No          | `3000`  | Port the server listens on.                                                                                                                                 | `3000`                                                              |
+| `APNS_KEY`             | For iOS     | --      | Full contents of the APNs `.p8` private key file, including `BEGIN`/`END` markers. Newlines escaped as `\n` when stored in `.env`.                          | `"-----BEGIN PRIVATE KEY-----\nMIGT...\n-----END PRIVATE KEY-----"` |
+| `APNS_KEY_ID`          | For iOS     | --      | 10-character Key ID from the Apple Developer portal (Certificates, Identifiers & Profiles > Keys).                                                          | `ABC123DEF4`                                                        |
+| `APNS_TEAM_ID`         | For iOS     | --      | 10-character Apple Developer Team ID (Membership page).                                                                                                     | `9ABCDEF012`                                                        |
+| `APNS_BUNDLE_ID`       | For iOS     | --      | iOS app bundle identifier. Must match the Xcode project.                                                                                                    | `com.example.shooter`                                               |
+| `APNS_PRODUCTION`      | No          | `false` | Set `true` to use the production APNs gateway (`api.push.apple.com`). Required for TestFlight and App Store builds. When `false`, uses the sandbox gateway. | `true`                                                              |
+| `DEVICE_TOKEN`         | For iOS     | --      | 64-character hex token from the iOS device after push-notification registration. Tokens can rotate; always use the latest.                                  | `a1b2c3d4...` (64 hex chars)                                        |
+| `DEVICE_PLATFORM`      | No          | `ios`   | Which platform to send push notifications to.                                                                                                               | `ios` or `android`                                                  |
+| `FCM_PROJECT_ID`       | For Android | --      | Firebase project ID from the Firebase Console.                                                                                                              | `my-project-12345`                                                  |
+| `FCM_CLIENT_EMAIL`     | For Android | --      | Service account email from the Firebase Admin SDK JSON key file.                                                                                            | `firebase-adminsdk-xxxxx@my-project.iam.gserviceaccount.com`        |
+| `FCM_PRIVATE_KEY`      | For Android | --      | Service account private key (PEM format) from the Firebase Admin SDK JSON key file.                                                                         | `"-----BEGIN RSA PRIVATE KEY-----\n..."`                            |
+| `ANDROID_DEVICE_TOKEN` | For Android | --      | FCM registration token from the Android device.                                                                                                             | `dGhpcyBpcyBh...`                                                   |
 
 ### Hook variables (set inline in `.claude/settings.json` or exported in shell)
 
-| Variable | Required | Default | Description | Example |
-| --- | --- | --- | --- | --- |
-| `API_KEY` | **Yes** | -- | Same value as the server's `API_KEY`. Hooks expand `$API_KEY` from the shell environment. | `a1b2c3d4e5f6...` |
-| `SHOOTER_USE_LOCAL` | No | `false` | When `true`, hooks send requests to `localhost` instead of a remote URL. | `true` |
-| `SHOOTER_LOCAL_PORT` | No | `3000` | Port to use when `SHOOTER_USE_LOCAL=true`. | `3000` |
-| `SHOOTER_API_URL` | Conditional | -- | Remote server URL. Required when `SHOOTER_USE_LOCAL` is not `true`. Typically the Cloudflare Tunnel URL. | `https://shooter.yourdomain.com` |
-| `SHOOTER_PERMISSION_TIMEOUT` | No | `120` | Seconds the PermissionRequest hook polls the server before timing out. The hook timeout in `.claude/settings.json` (180s) should be higher to allow cleanup. | `120` |
-| `SHOOTER_DEVICE_TOKEN` | No | -- | Override the device token for this hook invocation. If unset, the server uses `DEVICE_TOKEN` from its own `.env`. | `a1b2c3d4...` |
-| `SHOOTER_DEBUG` | No | `false` | When `true`, writes debug logs to `/tmp/shooter-debug.log`. | `true` |
+| Variable                     | Required    | Default | Description                                                                                                                                                  | Example                          |
+| ---------------------------- | ----------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------- |
+| `API_KEY`                    | **Yes**     | --      | Same value as the server's `API_KEY`. Hooks expand `$API_KEY` from the shell environment.                                                                    | `a1b2c3d4e5f6...`                |
+| `SHOOTER_USE_LOCAL`          | No          | `false` | When `true`, hooks send requests to `localhost` instead of a remote URL.                                                                                     | `true`                           |
+| `SHOOTER_LOCAL_PORT`         | No          | `3000`  | Port to use when `SHOOTER_USE_LOCAL=true`.                                                                                                                   | `3000`                           |
+| `SHOOTER_API_URL`            | Conditional | --      | Remote server URL. Required when `SHOOTER_USE_LOCAL` is not `true`. Typically the Cloudflare Tunnel URL.                                                     | `https://shooter.yourdomain.com` |
+| `SHOOTER_PERMISSION_TIMEOUT` | No          | `120`   | Seconds the PermissionRequest hook polls the server before timing out. The hook timeout in `.claude/settings.json` (180s) should be higher to allow cleanup. | `120`                            |
+| `SHOOTER_DEVICE_TOKEN`       | No          | --      | Override the device token for this hook invocation. If unset, the server uses `DEVICE_TOKEN` from its own `.env`.                                            | `a1b2c3d4...`                    |
+| `SHOOTER_DEBUG`              | No          | `false` | When `true`, writes debug logs to `/tmp/shooter-debug.log`.                                                                                                  | `true`                           |
 
 ### How variables are loaded
 
@@ -397,22 +399,22 @@ The `matcher` is empty (`""`), meaning all events of that type trigger the hook.
 
 ### Registered hook events
 
-| Hook Event | Purpose |
-| --- | --- |
-| `PreToolUse` | Tool is about to execute (activity tracking) |
-| `PostToolUse` | Tool finished executing |
-| `PostToolUseFailure` | Tool execution failed |
-| `PermissionRequest` | Agent needs user permission (blocks, polls for response, 180s timeout) |
-| `Notification` | Various notification subtypes (permission prompts, idle prompts, questions) |
-| `Stop` | Agent finished responding |
-| `SessionStart` | New session started |
-| `SessionEnd` | Session terminated |
-| `SubagentStart` | Subagent spawned |
-| `SubagentStop` | Subagent finished |
-| `UserPromptSubmit` | User submitted a prompt |
-| `TeammateIdle` | Teammate is idle |
-| `TaskCompleted` | Task completed |
-| `PreCompact` | Before context compaction |
+| Hook Event           | Purpose                                                                     |
+| -------------------- | --------------------------------------------------------------------------- |
+| `PreToolUse`         | Tool is about to execute (activity tracking)                                |
+| `PostToolUse`        | Tool finished executing                                                     |
+| `PostToolUseFailure` | Tool execution failed                                                       |
+| `PermissionRequest`  | Agent needs user permission (blocks, polls for response, 180s timeout)      |
+| `Notification`       | Various notification subtypes (permission prompts, idle prompts, questions) |
+| `Stop`               | Agent finished responding                                                   |
+| `SessionStart`       | New session started                                                         |
+| `SessionEnd`         | Session terminated                                                          |
+| `SubagentStart`      | Subagent spawned                                                            |
+| `SubagentStop`       | Subagent finished                                                           |
+| `UserPromptSubmit`   | User submitted a prompt                                                     |
+| `TeammateIdle`       | Teammate is idle                                                            |
+| `TaskCompleted`      | Task completed                                                              |
+| `PreCompact`         | Before context compaction                                                   |
 
 ### API_KEY: the critical piece
 
@@ -434,6 +436,7 @@ If the setup wizard added it to your profile, open a new terminal or run `source
 ### Verify hooks are working
 
 1. **Start the server** in one terminal:
+
    ```bash
    pnpm start
    ```
@@ -593,6 +596,7 @@ Create `~/Library/LaunchAgents/com.shooter.server.plist`:
 ```
 
 Replace the paths:
+
 - `/path/to/tsx` -- run `which tsx` to find it (or use `~/.shooter/node_modules/.bin/tsx`).
 - `/path/to/shooter` -- e.g., `/Users/you/.shooter` or wherever you cloned.
 - `/Users/you/Library/Logs/Shooter/` -- create this directory: `mkdir -p ~/Library/Logs/Shooter`.
@@ -791,6 +795,7 @@ You should see the Shooter dashboard. Navigate to `/config` to review the server
 5. If push notifications are configured, check your phone for the notification.
 
 If nothing happens, verify:
+
 - `echo $API_KEY` prints your key (not blank).
 - The server is running on the port specified in `SHOOTER_LOCAL_PORT`.
 - `SHOOTER_USE_LOCAL=true` is set in the hook command.
@@ -813,6 +818,7 @@ curl -X POST http://localhost:3000/api/notify \
 **Expected:** HTTP 200 and a notification appears on your iOS/Android device.
 
 If the notification does not arrive:
+
 - Check `curl http://localhost:3000/api/health?details=true` (with auth) to verify APNs/FCM configuration.
 - Confirm `APNS_PRODUCTION` matches your iOS build (sandbox for Xcode, `true` for TestFlight/App Store).
 - Verify `DEVICE_TOKEN` is current (tokens can rotate).

@@ -3,9 +3,10 @@
 Comprehensive guide for manually testing and verifying every feature of the Shooter notification and terminal system. All commands use placeholder values (`YOUR_API_KEY`, `YOUR_DEVICE_TOKEN`) -- replace them with real values from your `.env` file before running.
 
 **Prerequisites:**
+
 - Server running: `pnpm build && node --import tsx server.ts` (or `pnpm start`)
 - `.env` file populated with required variables (see `docs/ENVIRONMENT.md`)
-- `API_KEY` exported in your shell: `export API_KEY=$(grep API_KEY .env | cut -d= -f2)`
+- `API_KEY` exported in your shell: `export API_KEY=$(grep '^API_KEY=' .env | sed 's/^API_KEY=//')`
 
 ---
 
@@ -83,6 +84,7 @@ curl -s -H "Authorization: Bearer YOUR_API_KEY" \
 ```
 
 **Verify:**
+
 - `checks.hasApiKey` is `true`
 - `checks.hasAPNsConfig` is `true` (requires `APNS_KEY`, `APNS_KEY_ID`, `APNS_TEAM_ID`)
 - `checks.hasBundleId` is `true`
@@ -107,25 +109,25 @@ All endpoints except `GET /api/health` (without `?details=true`) require `Author
 
 ### 2.1 Endpoints to test
 
-| Method | Endpoint | Auth Required |
-|--------|----------|---------------|
-| GET | `/api/health` | No |
-| GET | `/api/health?details=true` | Yes |
-| POST | `/api/notify` | Yes |
-| GET | `/api/notify?limit=10` | Yes |
-| GET | `/api/terminals` | Yes |
-| POST | `/api/terminals` | Yes |
-| GET | `/api/terminals/:id` | Yes |
-| DELETE | `/api/terminals/:id` | Yes |
-| POST | `/api/terminals/:id/resize` | Yes |
-| GET | `/api/sessions` | Yes |
-| GET | `/api/sessions?id=SESSION_ID` | Yes |
-| POST | `/api/response` | Yes |
-| GET | `/api/response?requestId=XXX` | Yes |
-| POST | `/api/ws-ticket` | Yes |
-| GET | `/api/ws-status` | Yes |
-| POST | `/api/device-token` | Yes |
-| GET | `/api/qr-config` | Yes |
+| Method | Endpoint                      | Auth Required |
+| ------ | ----------------------------- | ------------- |
+| GET    | `/api/health`                 | No            |
+| GET    | `/api/health?details=true`    | Yes           |
+| POST   | `/api/notify`                 | Yes           |
+| GET    | `/api/notify?limit=10`        | Yes           |
+| GET    | `/api/terminals`              | Yes           |
+| POST   | `/api/terminals`              | Yes           |
+| GET    | `/api/terminals/:id`          | Yes           |
+| DELETE | `/api/terminals/:id`          | Yes           |
+| POST   | `/api/terminals/:id/resize`   | Yes           |
+| GET    | `/api/sessions`               | Yes           |
+| GET    | `/api/sessions?id=SESSION_ID` | Yes           |
+| POST   | `/api/response`               | Yes           |
+| GET    | `/api/response?requestId=XXX` | Yes           |
+| POST   | `/api/ws-ticket`              | Yes           |
+| GET    | `/api/ws-status`              | Yes           |
+| POST   | `/api/device-token`           | Yes           |
+| GET    | `/api/qr-config`              | Yes           |
 
 ### 2.2 Test without auth (expect 401)
 
@@ -134,11 +136,13 @@ curl -s http://localhost:3000/api/terminals | jq .
 ```
 
 **Expected:**
+
 ```json
 {
   "error": "Missing authorization"
 }
 ```
+
 HTTP status: `401`.
 
 ### 2.3 Test with wrong key (expect 401)
@@ -149,11 +153,13 @@ curl -s -H "Authorization: Bearer WRONG_KEY_12345" \
 ```
 
 **Expected:**
+
 ```json
 {
   "error": "Invalid API key"
 }
 ```
+
 HTTP status: `401`. The server uses timing-safe comparison (`crypto.timingSafeEqual`), so the response time should not vary with how many characters match.
 
 ### 2.4 Test with correct key (expect 200)
@@ -331,6 +337,7 @@ curl -s -H "Authorization: Bearer YOUR_API_KEY" \
 ```
 
 **Verify:**
+
 - `count` matches number of terminals you created
 - Each terminal has `status: "running"` if still alive
 - `clientCount` shows how many WebSocket clients are attached
@@ -530,6 +537,7 @@ curl -s -H "Authorization: Bearer YOUR_API_KEY" \
 ```
 
 **Verify:**
+
 - `total` is greater than 0 (you have at least one project with Claude Code or OpenCode sessions)
 - `count` is the sum of all `sessionCount` values across all projects
 - Each project has a non-empty `sessions` array
@@ -591,6 +599,7 @@ curl -s -H "Authorization: Bearer YOUR_API_KEY" \
 ```
 
 **Verify:**
+
 - `messages` array is not empty
 - Messages alternate between `"human"` and `"assistant"` roles (approximately)
 - `session.title` is a real title, not `"Untitled Session"` (unless the session was genuinely untitled)
@@ -626,6 +635,7 @@ Open each page in a browser at `http://localhost:3000`. The layout provides a he
 Open: `http://localhost:3000/`
 
 **Check:**
+
 - [ ] Header shows the Shooter logo (app-icon.png) and "Shooter" text
 - [ ] Status badge in the header shows "healthy" (green) or "degraded" (yellow)
 - [ ] Bottom tab bar shows "Projects" and "Terminals" tabs
@@ -639,6 +649,7 @@ Open: `http://localhost:3000/`
 Open: navigate from home page by clicking a project.
 
 **Check:**
+
 - [ ] Project name displayed
 - [ ] Sessions listed with titles and dates
 - [ ] Clicking a session navigates to `/session/[id]`
@@ -648,6 +659,7 @@ Open: navigate from home page by clicking a project.
 Open: navigate from a project by clicking a session.
 
 **Check:**
+
 - [ ] Session title displayed in the page header
 - [ ] Messages render as a conversation (human messages and assistant messages)
 - [ ] The ChatView component displays formatted messages
@@ -660,6 +672,7 @@ Open: navigate from a project by clicking a session.
 Open: `http://localhost:3000/terminals` or tap the "Terminals" tab.
 
 **Check:**
+
 - [ ] "Terminals" tab in the bottom bar is highlighted/active
 - [ ] If no terminals exist, an empty state is shown
 - [ ] If terminals exist, each shows as a card with command, cwd, status (running/exited), PID
@@ -673,6 +686,7 @@ Open: `http://localhost:3000/terminals` or tap the "Terminals" tab.
 Open: click a terminal card on the `/terminals` page.
 
 **Check:**
+
 - [ ] Terminal renders in an xterm.js instance (dark background, monospace font)
 - [ ] You can type commands and see output in real-time
 - [ ] A Raw/Chat toggle exists -- Raw shows raw terminal output, Chat shows ChatView (for claude/opencode terminals)
@@ -686,6 +700,7 @@ Open: click a terminal card on the `/terminals` page.
 Open: `http://localhost:3000/config` or click the gear icon in the header.
 
 **Check:**
+
 - [ ] The gear icon in the header is highlighted when on this page
 - [ ] A configuration form is displayed
 - [ ] A QR code is shown for mobile app pairing (contains `{apiKey, serverUrl}`)
@@ -726,6 +741,7 @@ curl -s -X POST http://localhost:3000/api/notify \
 ```
 
 **Verify:**
+
 - Response shows `"success": true`
 - Your iOS device receives the push notification
 - The notification title is "Test Notification" and body is the message text
@@ -815,6 +831,7 @@ curl -s -H "Authorization: Bearer YOUR_API_KEY" \
 ```
 
 **Verify:**
+
 - `notifications` array contains your recent test notifications
 - Sent notifications have `"status": "sent"`
 - Filtered notifications have `"status": "filtered"` with an `error` explaining why
@@ -864,6 +881,7 @@ curl -s -X POST http://localhost:3000/api/notify \
 ```
 
 **Expected:**
+
 - `"success": true`
 - `requestId` in response matches your `$REQUEST_ID`
 - iOS notification arrives with the `CLAUDE_PERMISSION` category (showing Allow/Deny buttons)
@@ -993,6 +1011,7 @@ curl -s -H "Authorization: Bearer YOUR_API_KEY" \
 ```
 
 **Verify:**
+
 - `dataUrl` is a valid base64 PNG data URL
 - `serverUrl` matches your server address (may show tunnel URL if behind Cloudflare)
 - The QR code encodes a JSON payload: `{"apiKey": "YOUR_API_KEY", "serverUrl": "http://..."}`
@@ -1136,6 +1155,7 @@ curl -s -X POST http://localhost:3000/api/ws-ticket \
 ```
 
 **Verify:**
+
 - `ticket` is a 64-character hex string (32 bytes)
 - `expiresIn` is `30` (seconds)
 
@@ -1223,7 +1243,7 @@ websocat "ws://localhost:3000/ws/events?ticket=invalidticket123"
 ### 11.1 Build and start with Docker Compose
 
 ```bash
-cd /Users/sachinsharma/Developer/Personal/shooter
+cd <repo-root>
 docker compose up --build -d
 ```
 
@@ -1283,7 +1303,7 @@ docker compose down -v   # -v removes the named volume too
 Check that `.claude/settings.json` has hooks configured with relative paths:
 
 ```bash
-cat /Users/sachinsharma/Developer/Personal/shooter/.claude/settings.json | jq '.hooks | keys'
+cat .claude/settings.json | jq '.hooks | keys'
 ```
 
 **Expected:** An array of hook event names:
@@ -1310,7 +1330,7 @@ cat /Users/sachinsharma/Developer/Personal/shooter/.claude/settings.json | jq '.
 ### 12.2 Verify each hook command structure
 
 ```bash
-cat /Users/sachinsharma/Developer/Personal/shooter/.claude/settings.json \
+cat .claude/settings.json \
   | jq '.hooks | to_entries[] | {event: .key, command: .value[0].hooks[0].command}'
 ```
 
@@ -1321,6 +1341,7 @@ SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=3000 API_KEY=$API_KEY node .claude/hoo
 ```
 
 **Verify:**
+
 - All commands use relative path `.claude/hooks/notifier.cjs` (not absolute)
 - All commands pass `SHOOTER_USE_LOCAL=true` and `SHOOTER_LOCAL_PORT=3000`
 - All commands reference `API_KEY=$API_KEY` (uses shell env variable)
@@ -1335,13 +1356,13 @@ echo "API_KEY is: ${API_KEY:+set (length ${#API_KEY})}"
 **Expected:** `API_KEY is: set (length XX)`. If it says nothing after "is:", the key is not exported. Fix with:
 
 ```bash
-export API_KEY=$(grep '^API_KEY=' /Users/sachinsharma/Developer/Personal/shooter/.env | cut -d= -f2)
+export API_KEY=$(grep '^API_KEY=' .env | sed 's/^API_KEY=//')
 ```
 
 ### 12.4 Verify notifier.cjs exists and is valid
 
 ```bash
-node -e "require('/Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notifier.cjs')" 2>&1 && echo "OK: notifier.cjs loads without errors" || echo "FAIL: notifier.cjs has syntax errors"
+node -e "require('./.claude/hooks/notifier.cjs')" 2>&1 && echo "OK: notifier.cjs loads without errors" || echo "FAIL: notifier.cjs has syntax errors"
 ```
 
 **Expected:** `OK: notifier.cjs loads without errors` (the script may print a warning about missing API_KEY if not set, but should not have syntax errors).
@@ -1353,10 +1374,11 @@ Simulate what Claude Code does when it invokes a hook -- pipe JSON to stdin and 
 ```bash
 echo '{"tool_name":"Read","tool_input":{"file_path":"/tmp/test.txt"}}' | \
   SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=3000 API_KEY=$API_KEY \
-  node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notifier.cjs PreToolUse
+  node .claude/hooks/notifier.cjs PreToolUse
 ```
 
 **Expected:** The notifier processes the event. Check the server logs for:
+
 ```
 [notify] ... (or the notification may be filtered as a PreToolUse spam pattern)
 ```
@@ -1366,7 +1388,7 @@ echo '{"tool_name":"Read","tool_input":{"file_path":"/tmp/test.txt"}}' | \
 ```bash
 echo '{"session_id":"test-123","stop_hook_active":true}' | \
   SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=3000 API_KEY=$API_KEY \
-  node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notifier.cjs Stop
+  node .claude/hooks/notifier.cjs Stop
 ```
 
 **Expected:** A notification is sent to your device (Stop hook notifications are always allowed through the filter). Check server logs for a successful send.
@@ -1376,7 +1398,7 @@ echo '{"session_id":"test-123","stop_hook_active":true}' | \
 ```bash
 echo '{"title":"Task Complete","message":"Finished refactoring auth module","notification_type":"completion"}' | \
   SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=3000 API_KEY=$API_KEY \
-  node /Users/sachinsharma/Developer/Personal/shooter/.claude/hooks/notifier.cjs Notification
+  node .claude/hooks/notifier.cjs Notification
 ```
 
 **Expected:** Push notification delivered to your device with the title and message.
@@ -1386,13 +1408,13 @@ echo '{"title":"Task Complete","message":"Finished refactoring auth module","not
 **Step 1:** Start the Shooter server if not running:
 
 ```bash
-cd /Users/sachinsharma/Developer/Personal/shooter && node --import tsx server.ts
+cd <repo-root> && node --import tsx server.ts
 ```
 
 **Step 2:** In a separate terminal, start Claude Code in the shooter project:
 
 ```bash
-cd /Users/sachinsharma/Developer/Personal/shooter && claude
+cd <repo-root> && claude
 ```
 
 **Step 3:** Give Claude a task (e.g., "read the README"). This triggers `PreToolUse`, `PostToolUse`, and eventually `Stop` hooks.
@@ -1409,28 +1431,28 @@ cd /Users/sachinsharma/Developer/Personal/shooter && claude
 
 ## Quick Reference: All API Endpoints
 
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| GET | `/api/health` | No | Public status check (status + timestamp only) |
-| GET | `/api/health?details=true` | Yes | Full health with checks and configuration |
-| POST | `/api/notify` | Yes | Send push notification (APNs or FCM) |
-| GET | `/api/notify?limit=N` | Yes | Get notification history (default limit: 50) |
-| GET | `/api/terminals` | Yes | List all terminals (active + exited) |
-| POST | `/api/terminals` | Yes | Create terminal (body: command, cwd, cols, rows, args) |
-| GET | `/api/terminals/:id` | Yes | Get terminal details |
-| DELETE | `/api/terminals/:id` | Yes | Kill/remove terminal |
-| POST | `/api/terminals/:id/resize` | Yes | Resize terminal (body: cols, rows) |
-| GET | `/api/sessions` | Yes | List projects with sessions (query: limit, offset) |
-| GET | `/api/sessions?id=X&project=Y` | Yes | Get session messages (query: offset, limit) |
-| POST | `/api/response` | Yes | Submit permission decision (body: requestId, decision) |
-| GET | `/api/response?requestId=X` | Yes | Poll for permission decision |
-| POST | `/api/ws-ticket` | Yes | Generate WebSocket auth ticket (rate-limited: 10/min) |
-| GET | `/api/ws-status` | Yes | Get connected WebSocket client count |
-| POST | `/api/device-token` | Yes | Register device token (body: platform, deviceToken/token) |
-| GET | `/api/qr-config` | Yes | Generate QR code for mobile pairing |
+| Method | Endpoint                       | Auth | Description                                               |
+| ------ | ------------------------------ | ---- | --------------------------------------------------------- |
+| GET    | `/api/health`                  | No   | Public status check (status + timestamp only)             |
+| GET    | `/api/health?details=true`     | Yes  | Full health with checks and configuration                 |
+| POST   | `/api/notify`                  | Yes  | Send push notification (APNs or FCM)                      |
+| GET    | `/api/notify?limit=N`          | Yes  | Get notification history (default limit: 50)              |
+| GET    | `/api/terminals`               | Yes  | List all terminals (active + exited)                      |
+| POST   | `/api/terminals`               | Yes  | Create terminal (body: command, cwd, cols, rows, args)    |
+| GET    | `/api/terminals/:id`           | Yes  | Get terminal details                                      |
+| DELETE | `/api/terminals/:id`           | Yes  | Kill/remove terminal                                      |
+| POST   | `/api/terminals/:id/resize`    | Yes  | Resize terminal (body: cols, rows)                        |
+| GET    | `/api/sessions`                | Yes  | List projects with sessions (query: limit, offset)        |
+| GET    | `/api/sessions?id=X&project=Y` | Yes  | Get session messages (query: offset, limit)               |
+| POST   | `/api/response`                | Yes  | Submit permission decision (body: requestId, decision)    |
+| GET    | `/api/response?requestId=X`    | Yes  | Poll for permission decision                              |
+| POST   | `/api/ws-ticket`               | Yes  | Generate WebSocket auth ticket (rate-limited: 10/min)     |
+| GET    | `/api/ws-status`               | Yes  | Get connected WebSocket client count                      |
+| POST   | `/api/device-token`            | Yes  | Register device token (body: platform, deviceToken/token) |
+| GET    | `/api/qr-config`               | Yes  | Generate QR code for mobile pairing                       |
 
-| WebSocket Path | Auth | Description |
-|----------------|------|-------------|
+| WebSocket Path              | Auth   | Description                 |
+| --------------------------- | ------ | --------------------------- |
 | `/ws/terminal/:id?ticket=T` | Ticket | Terminal I/O (stdin/stdout) |
-| `/ws/session/:id?ticket=T` | Ticket | Live session message stream |
-| `/ws/events?ticket=T` | Ticket | Global server event bus |
+| `/ws/session/:id?ticket=T`  | Ticket | Live session message stream |
+| `/ws/events?ticket=T`       | Ticket | Global server event bus     |

@@ -1,0 +1,134 @@
+# OpenCode Watcher Type Definitions
+# Non-top file - referenced from index.yaml
+# Contains types for the OpenCode SQLite session polling watcher
+
+OpenCode:
+  # ─── SQLite Row Types ────────────────────────────────────────────
+
+  OpenCodeSession:
+    type: object
+    description: Row from the OpenCode SQLite session table
+    required:
+      - id
+      - directory
+      - time_created
+      - time_updated
+    properties:
+      id:
+        type: string
+        description: Unique session identifier
+      directory:
+        type: string
+        description: Working directory associated with the session
+      time_created:
+        type: number
+        description: Unix timestamp when the session was created
+      time_updated:
+        type: number
+        description: Unix timestamp when the session was last updated
+
+  OpenCodeMessage:
+    type: object
+    description: Row from the OpenCode SQLite message table
+    required:
+      - id
+      - session_id
+      - time_created
+      - time_updated
+      - data
+    properties:
+      id:
+        type: string
+        description: Unique message identifier
+      session_id:
+        type: string
+        description: Session this message belongs to
+      time_created:
+        type: number
+        description: Unix timestamp when the message was created
+      time_updated:
+        type: number
+        description: Unix timestamp when the message was last updated
+      data:
+        type: string
+        description: JSON-encoded message data containing role and metadata
+
+  OpenCodePart:
+    type: object
+    description: Row from the OpenCode SQLite part table
+    required:
+      - id
+      - message_id
+      - session_id
+      - time_created
+      - time_updated
+      - data
+    properties:
+      id:
+        type: string
+        description: Unique part identifier
+      message_id:
+        type: string
+        description: Parent message this part belongs to
+      session_id:
+        type: string
+        description: Session this part belongs to
+      time_created:
+        type: number
+        description: Unix timestamp when the part was created
+      time_updated:
+        type: number
+        description: Unix timestamp when the part was last updated
+      data:
+        type: string
+        description: JSON-encoded part data containing type-specific content
+
+  OpenCodePartData:
+    type: object
+    description: Parsed content of an OpenCode part's data JSON column
+    required:
+      - type
+    properties:
+      type:
+        type: string
+        description: Part type discriminant (text, tool, reasoning, snapshot, etc.)
+      text:
+        type: string
+        description: Text content for text and reasoning parts
+      tool:
+        type: string
+        description: Tool name for tool-type parts
+      callID:
+        type: string
+        description: Tool call identifier
+      id:
+        type: string
+        description: Part-level identifier
+      state:
+        type: object
+        description: Tool execution state containing input parameters
+        properties:
+          input:
+            type: object
+            description: Tool input parameters
+            additionalProperties: true
+
+  # ─── Watcher State ───────────────────────────────────────────────
+
+  WatchState:
+    type: object
+    description: Per-session polling state for the OpenCode watcher
+    required:
+      - sessionId
+      - lastMessageTime
+      - lastPartTime
+    properties:
+      sessionId:
+        type: string
+        description: OpenCode session ID being watched
+      lastMessageTime:
+        type: number
+        description: Highest time_created seen for messages (high-water mark for polling)
+      lastPartTime:
+        type: number
+        description: Highest time_updated seen for parts (high-water mark for polling)

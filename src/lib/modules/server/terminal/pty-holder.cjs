@@ -15,7 +15,7 @@ const pty = require('node-pty');
 // Parse arguments
 // ---------------------------------------------------------------------------
 
-const [,, id, socketPath, cwd, colsStr, rowsStr, command, ...args] = process.argv;
+const [, , id, socketPath, cwd, colsStr, rowsStr, command, ...args] = process.argv;
 
 if (!id || !socketPath || !cwd || !colsStr || !rowsStr || !command) {
   process.stderr.write('pty-holder: missing required arguments\n');
@@ -31,6 +31,29 @@ const rows = parseInt(rowsStr, 10);
 
 const MAX_SCROLLBACK_LINES = 5000;
 const MAX_INPUT_BYTES = 65_536; // 64 KB — cap per-write to prevent memory abuse
+
+/**
+ * Truncate a string to at most maxBytes bytes without splitting a multi-byte
+ * UTF-8 character. String.prototype.slice() counts UTF-16 code units, not
+ * bytes, so a naive slice can produce more bytes than intended or cut a
+ * multi-byte character in half. This helper uses Buffer to measure byte length
+ * and binary-searches for the right code-unit boundary.
+ */
+function truncateUtf8(str, maxBytes) {
+  if (Buffer.byteLength(str, 'utf8') <= maxBytes) return str;
+  // Binary search for the largest code-unit prefix that fits
+  let lo = 0;
+  let hi = str.length;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >>> 1;
+    if (Buffer.byteLength(str.slice(0, mid), 'utf8') <= maxBytes) {
+      lo = mid;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return str.slice(0, lo);
+}
 const GRACE_PERIOD_MS = 60_000; // 60 seconds after PTY exit before self-terminating
 const ACTIVITY_IDLE_MS = 5_000; // 5 seconds of no output → idle
 
@@ -49,7 +72,7 @@ function pushScrollback(data) {
   while (scrollbackLineCount > MAX_SCROLLBACK_LINES && scrollbackChunks.length > 1) {
     const removed = scrollbackChunks.shift();
     if (removed) {
-      scrollbackLineCount -= (removed.split('\n').length - 1);
+      scrollbackLineCount -= removed.split('\n').length - 1;
     }
   }
 }
@@ -85,7 +108,11 @@ const ptyEnv = { ...process.env };
 
 // Clipboard image paste support: per-terminal clipboard directory
 const clipboardDir = path.join(os.tmpdir(), `shooter-clipboard-${id}`);
-try { fs.mkdirSync(clipboardDir, { recursive: true }); } catch { /* best effort */ }
+try {
+  fs.mkdirSync(clipboardDir, { recursive: true });
+} catch {
+  /* best effort */
+}
 ptyEnv.SHOOTER_CLIPBOARD_DIR = clipboardDir;
 
 // Prepend clipboard shim scripts to PATH so tools find our xclip/wl-paste
@@ -102,7 +129,10 @@ let spawnCommand;
 let spawnArgs;
 
 if (SHELL_COMMANDS.includes(commandBase)) {
-  if (commandBase === 'zsh' || (commandBase === 'sh' && (process.env.SHELL || '').includes('zsh'))) {
+  if (
+    commandBase === 'zsh' ||
+    (commandBase === 'sh' && (process.env.SHELL || '').includes('zsh'))
+  ) {
     // zsh: use ZDOTDIR with custom .zshrc
     const zdotdir = path.join(os.tmpdir(), `shooter-zd-${id}`);
     try {
@@ -208,7 +238,8 @@ function broadcast(msg) {
 // ---------------------------------------------------------------------------
 
 // Matches: \x1b]7;file://hostname/path\x1b\\ or \x1b]7;file://hostname/path\x07
-const OSC7_RE = /\x1b\]7;file:\/\/[^/]*([^\x07\x1b]*)\x07|\x1b\]7;file:\/\/[^/]*([^\x07\x1b]*)\x1b\\/g;
+const OSC7_RE =
+  /\x1b\]7;file:\/\/[^/]*([^\x07\x1b]*)\x07|\x1b\]7;file:\/\/[^/]*([^\x07\x1b]*)\x1b\\/g;
 
 // Buffer for incomplete OSC 7 sequences split across data chunks
 let osc7PartialBuf = '';
@@ -391,9 +422,7 @@ function handleMessage(msg) {
       // static-analysis scanners and prevent memory abuse.
       if (!exited && typeof msg.data === 'string' && msg.data.length > 0) {
         try {
-          const input = msg.data.length > MAX_INPUT_BYTES
-            ? msg.data.slice(0, MAX_INPUT_BYTES)
-            : msg.data;
+          const input = truncateUtf8(msg.data, MAX_INPUT_BYTES);
           ptyProcess.write(input); // CodeQL[js/code-injection] — intentional PTY stdin
         } catch {
           // PTY may have closed between check and write

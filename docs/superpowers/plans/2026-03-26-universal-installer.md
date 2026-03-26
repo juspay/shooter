@@ -16,24 +16,24 @@
 
 ### Modified files
 
-| File | Responsibility | Changes |
-|------|---------------|---------|
-| `bin/shooter.cjs` | CLI entry point — all user-facing commands | Rewrite: expand from 4 to 11 commands, add PID management, pnpm resolution, launcher generation |
-| `scripts/install.sh` | `curl\|sh` bootstrap installer | Rewrite: Node detection chain, Xcode CLT check, corepack/pnpm fallback, `~/.shooter/repo` directory layout |
-| `scripts/setup.cjs` | Interactive configuration wizard | Modify: write `.env` to `~/.shooter/.env`, remove pnpm prerequisite check, update ROOT resolution |
-| `package.json` | Project metadata | Remove `preinstall` only-allow-pnpm gate |
-| `server.ts` | Server entry point | Modify: load `.env` from `~/.shooter/.env` via `SHOOTER_HOME` env var with CWD fallback |
+| File                 | Responsibility                             | Changes                                                                                                    |
+| -------------------- | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
+| `bin/shooter.cjs`    | CLI entry point — all user-facing commands | Rewrite: expand from 4 to 11 commands, add PID management, pnpm resolution, launcher generation            |
+| `scripts/install.sh` | `curl\|sh` bootstrap installer             | Rewrite: Node detection chain, Xcode CLT check, corepack/pnpm fallback, `~/.shooter/repo` directory layout |
+| `scripts/setup.cjs`  | Interactive configuration wizard           | Modify: write `.env` to `~/.shooter/.env`, remove pnpm prerequisite check, update ROOT resolution          |
+| `package.json`       | Project metadata                           | Remove `preinstall` only-allow-pnpm gate                                                                   |
+| `server.ts`          | Server entry point                         | Modify: load `.env` from `~/.shooter/.env` via `SHOOTER_HOME` env var with CWD fallback                    |
 
 ### New files
 
-| File | Responsibility |
-|------|---------------|
+| File                          | Responsibility                                              |
+| ----------------------------- | ----------------------------------------------------------- |
 | `scripts/homebrew/shooter.rb` | Homebrew formula skeleton for `juspay/homebrew-shooter` tap |
 
 ### Deleted files
 
-| File | Why |
-|------|-----|
+| File                      | Why                                                        |
+| ------------------------- | ---------------------------------------------------------- |
 | `scripts/start-server.sh` | Replaced by dynamically generated `~/.shooter/launcher.sh` |
 
 > **Note:** `docs/screenshots/verify/` contains actual PNG files (command-palette.png, shortcuts-help.png). Only delete if confirmed unnecessary. The empty subdirs (after/, audit/, baseline/) can be removed.
@@ -43,14 +43,17 @@
 ## Task 1: Remove pnpm gate from package.json
 
 **Files:**
+
 - Modify: `package.json:46`
 
 - [ ] **Step 1: Remove the preinstall script**
 
 In `package.json`, change line 46 from:
+
 ```json
 "preinstall": "npx only-allow pnpm",
 ```
+
 to remove the line entirely. The `scripts` block should go from `"preinstall"` directly to `"postinstall"`.
 
 ```json
@@ -78,6 +81,7 @@ pnpm is still the internal package manager via packageManager field."
 ## Task 2: Update server.ts to support external .env location
 
 **Files:**
+
 - Modify: `server.ts:5-6`
 
 - [ ] **Step 1: Replace dotenv/config import with explicit path resolution**
@@ -98,14 +102,12 @@ import { existsSync } from 'fs';
 import { join } from 'path';
 
 const shooterHome = process.env.SHOOTER_HOME || '';
-const envPath = shooterHome
-	? join(shooterHome, '.env')
-	: undefined; // undefined = dotenv default (CWD/.env)
+const envPath = shooterHome ? join(shooterHome, '.env') : undefined; // undefined = dotenv default (CWD/.env)
 
 if (envPath && existsSync(envPath)) {
-	config({ path: envPath });
+  config({ path: envPath });
 } else {
-	config(); // CWD fallback — works for local dev
+  config(); // CWD fallback — works for local dev
 }
 ```
 
@@ -136,6 +138,7 @@ Falls back to CWD/.env for local development."
 The CLI rewrite is large, so it's split into sub-tasks. This task builds the shared helpers and basic commands.
 
 **Files:**
+
 - Modify: `bin/shooter.cjs` (full rewrite)
 
 - [ ] **Step 1: Write the complete CLI file with all commands**
@@ -169,476 +172,558 @@ const LAUNCHER_FILE = path.join(SHOOTER_HOME, 'launcher.sh');
 
 // If run from within the repo (dev mode), use the repo directly
 const PKG_ROOT = fs.existsSync(path.join(SHOOTER_REPO, 'server.ts'))
-	? SHOOTER_REPO
-	: path.resolve(__dirname, '..');
+  ? SHOOTER_REPO
+  : path.resolve(__dirname, '..');
 
 const pkg = (() => {
-	try { return require(path.join(PKG_ROOT, 'package.json')); }
-	catch { return { version: 'unknown' }; }
+  try {
+    return require(path.join(PKG_ROOT, 'package.json'));
+  } catch {
+    return { version: 'unknown' };
+  }
 })();
 
 // ── ANSI helpers ───────────────────────────────────────────────────────
 const C = {
-	reset: '\x1b[0m', bold: '\x1b[1m', dim: '\x1b[2m',
-	red: '\x1b[31m', green: '\x1b[32m', yellow: '\x1b[33m',
-	cyan: '\x1b[36m',
+  reset: '\x1b[0m',
+  bold: '\x1b[1m',
+  dim: '\x1b[2m',
+  red: '\x1b[31m',
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
+  cyan: '\x1b[36m',
 };
-function info(msg) { console.log(`${C.cyan}[*]${C.reset} ${msg}`); }
-function success(msg) { console.log(`${C.green}[+]${C.reset} ${msg}`); }
-function warn(msg) { console.log(`${C.yellow}[!]${C.reset} ${msg}`); }
-function error(msg) { console.error(`${C.red}[-]${C.reset} ${msg}`); }
+function info(msg) {
+  console.log(`${C.cyan}[*]${C.reset} ${msg}`);
+}
+function success(msg) {
+  console.log(`${C.green}[+]${C.reset} ${msg}`);
+}
+function warn(msg) {
+  console.log(`${C.yellow}[!]${C.reset} ${msg}`);
+}
+function error(msg) {
+  console.error(`${C.red}[-]${C.reset} ${msg}`);
+}
 
 // ── pnpm resolution (order matches spec: corepack > local > global) ──
 function findPnpm() {
-	// 1. Corepack (preferred — respects packageManager field)
-	try {
-		execSync('corepack pnpm --version', { stdio: 'pipe', cwd: PKG_ROOT });
-		return { cmd: 'corepack', prefix: ['pnpm'] };
-	} catch { /* continue */ }
-	// 2. Local node_modules (always available after first install)
-	const local = path.join(PKG_ROOT, 'node_modules', '.bin', 'pnpm');
-	if (fs.existsSync(local)) return { cmd: local, prefix: [] };
-	// 3. Global pnpm
-	try {
-		execSync('pnpm --version', { stdio: 'pipe' });
-		return { cmd: 'pnpm', prefix: [] };
-	} catch { /* continue */ }
-	return null;
+  // 1. Corepack (preferred — respects packageManager field)
+  try {
+    execSync('corepack pnpm --version', { stdio: 'pipe', cwd: PKG_ROOT });
+    return { cmd: 'corepack', prefix: ['pnpm'] };
+  } catch {
+    /* continue */
+  }
+  // 2. Local node_modules (always available after first install)
+  const local = path.join(PKG_ROOT, 'node_modules', '.bin', 'pnpm');
+  if (fs.existsSync(local)) return { cmd: local, prefix: [] };
+  // 3. Global pnpm
+  try {
+    execSync('pnpm --version', { stdio: 'pipe' });
+    return { cmd: 'pnpm', prefix: [] };
+  } catch {
+    /* continue */
+  }
+  return null;
 }
 
 function runPnpm(args, opts = {}) {
-	const pnpm = findPnpm();
-	if (!pnpm) {
-		error('pnpm not found. Run: shooter setup');
-		process.exit(1);
-	}
-	const spawnArgs = [...pnpm.prefix, ...args];
-	return execFileSync(pnpm.cmd, spawnArgs, {
-		cwd: PKG_ROOT,
-		stdio: opts.silent ? 'pipe' : 'inherit',
-		env: { ...process.env, SHOOTER_HOME },
-		encoding: 'utf-8',
-		...opts,
-	});
+  const pnpm = findPnpm();
+  if (!pnpm) {
+    error('pnpm not found. Run: shooter setup');
+    process.exit(1);
+  }
+  const spawnArgs = [...pnpm.prefix, ...args];
+  return execFileSync(pnpm.cmd, spawnArgs, {
+    cwd: PKG_ROOT,
+    stdio: opts.silent ? 'pipe' : 'inherit',
+    env: { ...process.env, SHOOTER_HOME },
+    encoding: 'utf-8',
+    ...opts,
+  });
 }
 
 // ── PID management ────────────────────────────────────────────────────
 function readPid() {
-	try {
-		return JSON.parse(fs.readFileSync(PID_FILE, 'utf-8'));
-	} catch {
-		return null;
-	}
+  try {
+    return JSON.parse(fs.readFileSync(PID_FILE, 'utf-8'));
+  } catch {
+    return null;
+  }
 }
 
 function writePid(pid, port) {
-	const data = JSON.stringify({ pid, startedAt: new Date().toISOString(), port });
-	const tmp = PID_FILE + '.tmp';
-	fs.writeFileSync(tmp, data, 'utf-8');
-	fs.renameSync(tmp, PID_FILE);
+  const data = JSON.stringify({ pid, startedAt: new Date().toISOString(), port });
+  const tmp = PID_FILE + '.tmp';
+  fs.writeFileSync(tmp, data, 'utf-8');
+  fs.renameSync(tmp, PID_FILE);
 }
 
 function removePid() {
-	try { fs.unlinkSync(PID_FILE); } catch { /* ignore */ }
+  try {
+    fs.unlinkSync(PID_FILE);
+  } catch {
+    /* ignore */
+  }
 }
 
 function isProcessAlive(pid) {
-	try { process.kill(pid, 0); return true; }
-	catch { return false; }
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function isShooterProcess(pid) {
-	try {
-		const cmd = execSync(`ps -p ${pid} -o command=`, { encoding: 'utf-8' }).trim();
-		return cmd.includes('server.ts') || cmd.includes('tsx') || cmd.includes('shooter');
-	} catch {
-		return false;
-	}
+  try {
+    const cmd = execSync(`ps -p ${pid} -o command=`, { encoding: 'utf-8' }).trim();
+    return cmd.includes('server.ts') || cmd.includes('tsx') || cmd.includes('shooter');
+  } catch {
+    return false;
+  }
 }
 
 function readEnvPort() {
-	try {
-		const envContent = fs.readFileSync(ENV_FILE, 'utf-8');
-		const match = envContent.match(/^PORT=(\d+)/m);
-		return match ? match[1] : null;
-	} catch { return null; }
+  try {
+    const envContent = fs.readFileSync(ENV_FILE, 'utf-8');
+    const match = envContent.match(/^PORT=(\d+)/m);
+    return match ? match[1] : null;
+  } catch {
+    return null;
+  }
 }
 
 function isLaunchdManaged() {
-	try {
-		execSync(`launchctl list ${PLIST_LABEL}`, { stdio: 'pipe' });
-		return true;
-	} catch {
-		return false;
-	}
+  try {
+    execSync(`launchctl list ${PLIST_LABEL}`, { stdio: 'pipe' });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // ── Commands ──────────────────────────────────────────────────────────
 
 function cmdStart() {
-	// Check if already running
-	const pidInfo = readPid();
-	if (pidInfo && isProcessAlive(pidInfo.pid)) {
-		error(`Server already running (PID ${pidInfo.pid}).`);
-		info('Use: shooter restart');
-		process.exit(1);
-	}
-	if (isLaunchdManaged()) {
-		warn('Server is managed by launchd. Use: launchctl kickstart -k gui/$(id -u)/com.shooter.server');
-		warn('Or disable with: shooter autostart off');
-		process.exit(1);
-	}
+  // Check if already running
+  const pidInfo = readPid();
+  if (pidInfo && isProcessAlive(pidInfo.pid)) {
+    error(`Server already running (PID ${pidInfo.pid}).`);
+    info('Use: shooter restart');
+    process.exit(1);
+  }
+  if (isLaunchdManaged()) {
+    warn(
+      'Server is managed by launchd. Use: launchctl kickstart -k gui/$(id -u)/com.shooter.server'
+    );
+    warn('Or disable with: shooter autostart off');
+    process.exit(1);
+  }
 
-	const serverEntry = path.join(PKG_ROOT, 'server.ts');
-	if (!fs.existsSync(serverEntry)) {
-		error(`server.ts not found at ${serverEntry}`);
-		error('Run: shooter setup');
-		process.exit(1);
-	}
+  const serverEntry = path.join(PKG_ROOT, 'server.ts');
+  if (!fs.existsSync(serverEntry)) {
+    error(`server.ts not found at ${serverEntry}`);
+    error('Run: shooter setup');
+    process.exit(1);
+  }
 
-	if (!fs.existsSync(path.join(PKG_ROOT, 'build', 'handler.js'))) {
-		info('Build not found. Building...');
-		runPnpm(['build']);
-	}
+  if (!fs.existsSync(path.join(PKG_ROOT, 'build', 'handler.js'))) {
+    info('Build not found. Building...');
+    runPnpm(['build']);
+  }
 
-	// Read PORT from .env if not already in environment
-	const port = process.env.PORT || readEnvPort() || '3000';
+  // Read PORT from .env if not already in environment
+  const port = process.env.PORT || readEnvPort() || '3000';
 
-	// Check if port is already in use
-	try {
-		const lsof = execSync(`lsof -ti :${port}`, { encoding: 'utf-8' }).trim();
-		if (lsof) {
-			error(`Port ${port} is already in use (PID ${lsof}).`);
-			info(`Try: Set PORT=${parseInt(port) + 1} in ${ENV_FILE}`);
-			info(`Or:  lsof -i :${port}  (to find what's using it)`);
-			process.exit(1);
-		}
-	} catch { /* lsof returns non-zero if nothing found — that's good */ }
-	info(`Starting Shooter on port ${port}...`);
+  // Check if port is already in use
+  try {
+    const lsof = execSync(`lsof -ti :${port}`, { encoding: 'utf-8' }).trim();
+    if (lsof) {
+      error(`Port ${port} is already in use (PID ${lsof}).`);
+      info(`Try: Set PORT=${parseInt(port) + 1} in ${ENV_FILE}`);
+      info(`Or:  lsof -i :${port}  (to find what's using it)`);
+      process.exit(1);
+    }
+  } catch {
+    /* lsof returns non-zero if nothing found — that's good */
+  }
+  info(`Starting Shooter on port ${port}...`);
 
-	const child = spawn(
-		process.execPath,
-		['--import', 'tsx', serverEntry],
-		{
-			cwd: PKG_ROOT,
-			stdio: 'inherit',
-			env: { ...process.env, SHOOTER_HOME, SHOOTER_PKG_ROOT: PKG_ROOT },
-		}
-	);
+  const child = spawn(process.execPath, ['--import', 'tsx', serverEntry], {
+    cwd: PKG_ROOT,
+    stdio: 'inherit',
+    env: { ...process.env, SHOOTER_HOME, SHOOTER_PKG_ROOT: PKG_ROOT },
+  });
 
-	writePid(child.pid, parseInt(port, 10));
+  writePid(child.pid, parseInt(port, 10));
 
-	child.on('error', (err) => {
-		error(`Failed to start: ${err.message}`);
-		removePid();
-		process.exit(1);
-	});
+  child.on('error', (err) => {
+    error(`Failed to start: ${err.message}`);
+    removePid();
+    process.exit(1);
+  });
 
-	child.on('exit', (code) => {
-		removePid();
-		process.exit(code ?? 0);
-	});
+  child.on('exit', (code) => {
+    removePid();
+    process.exit(code ?? 0);
+  });
 
-	for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP']) {
-		process.on(sig, () => { child.kill(sig); });
-	}
+  for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP']) {
+    process.on(sig, () => {
+      child.kill(sig);
+    });
+  }
 }
 
 function cmdStop() {
-	if (isLaunchdManaged()) {
-		info('Stopping via launchd...');
-		try {
-			execSync(`launchctl bootout gui/$(id -u)/${PLIST_LABEL}`, { stdio: 'inherit' });
-			success('Server stopped (launchd service removed).');
-		} catch {
-			error('Failed to stop launchd service.');
-		}
-		removePid();
-		return;
-	}
+  if (isLaunchdManaged()) {
+    info('Stopping via launchd...');
+    try {
+      execSync(`launchctl bootout gui/$(id -u)/${PLIST_LABEL}`, { stdio: 'inherit' });
+      success('Server stopped (launchd service removed).');
+    } catch {
+      error('Failed to stop launchd service.');
+    }
+    removePid();
+    return;
+  }
 
-	const pidInfo = readPid();
-	if (!pidInfo) {
-		warn('No PID file found. Server may not be running.');
-		return;
-	}
+  const pidInfo = readPid();
+  if (!pidInfo) {
+    warn('No PID file found. Server may not be running.');
+    return;
+  }
 
-	if (!isProcessAlive(pidInfo.pid)) {
-		warn(`Process ${pidInfo.pid} is not running. Cleaning up stale PID file.`);
-		removePid();
-		return;
-	}
+  if (!isProcessAlive(pidInfo.pid)) {
+    warn(`Process ${pidInfo.pid} is not running. Cleaning up stale PID file.`);
+    removePid();
+    return;
+  }
 
-	if (!isShooterProcess(pidInfo.pid)) {
-		error(`PID ${pidInfo.pid} is not a Shooter process. Refusing to kill. Removing stale PID file.`);
-		removePid();
-		return;
-	}
+  if (!isShooterProcess(pidInfo.pid)) {
+    error(
+      `PID ${pidInfo.pid} is not a Shooter process. Refusing to kill. Removing stale PID file.`
+    );
+    removePid();
+    return;
+  }
 
-	info(`Stopping server (PID ${pidInfo.pid})...`);
-	process.kill(pidInfo.pid, 'SIGTERM');
+  info(`Stopping server (PID ${pidInfo.pid})...`);
+  process.kill(pidInfo.pid, 'SIGTERM');
 
-	// Wait up to 10s for graceful shutdown
-	let attempts = 0;
-	const check = setInterval(() => {
-		attempts++;
-		if (!isProcessAlive(pidInfo.pid)) {
-			clearInterval(check);
-			removePid();
-			success('Server stopped.');
-		} else if (attempts > 20) {
-			clearInterval(check);
-			warn('Server did not stop gracefully. Sending SIGKILL...');
-			try { process.kill(pidInfo.pid, 'SIGKILL'); } catch { /* ignore */ }
-			removePid();
-			success('Server killed.');
-		}
-	}, 500);
+  // Wait up to 10s for graceful shutdown
+  let attempts = 0;
+  const check = setInterval(() => {
+    attempts++;
+    if (!isProcessAlive(pidInfo.pid)) {
+      clearInterval(check);
+      removePid();
+      success('Server stopped.');
+    } else if (attempts > 20) {
+      clearInterval(check);
+      warn('Server did not stop gracefully. Sending SIGKILL...');
+      try {
+        process.kill(pidInfo.pid, 'SIGKILL');
+      } catch {
+        /* ignore */
+      }
+      removePid();
+      success('Server killed.');
+    }
+  }, 500);
 }
 
 function cmdRestart() {
-	const pidInfo = readPid();
-	if (pidInfo && isProcessAlive(pidInfo.pid)) {
-		if (!isShooterProcess(pidInfo.pid)) {
-			error(`PID ${pidInfo.pid} is not a Shooter process. Removing stale PID file.`);
-			removePid();
-		} else {
-			info(`Stopping server (PID ${pidInfo.pid})...`);
-			process.kill(pidInfo.pid, 'SIGTERM');
-			// Wait for exit (up to 10s)
-			const deadline = Date.now() + 10000;
-			while (isProcessAlive(pidInfo.pid) && Date.now() < deadline) {
-				execSync('sleep 0.5');
-			}
-			if (isProcessAlive(pidInfo.pid)) {
-				warn('Graceful stop timed out. Sending SIGKILL...');
-				try { process.kill(pidInfo.pid, 'SIGKILL'); } catch { /* ignore */ }
-			}
-			removePid();
-		}
-	}
-	cmdStart();
+  const pidInfo = readPid();
+  if (pidInfo && isProcessAlive(pidInfo.pid)) {
+    if (!isShooterProcess(pidInfo.pid)) {
+      error(`PID ${pidInfo.pid} is not a Shooter process. Removing stale PID file.`);
+      removePid();
+    } else {
+      info(`Stopping server (PID ${pidInfo.pid})...`);
+      process.kill(pidInfo.pid, 'SIGTERM');
+      // Wait for exit (up to 10s)
+      const deadline = Date.now() + 10000;
+      while (isProcessAlive(pidInfo.pid) && Date.now() < deadline) {
+        execSync('sleep 0.5');
+      }
+      if (isProcessAlive(pidInfo.pid)) {
+        warn('Graceful stop timed out. Sending SIGKILL...');
+        try {
+          process.kill(pidInfo.pid, 'SIGKILL');
+        } catch {
+          /* ignore */
+        }
+      }
+      removePid();
+    }
+  }
+  cmdStart();
 }
 
 function cmdStatus() {
-	console.log(`${C.bold}Shooter v${pkg.version}${C.reset}`);
-	console.log(`  Install: ${PKG_ROOT}`);
-	console.log(`  Data:    ${SHOOTER_HOME}`);
+  console.log(`${C.bold}Shooter v${pkg.version}${C.reset}`);
+  console.log(`  Install: ${PKG_ROOT}`);
+  console.log(`  Data:    ${SHOOTER_HOME}`);
 
-	// Node version
-	const nodeVersion = process.versions.node;
-	console.log(`  Node:    v${nodeVersion} (${process.execPath})`);
+  // Node version
+  const nodeVersion = process.versions.node;
+  console.log(`  Node:    v${nodeVersion} (${process.execPath})`);
 
-	// Running state
-	if (isLaunchdManaged()) {
-		console.log(`  Status:  ${C.green}running${C.reset} (managed by launchd)`);
-	} else {
-		const pidInfo = readPid();
-		if (pidInfo && isProcessAlive(pidInfo.pid)) {
-			const uptime = Math.floor((Date.now() - new Date(pidInfo.startedAt).getTime()) / 1000);
-			const hours = Math.floor(uptime / 3600);
-			const mins = Math.floor((uptime % 3600) / 60);
-			console.log(`  Status:  ${C.green}running${C.reset} (PID ${pidInfo.pid}, port ${pidInfo.port})`);
-			console.log(`  Uptime:  ${hours}h ${mins}m`);
-		} else {
-			console.log(`  Status:  ${C.red}stopped${C.reset}`);
-			if (pidInfo) removePid(); // clean stale
-		}
-	}
+  // Running state
+  if (isLaunchdManaged()) {
+    console.log(`  Status:  ${C.green}running${C.reset} (managed by launchd)`);
+  } else {
+    const pidInfo = readPid();
+    if (pidInfo && isProcessAlive(pidInfo.pid)) {
+      const uptime = Math.floor((Date.now() - new Date(pidInfo.startedAt).getTime()) / 1000);
+      const hours = Math.floor(uptime / 3600);
+      const mins = Math.floor((uptime % 3600) / 60);
+      console.log(
+        `  Status:  ${C.green}running${C.reset} (PID ${pidInfo.pid}, port ${pidInfo.port})`
+      );
+      console.log(`  Uptime:  ${hours}h ${mins}m`);
+    } else {
+      console.log(`  Status:  ${C.red}stopped${C.reset}`);
+      if (pidInfo) removePid(); // clean stale
+    }
+  }
 
-	// Health check
-	const port = process.env.PORT || '3000';
-	const req = http.get(`http://localhost:${port}/api/health`, (res) => {
-		let body = '';
-		res.on('data', (chunk) => { body += chunk; });
-		res.on('end', () => {
-			try {
-				const data = JSON.parse(body);
-				console.log(`  Health:  ${C.green}${data.status}${C.reset}`);
-			} catch {
-				console.log(`  Health:  ${C.yellow}unknown${C.reset}`);
-			}
-		});
-	});
-	req.on('error', () => {
-		console.log(`  Health:  ${C.red}unreachable${C.reset}`);
-	});
-	req.setTimeout(3000, () => {
-		req.destroy();
-		console.log(`  Health:  ${C.red}timeout${C.reset}`);
-	});
+  // Health check
+  const port = process.env.PORT || '3000';
+  const req = http.get(`http://localhost:${port}/api/health`, (res) => {
+    let body = '';
+    res.on('data', (chunk) => {
+      body += chunk;
+    });
+    res.on('end', () => {
+      try {
+        const data = JSON.parse(body);
+        console.log(`  Health:  ${C.green}${data.status}${C.reset}`);
+      } catch {
+        console.log(`  Health:  ${C.yellow}unknown${C.reset}`);
+      }
+    });
+  });
+  req.on('error', () => {
+    console.log(`  Health:  ${C.red}unreachable${C.reset}`);
+  });
+  req.setTimeout(3000, () => {
+    req.destroy();
+    console.log(`  Health:  ${C.red}timeout${C.reset}`);
+  });
 
-	// Log sizes
-	for (const name of ['stdout.log', 'stderr.log']) {
-		const logPath = path.join(LOG_DIR, name);
-		try {
-			const stat = fs.statSync(logPath);
-			const sizeMB = (stat.size / 1024 / 1024).toFixed(1);
-			console.log(`  ${name}: ${sizeMB} MB`);
-		} catch { /* no log file */ }
-	}
+  // Log sizes
+  for (const name of ['stdout.log', 'stderr.log']) {
+    const logPath = path.join(LOG_DIR, name);
+    try {
+      const stat = fs.statSync(logPath);
+      const sizeMB = (stat.size / 1024 / 1024).toFixed(1);
+      console.log(`  ${name}: ${sizeMB} MB`);
+    } catch {
+      /* no log file */
+    }
+  }
 }
 
 function cmdSetup() {
-	// npx bootstrapper: if ~/.shooter/repo doesn't exist, clone it first
-	if (!fs.existsSync(path.join(SHOOTER_REPO, 'server.ts'))) {
-		info('Shooter not installed yet. Cloning...');
-		fs.mkdirSync(SHOOTER_HOME, { recursive: true });
-		try {
-			execSync(
-				`git clone --branch release --single-branch https://github.com/juspay/shooter.git "${SHOOTER_REPO}"`,
-				{ stdio: 'inherit' }
-			);
-			success(`Cloned to ${SHOOTER_REPO}`);
-		} catch (e) {
-			error(`Clone failed: ${e.message}`);
-			info('Try: curl -fsSL https://raw.githubusercontent.com/juspay/shooter/release/scripts/install.sh | sh');
-			process.exit(1);
-		}
+  // npx bootstrapper: if ~/.shooter/repo doesn't exist, clone it first
+  if (!fs.existsSync(path.join(SHOOTER_REPO, 'server.ts'))) {
+    info('Shooter not installed yet. Cloning...');
+    fs.mkdirSync(SHOOTER_HOME, { recursive: true });
+    try {
+      execSync(
+        `git clone --branch release --single-branch https://github.com/juspay/shooter.git "${SHOOTER_REPO}"`,
+        { stdio: 'inherit' }
+      );
+      success(`Cloned to ${SHOOTER_REPO}`);
+    } catch (e) {
+      error(`Clone failed: ${e.message}`);
+      info(
+        'Try: curl -fsSL https://raw.githubusercontent.com/juspay/shooter/release/scripts/install.sh | sh'
+      );
+      process.exit(1);
+    }
 
-		// Bootstrap pnpm and install
-		info('Installing dependencies...');
-		try {
-			execSync('corepack enable', { stdio: 'pipe' });
-		} catch {
-			try { execSync('npm install -g pnpm', { stdio: 'pipe' }); } catch { /* will use local */ }
-		}
-		execSync('pnpm install', { cwd: SHOOTER_REPO, stdio: 'inherit' });
-	}
+    // Bootstrap pnpm and install
+    info('Installing dependencies...');
+    try {
+      execSync('corepack enable', { stdio: 'pipe' });
+    } catch {
+      try {
+        execSync('npm install -g pnpm', { stdio: 'pipe' });
+      } catch {
+        /* will use local */
+      }
+    }
+    execSync('pnpm install', { cwd: SHOOTER_REPO, stdio: 'inherit' });
+  }
 
-	const repoRoot = fs.existsSync(path.join(SHOOTER_REPO, 'scripts', 'setup.cjs'))
-		? SHOOTER_REPO : PKG_ROOT;
-	const setupScript = path.join(repoRoot, 'scripts', 'setup.cjs');
+  const repoRoot = fs.existsSync(path.join(SHOOTER_REPO, 'scripts', 'setup.cjs'))
+    ? SHOOTER_REPO
+    : PKG_ROOT;
+  const setupScript = path.join(repoRoot, 'scripts', 'setup.cjs');
 
-	if (!fs.existsSync(setupScript)) {
-		error(`Setup wizard not found at ${setupScript}`);
-		process.exit(1);
-	}
+  if (!fs.existsSync(setupScript)) {
+    error(`Setup wizard not found at ${setupScript}`);
+    process.exit(1);
+  }
 
-	const child = spawn(process.execPath, [setupScript], {
-		cwd: repoRoot,
-		stdio: 'inherit',
-		env: { ...process.env, SHOOTER_HOME, SHOOTER_PKG_ROOT: repoRoot },
-	});
-	child.on('error', (err) => { error(`Setup failed: ${err.message}`); process.exit(1); });
-	child.on('exit', (code) => { process.exit(code ?? 0); });
+  const child = spawn(process.execPath, [setupScript], {
+    cwd: repoRoot,
+    stdio: 'inherit',
+    env: { ...process.env, SHOOTER_HOME, SHOOTER_PKG_ROOT: repoRoot },
+  });
+  child.on('error', (err) => {
+    error(`Setup failed: ${err.message}`);
+    process.exit(1);
+  });
+  child.on('exit', (code) => {
+    process.exit(code ?? 0);
+  });
 }
 
 function cmdUpdate() {
-	info('Checking for updates...');
+  info('Checking for updates...');
 
-	// Check for dirty state
-	let didStash = false;
-	try {
-		const status = execSync('git status --porcelain', { cwd: PKG_ROOT, encoding: 'utf-8' }).trim();
-		if (status) {
-			warn('Working directory has local changes. Stashing...');
-			execSync('git stash', { cwd: PKG_ROOT, stdio: 'inherit' });
-			didStash = true;
-		}
-	} catch (e) {
-		error(`Git check failed: ${e.message}`);
-		process.exit(1);
-	}
+  // Check for dirty state
+  let didStash = false;
+  try {
+    const status = execSync('git status --porcelain', { cwd: PKG_ROOT, encoding: 'utf-8' }).trim();
+    if (status) {
+      warn('Working directory has local changes. Stashing...');
+      execSync('git stash', { cwd: PKG_ROOT, stdio: 'inherit' });
+      didStash = true;
+    }
+  } catch (e) {
+    error(`Git check failed: ${e.message}`);
+    process.exit(1);
+  }
 
-	// Pull
-	info('Pulling latest changes...');
-	try {
-		execSync('git pull --rebase', { cwd: PKG_ROOT, stdio: 'inherit' });
-	} catch {
-		error('Git pull failed. Aborting rebase...');
-		try { execSync('git rebase --abort', { cwd: PKG_ROOT, stdio: 'pipe' }); } catch { /* ignore */ }
-		if (didStash) {
-			try { execSync('git stash pop', { cwd: PKG_ROOT, stdio: 'pipe' }); } catch { /* ignore */ }
-		}
-		process.exit(1);
-	}
+  // Pull
+  info('Pulling latest changes...');
+  try {
+    execSync('git pull --rebase', { cwd: PKG_ROOT, stdio: 'inherit' });
+  } catch {
+    error('Git pull failed. Aborting rebase...');
+    try {
+      execSync('git rebase --abort', { cwd: PKG_ROOT, stdio: 'pipe' });
+    } catch {
+      /* ignore */
+    }
+    if (didStash) {
+      try {
+        execSync('git stash pop', { cwd: PKG_ROOT, stdio: 'pipe' });
+      } catch {
+        /* ignore */
+      }
+    }
+    process.exit(1);
+  }
 
-	// Pop stash if we stashed
-	if (didStash) {
-		try { execSync('git stash pop', { cwd: PKG_ROOT, stdio: 'pipe' }); } catch { /* ignore */ }
-	}
+  // Pop stash if we stashed
+  if (didStash) {
+    try {
+      execSync('git stash pop', { cwd: PKG_ROOT, stdio: 'pipe' });
+    } catch {
+      /* ignore */
+    }
+  }
 
-	// Install + build
-	info('Installing dependencies...');
-	runPnpm(['install']);
-	info('Building...');
-	runPnpm(['build']);
+  // Install + build
+  info('Installing dependencies...');
+  runPnpm(['install']);
+  info('Building...');
+  runPnpm(['build']);
 
-	// Re-read version after update (pkg was cached at module load time)
-	const updatedVersion = (() => {
-		try { return require(path.join(PKG_ROOT, 'package.json')).version; }
-		catch { return pkg.version; }
-	})();
-	success(`Updated to v${updatedVersion}`);
+  // Re-read version after update (pkg was cached at module load time)
+  const updatedVersion = (() => {
+    try {
+      return require(path.join(PKG_ROOT, 'package.json')).version;
+    } catch {
+      return pkg.version;
+    }
+  })();
+  success(`Updated to v${updatedVersion}`);
 
-	// Restart if running
-	const pidInfo = readPid();
-	if (pidInfo && isProcessAlive(pidInfo.pid)) {
-		info('Restarting server...');
-		cmdRestart();
-	} else if (isLaunchdManaged()) {
-		info('Restarting via launchd...');
-		try {
-			execSync(`launchctl kickstart -k gui/$(id -u)/${PLIST_LABEL}`, { stdio: 'inherit' });
-			success('Server restarted.');
-		} catch {
-			warn('Could not restart launchd service. Run: shooter restart');
-		}
-	}
+  // Restart if running
+  const pidInfo = readPid();
+  if (pidInfo && isProcessAlive(pidInfo.pid)) {
+    info('Restarting server...');
+    cmdRestart();
+  } else if (isLaunchdManaged()) {
+    info('Restarting via launchd...');
+    try {
+      execSync(`launchctl kickstart -k gui/$(id -u)/${PLIST_LABEL}`, { stdio: 'inherit' });
+      success('Server restarted.');
+    } catch {
+      warn('Could not restart launchd service. Run: shooter restart');
+    }
+  }
 }
 
 function cmdLogs() {
-	const args = process.argv.slice(3);
-	const follow = args.includes('--follow') || args.includes('-f');
-	const clear = args.includes('--clear');
+  const args = process.argv.slice(3);
+  const follow = args.includes('--follow') || args.includes('-f');
+  const clear = args.includes('--clear');
 
-	if (clear) {
-		for (const name of ['stdout.log', 'stderr.log']) {
-			const logPath = path.join(LOG_DIR, name);
-			try { fs.writeFileSync(logPath, '', 'utf-8'); } catch { /* ignore */ }
-		}
-		success('Logs cleared.');
-		return;
-	}
+  if (clear) {
+    for (const name of ['stdout.log', 'stderr.log']) {
+      const logPath = path.join(LOG_DIR, name);
+      try {
+        fs.writeFileSync(logPath, '', 'utf-8');
+      } catch {
+        /* ignore */
+      }
+    }
+    success('Logs cleared.');
+    return;
+  }
 
-	const stdoutLog = path.join(LOG_DIR, 'stdout.log');
-	const stderrLog = path.join(LOG_DIR, 'stderr.log');
+  const stdoutLog = path.join(LOG_DIR, 'stdout.log');
+  const stderrLog = path.join(LOG_DIR, 'stderr.log');
 
-	if (!fs.existsSync(stdoutLog) && !fs.existsSync(stderrLog)) {
-		warn('No log files found at ' + LOG_DIR);
-		info('Logs are created when using: shooter autostart on');
-		return;
-	}
+  if (!fs.existsSync(stdoutLog) && !fs.existsSync(stderrLog)) {
+    warn('No log files found at ' + LOG_DIR);
+    info('Logs are created when using: shooter autostart on');
+    return;
+  }
 
-	if (follow) {
-		const child = spawn('tail', ['-f', stdoutLog, stderrLog], { stdio: 'inherit' });
-		child.on('exit', (code) => process.exit(code ?? 0));
-		process.on('SIGINT', () => { child.kill(); process.exit(0); });
-	} else {
-		// Show last 50 lines
-		try {
-			const output = execSync(`tail -n 50 ${stdoutLog} ${stderrLog}`, { encoding: 'utf-8' });
-			console.log(output);
-		} catch {
-			warn('Could not read log files.');
-		}
-	}
+  if (follow) {
+    const child = spawn('tail', ['-f', stdoutLog, stderrLog], { stdio: 'inherit' });
+    child.on('exit', (code) => process.exit(code ?? 0));
+    process.on('SIGINT', () => {
+      child.kill();
+      process.exit(0);
+    });
+  } else {
+    // Show last 50 lines
+    try {
+      const output = execSync(`tail -n 50 ${stdoutLog} ${stderrLog}`, { encoding: 'utf-8' });
+      console.log(output);
+    } catch {
+      warn('Could not read log files.');
+    }
+  }
 }
 
 function cmdAutostartOn() {
-	// Always point to ~/.shooter/repo for autostart, not a dev checkout
-	const repoForLauncher = fs.existsSync(path.join(SHOOTER_REPO, 'server.ts'))
-		? SHOOTER_REPO : PKG_ROOT;
+  // Always point to ~/.shooter/repo for autostart, not a dev checkout
+  const repoForLauncher = fs.existsSync(path.join(SHOOTER_REPO, 'server.ts'))
+    ? SHOOTER_REPO
+    : PKG_ROOT;
 
-	fs.mkdirSync(LOG_DIR, { recursive: true });
-	fs.mkdirSync(PLIST_DIR, { recursive: true });
+  fs.mkdirSync(LOG_DIR, { recursive: true });
+  fs.mkdirSync(PLIST_DIR, { recursive: true });
 
-	// Detect current Node path for fast path
-	const nodeBin = process.execPath;
+  // Detect current Node path for fast path
+  const nodeBin = process.execPath;
 
-	// Generate launcher.sh
-	const launcherContent = `#!/bin/bash
+  // Generate launcher.sh
+  const launcherContent = `#!/bin/bash
 # Auto-generated by shooter autostart — do not edit manually
 # Regenerate with: shooter autostart on
 
@@ -703,11 +788,11 @@ export PATH="$(dirname "$FOUND_NODE"):$SHOOTER_REPO/node_modules/.bin:$PATH"
 exec "$SHOOTER_REPO/node_modules/.bin/tsx" "$SHOOTER_REPO/server.ts"
 `;
 
-	fs.writeFileSync(LAUNCHER_FILE, launcherContent, { mode: 0o755 });
-	success(`Generated ${LAUNCHER_FILE}`);
+  fs.writeFileSync(LAUNCHER_FILE, launcherContent, { mode: 0o755 });
+  success(`Generated ${LAUNCHER_FILE}`);
 
-	// Generate plist
-	const plistContent = `<?xml version="1.0" encoding="UTF-8"?>
+  // Generate plist
+  const plistContent = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -744,47 +829,56 @@ exec "$SHOOTER_REPO/node_modules/.bin/tsx" "$SHOOTER_REPO/server.ts"
 </plist>
 `;
 
-	fs.writeFileSync(PLIST_FILE, plistContent);
-	success(`Generated ${PLIST_FILE}`);
+  fs.writeFileSync(PLIST_FILE, plistContent);
+  success(`Generated ${PLIST_FILE}`);
 
-	// Load the service
-	try {
-		execSync(`launchctl bootout gui/$(id -u)/${PLIST_LABEL} 2>/dev/null || true`, { stdio: 'pipe' });
-	} catch { /* ignore */ }
-	try {
-		execSync(`launchctl bootstrap gui/$(id -u) ${PLIST_FILE}`, { stdio: 'inherit' });
-		success('Shooter will start automatically on login.');
-		info(`  Logs:    ${LOG_DIR}/`);
-		info(`  Stop:    shooter autostart off`);
-		info(`  Restart: launchctl kickstart -k gui/$(id -u)/${PLIST_LABEL}`);
-	} catch (e) {
-		error(`Failed to load launchd service: ${e.message}`);
-	}
+  // Load the service
+  try {
+    execSync(`launchctl bootout gui/$(id -u)/${PLIST_LABEL} 2>/dev/null || true`, {
+      stdio: 'pipe',
+    });
+  } catch {
+    /* ignore */
+  }
+  try {
+    execSync(`launchctl bootstrap gui/$(id -u) ${PLIST_FILE}`, { stdio: 'inherit' });
+    success('Shooter will start automatically on login.');
+    info(`  Logs:    ${LOG_DIR}/`);
+    info(`  Stop:    shooter autostart off`);
+    info(`  Restart: launchctl kickstart -k gui/$(id -u)/${PLIST_LABEL}`);
+  } catch (e) {
+    error(`Failed to load launchd service: ${e.message}`);
+  }
 }
 
 function cmdAutostartOff() {
-	try {
-		execSync(`launchctl bootout gui/$(id -u)/${PLIST_LABEL}`, { stdio: 'pipe' });
-		success('Launchd service stopped.');
-	} catch {
-		warn('Launchd service was not running.');
-	}
+  try {
+    execSync(`launchctl bootout gui/$(id -u)/${PLIST_LABEL}`, { stdio: 'pipe' });
+    success('Launchd service stopped.');
+  } catch {
+    warn('Launchd service was not running.');
+  }
 
-	for (const f of [PLIST_FILE, LAUNCHER_FILE]) {
-		try { fs.unlinkSync(f); } catch { /* ignore */ }
-	}
-	success('Auto-start disabled. Files cleaned up.');
+  for (const f of [PLIST_FILE, LAUNCHER_FILE]) {
+    try {
+      fs.unlinkSync(f);
+    } catch {
+      /* ignore */
+    }
+  }
+  success('Auto-start disabled. Files cleaned up.');
 }
 
 function cmdVersion() {
-	console.log(`shooter v${pkg.version}`);
-	console.log(`node ${process.version}`);
-	console.log(`install ${PKG_ROOT}`);
-	console.log(`data ${SHOOTER_HOME}`);
+  console.log(`shooter v${pkg.version}`);
+  console.log(`node ${process.version}`);
+  console.log(`install ${PKG_ROOT}`);
+  console.log(`data ${SHOOTER_HOME}`);
 }
 
 function cmdHelp() {
-	console.log(`
+  console.log(
+    `
 ${C.bold}Shooter v${pkg.version}${C.reset}
 
 ${C.bold}Usage:${C.reset} shooter [command]
@@ -807,7 +901,8 @@ ${C.bold}Examples:${C.reset}
   shooter status           Check if running
   shooter logs -f          Follow live logs
   shooter autostart on     Start on login
-`.trim());
+`.trim()
+  );
 }
 
 // ── Main router ───────────────────────────────────────────────────────
@@ -815,24 +910,49 @@ const args = process.argv.slice(2);
 const command = args[0] || 'start';
 
 switch (command) {
-	case 'start':          cmdStart(); break;
-	case 'stop':           cmdStop(); break;
-	case 'restart':        cmdRestart(); break;
-	case 'status':         cmdStatus(); break;
-	case 'setup':          cmdSetup(); break;
-	case 'update':         cmdUpdate(); break;
-	case 'logs':           cmdLogs(); break;
-	case 'autostart':
-		if (args[1] === 'on') cmdAutostartOn();
-		else if (args[1] === 'off') cmdAutostartOff();
-		else { error('Usage: shooter autostart on|off'); process.exit(1); }
-		break;
-	case 'version': case '--version': case '-v': cmdVersion(); break;
-	case 'help': case '--help': case '-h': cmdHelp(); break;
-	default:
-		error(`Unknown command: ${command}`);
-		cmdHelp();
-		process.exit(1);
+  case 'start':
+    cmdStart();
+    break;
+  case 'stop':
+    cmdStop();
+    break;
+  case 'restart':
+    cmdRestart();
+    break;
+  case 'status':
+    cmdStatus();
+    break;
+  case 'setup':
+    cmdSetup();
+    break;
+  case 'update':
+    cmdUpdate();
+    break;
+  case 'logs':
+    cmdLogs();
+    break;
+  case 'autostart':
+    if (args[1] === 'on') cmdAutostartOn();
+    else if (args[1] === 'off') cmdAutostartOff();
+    else {
+      error('Usage: shooter autostart on|off');
+      process.exit(1);
+    }
+    break;
+  case 'version':
+  case '--version':
+  case '-v':
+    cmdVersion();
+    break;
+  case 'help':
+  case '--help':
+  case '-h':
+    cmdHelp();
+    break;
+  default:
+    error(`Unknown command: ${command}`);
+    cmdHelp();
+    process.exit(1);
 }
 ```
 
@@ -881,6 +1001,7 @@ generation for launchd auto-start."
 ## Task 4: Update setup.cjs for new directory layout
 
 **Files:**
+
 - Modify: `scripts/setup.cjs:36-37` (ROOT and DOT_ENV_PATH)
 - Modify: `scripts/setup.cjs:103-141` (checkPrerequisites — remove pnpm hard check)
 - Modify: `scripts/setup.cjs:339-356` (writeEnv — path to `~/.shooter/.env`)
@@ -890,12 +1011,14 @@ generation for launchd auto-start."
 In `scripts/setup.cjs`, change lines 36-37:
 
 From:
+
 ```javascript
 const ROOT = path.resolve(__dirname, '..');
 const DOT_ENV_PATH = path.join(ROOT, '.env');
 ```
 
 To:
+
 ```javascript
 const ROOT = process.env.SHOOTER_PKG_ROOT || path.resolve(__dirname, '..');
 const SHOOTER_HOME = process.env.SHOOTER_HOME || path.join(require('os').homedir(), '.shooter');
@@ -907,26 +1030,28 @@ const DOT_ENV_PATH = path.join(SHOOTER_HOME, '.env');
 In `scripts/setup.cjs`, lines 116-123 check for pnpm and `process.exit(1)` if missing. Change to a warning instead:
 
 From:
+
 ```javascript
-  try {
-    const pnpmVersion = execSync('pnpm --version', { encoding: 'utf-8' }).trim();
-    console.log(green(`  pnpm v${pnpmVersion}`));
-  } catch {
-    console.log(red('  pnpm is not installed.'));
-    console.log(dim('  Install it: npm install -g pnpm'));
-    process.exit(1);
-  }
+try {
+  const pnpmVersion = execSync('pnpm --version', { encoding: 'utf-8' }).trim();
+  console.log(green(`  pnpm v${pnpmVersion}`));
+} catch {
+  console.log(red('  pnpm is not installed.'));
+  console.log(dim('  Install it: npm install -g pnpm'));
+  process.exit(1);
+}
 ```
 
 To:
+
 ```javascript
-  // pnpm check — soft (installer or CLI handle pnpm resolution)
-  try {
-    const pnpmVersion = execSync('pnpm --version', { encoding: 'utf-8' }).trim();
-    console.log(green(`  pnpm v${pnpmVersion}`));
-  } catch {
-    console.log(yellow('  pnpm not found globally (will use local or corepack)'));
-  }
+// pnpm check — soft (installer or CLI handle pnpm resolution)
+try {
+  const pnpmVersion = execSync('pnpm --version', { encoding: 'utf-8' }).trim();
+  console.log(green(`  pnpm v${pnpmVersion}`));
+} catch {
+  console.log(yellow('  pnpm not found globally (will use local or corepack)'));
+}
 ```
 
 - [ ] **Step 3: Ensure SHOOTER_HOME directory exists before writing .env**
@@ -934,12 +1059,13 @@ To:
 In the `writeEnv` function (around line 339), add directory creation before writing:
 
 Add before `fs.writeFileSync(DOT_ENV_PATH, content, 'utf-8');`:
+
 ```javascript
-  // Ensure ~/.shooter/ directory exists
-  const envDir = path.dirname(DOT_ENV_PATH);
-  if (!fs.existsSync(envDir)) {
-    fs.mkdirSync(envDir, { recursive: true });
-  }
+// Ensure ~/.shooter/ directory exists
+const envDir = path.dirname(DOT_ENV_PATH);
+if (!fs.existsSync(envDir)) {
+  fs.mkdirSync(envDir, { recursive: true });
+}
 ```
 
 - [ ] **Step 4: Update user-facing strings to use `shooter` CLI**
@@ -947,23 +1073,29 @@ Add before `fs.writeFileSync(DOT_ENV_PATH, content, 'utf-8');`:
 In `scripts/setup.cjs`, update the final output messages (around lines 553-561):
 
 Change:
+
 ```javascript
-  console.log(`  Start the server:  ${cyan('pnpm start')}`);
-  console.log(`  Dev mode:          ${cyan('pnpm dev')}`);
+console.log(`  Start the server:  ${cyan('pnpm start')}`);
+console.log(`  Dev mode:          ${cyan('pnpm dev')}`);
 ```
+
 To:
+
 ```javascript
-  console.log(`  Start the server:  ${cyan('shooter start')}`);
-  console.log(`  Status:            ${cyan('shooter status')}`);
+console.log(`  Start the server:  ${cyan('shooter start')}`);
+console.log(`  Status:            ${cyan('shooter status')}`);
 ```
 
 And change:
+
 ```javascript
-    console.log(dim('  Run pnpm setup again to add iOS or Android push notifications.'));
+console.log(dim('  Run pnpm setup again to add iOS or Android push notifications.'));
 ```
+
 To:
+
 ```javascript
-    console.log(dim('  Run shooter setup again to add iOS or Android push notifications.'));
+console.log(dim('  Run shooter setup again to add iOS or Android push notifications.'));
 ```
 
 - [ ] **Step 5: Verify setup wizard runs with new paths**
@@ -990,6 +1122,7 @@ ROOT resolves from SHOOTER_PKG_ROOT env var."
 ## Task 5: Rewrite install.sh with Node detection chain
 
 **Files:**
+
 - Modify: `scripts/install.sh` (significant rewrite)
 
 - [ ] **Step 1: Rewrite the installer**
@@ -1108,6 +1241,7 @@ check_node() {
 ```
 
 Update `SHOOTER_DIR` references:
+
 ```bash
 SHOOTER_HOME="$HOME/.shooter"
 SHOOTER_REPO="$SHOOTER_HOME/repo"
@@ -1120,6 +1254,7 @@ Update `clone_repo()` to clone into `$SHOOTER_REPO`.
 Update `install_deps()` to `cd "$SHOOTER_REPO" && pnpm install`.
 
 Add bootstrap_pnpm():
+
 ```bash
 bootstrap_pnpm() {
     # Try corepack first
@@ -1147,6 +1282,7 @@ bootstrap_pnpm() {
 ```
 
 Update `offer_global_command()` to symlink to `~/.local/bin/`:
+
 ```bash
 offer_global_command() {
     step "Global command"
@@ -1202,6 +1338,7 @@ data stays in ~/.shooter/. Global CLI linked to ~/.local/bin/shooter."
 ## Task 6: Delete obsolete files
 
 **Files:**
+
 - Delete: `scripts/start-server.sh`
 - Delete: `docs/screenshots/after/`, `docs/screenshots/audit/`, `docs/screenshots/baseline/` (empty dirs)
 - Keep: `docs/screenshots/verify/` (contains actual PNGs — command-palette.png, shortcuts-help.png)
@@ -1232,6 +1369,7 @@ Replaced by dynamically generated ~/.shooter/launcher.sh via shooter autostart o
 ## Task 7: Create Homebrew formula skeleton
 
 **Files:**
+
 - Create: `scripts/homebrew/shooter.rb`
 
 - [ ] **Step 1: Create the formula**
@@ -1368,6 +1506,7 @@ Expected: Pulls, installs, builds, reports version.
 - [ ] **Step 4: Final commit with any fixes**
 
 If any issues were found and fixed during testing:
+
 ```bash
 git add -A
 git commit -m "fix: integration test fixes for CLI lifecycle"

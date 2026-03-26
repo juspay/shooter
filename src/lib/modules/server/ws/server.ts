@@ -10,9 +10,9 @@ import type { Duplex } from 'stream';
 import type { WebSocket, WebSocketServer } from 'ws';
 
 import {
-	broadcastEvent as broadcastEventToClients,
-	getEventsClientCount,
-	handleEventsConnection,
+  broadcastEvent as broadcastEventToClients,
+  getEventsClientCount,
+  handleEventsConnection,
 } from './events-handler.js';
 import { handleSessionConnection } from './session-handler.js';
 import { handleTerminalConnection } from './terminal-handler.js';
@@ -29,7 +29,7 @@ const allConnections = new Set<WebSocket>();
  * Returns the set of all tracked connections (needed by keepalive module).
  */
 export function getAllConnections(): Set<WebSocket> {
-	return allConnections;
+  return allConnections;
 }
 
 /**
@@ -37,7 +37,7 @@ export function getAllConnections(): Set<WebSocket> {
  * Used by the notifier to decide between WebSocket broadcast vs APNs push.
  */
 export function getConnectedClientCount(): number {
-	return getEventsClientCount();
+  return getEventsClientCount();
 }
 
 /**
@@ -45,45 +45,51 @@ export function getConnectedClientCount(): number {
  * Destroys the socket if the URL does not match any known route.
  */
 export function setupWebSocketHandlers(
-	wss: WebSocketServer,
-	request: IncomingMessage,
-	socket: Duplex,
-	head: Buffer
+  wss: WebSocketServer,
+  request: IncomingMessage,
+  socket: Duplex,
+  head: Buffer
 ): void {
-	const url = new URL(request.url || '', `http://${request.headers.host}`);
-	const pathname = url.pathname;
+  const host = request.headers.host ?? 'localhost';
+  let pathname: string;
+  try {
+    pathname = new URL(request.url || '/', `http://${host}`).pathname;
+  } catch {
+    socket.destroy();
+    return;
+  }
 
-	// Route matching
-	const terminalMatch = /^\/ws\/terminal\/(.+)$/.exec(pathname);
-	const sessionMatch = /^\/ws\/session\/(.+)$/.exec(pathname);
-	const isEvents = pathname === '/ws/events';
+  // Route matching
+  const terminalMatch = /^\/ws\/terminal\/(.+)$/.exec(pathname);
+  const sessionMatch = /^\/ws\/session\/(.+)$/.exec(pathname);
+  const isEvents = pathname === '/ws/events';
 
-	if (!terminalMatch && !sessionMatch && !isEvents) {
-		socket.destroy();
-		return;
-	}
+  if (!terminalMatch && !sessionMatch && !isEvents) {
+    socket.destroy();
+    return;
+  }
 
-	wss.handleUpgrade(request, socket, head, (ws: WebSocket) => {
-		allConnections.add(ws);
+  wss.handleUpgrade(request, socket, head, (ws: WebSocket) => {
+    allConnections.add(ws);
 
-		ws.on('close', () => {
-			allConnections.delete(ws);
-		});
+    ws.on('close', () => {
+      allConnections.delete(ws);
+    });
 
-		ws.on('error', () => {
-			// Prevent unhandled error crashes; cleanup happens in 'close'.
-		});
+    ws.on('error', () => {
+      // Prevent unhandled error crashes; cleanup happens in 'close'.
+    });
 
-		if (terminalMatch) {
-			const terminalId = terminalMatch[1];
-			handleTerminalConnection(ws, terminalId);
-		} else if (sessionMatch) {
-			const sessionId = sessionMatch[1];
-			handleSessionConnection(ws, sessionId);
-		} else if (isEvents) {
-			handleEventsConnection(ws);
-		}
-	});
+    if (terminalMatch) {
+      const terminalId = terminalMatch[1];
+      handleTerminalConnection(ws, terminalId);
+    } else if (sessionMatch) {
+      const sessionId = sessionMatch[1];
+      handleSessionConnection(ws, sessionId);
+    } else if (isEvents) {
+      handleEventsConnection(ws);
+    }
+  });
 }
 
 /**

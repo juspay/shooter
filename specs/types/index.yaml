@@ -1,9 +1,10 @@
 info:
-  version: '1.0.0'
-  title: 'Shooter - iOS Push Notification Types'
+  version: '2.0.0'
+  title: 'Shooter - Complete Type Definitions'
   description: |
-    Complete type definitions for the Shooter iOS push notification system.
-    This includes Apple Push Notification Service (APNs) types and JWT authentication types.
+    Complete type definitions for the Shooter bidirectional communication system.
+    Covers APNs, JWT, CLI, terminal, sessions, API, WebSocket protocol,
+    holder processes, OpenCode, notifications, client views, and configuration.
 
 groupedTypes:
   # JWT authentication types for APNs token generation
@@ -21,3 +22,35 @@ groupedTypes:
   # Terminal module types for managed terminal sessions, WebSocket messages, and events
   Terminal:
     $ref: './specs/types/terminal.yaml#/Terminal'
+
+  # Session types for conversation messages and project groups
+  Sessions:
+    $ref: './specs/types/sessions.yaml#/Sessions'
+
+  # API request/response types for all HTTP endpoints
+  API:
+    $ref: './specs/types/api.yaml#/API'
+
+  # WebSocket protocol types for terminal, session, and event channels
+  WsProtocol:
+    $ref: './specs/types/ws-protocol.yaml#/WsProtocol'
+
+  # PTY holder process communication types
+  Holder:
+    $ref: './specs/types/holder.yaml#/Holder'
+
+  # OpenCode session and message types
+  OpenCode:
+    $ref: './specs/types/opencode.yaml#/OpenCode'
+
+  # Notification history, sessions, and pending requests
+  Notification:
+    $ref: './specs/types/notification.yaml#/Notification'
+
+  # Client-side view model types
+  Client:
+    $ref: './specs/types/client.yaml#/Client'
+
+  # Application configuration types
+  Config:
+    $ref: './specs/types/config.yaml#/Config'

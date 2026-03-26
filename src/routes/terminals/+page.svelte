@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ShooterConfig } from '$lib/types/config';
+  import type { ShooterConfig, TerminalListItem } from '$generated/types';
 
   import { goto } from '$app/navigation';
   import {
@@ -14,27 +14,12 @@
   import { Button, Pill, Shimmer, Tooltip } from '@juspay/svelte-ui-components';
   import { onDestroy, onMount } from 'svelte';
 
-  interface Terminal {
-    args: string[];
-    command: string;
-    createdAt: string;
-    currentCwd?: null | string;
-    cwd: string;
-    exitCode: null | number;
-    exitedAt: null | string;
-    id: string;
-    isActive?: boolean;
-    lastOutput: null | string;
-    pid: number;
-    status: 'exited' | 'running';
-  }
-
   const POLL_INTERVAL_MS = 10_000;
   const CACHE_KEY = 'shooter_terminals';
   const AI_COMMANDS = ['claude', 'opencode'];
   const SHELL_COMMANDS = ['zsh', 'bash', 'sh', 'fish'];
 
-  let terminals = $state<Terminal[]>([]);
+  let terminals = $state<TerminalListItem[]>([]);
   let loading = $state(false);
   let fetching = false;
   let config = $state<null | ShooterConfig>(null);
@@ -48,7 +33,7 @@
     loadConfiguration();
 
     // Show cached data immediately (10s TTL matches poll interval)
-    const cached = getCached(CACHE_KEY, 10_000) as null | Terminal[];
+    const cached = getCached(CACHE_KEY, 10_000) as null | TerminalListItem[];
     if (cached) {
       terminals = cached;
       loading = false;
@@ -110,8 +95,11 @@
         return;
       }
 
-      const result = (await response.json()) as { terminals: Terminal[] };
-      terminals = result.terminals;
+      const result = (await response.json()) as { terminals: TerminalListItem[] };
+      terminals = result.terminals.map((t) => ({
+        ...t,
+        lastOutput: t.lastOutput ?? null,
+      }));
       setCache(CACHE_KEY, terminals);
     } catch (error) {
       console.error('Failed to fetch terminals:', error);
@@ -157,7 +145,7 @@
     return 'shell';
   }
 
-  function getBadgeInfo(terminal: Terminal): { class: string; label: string } {
+  function getBadgeInfo(terminal: TerminalListItem): { class: string; label: string } {
     if (terminal.status === 'exited') {
       return { class: 'pill-badge-ended', label: 'ENDED' };
     }
@@ -180,18 +168,25 @@
     return `${parts[0]}/.../${parts.slice(-2).join('/')}`;
   }
 
+  /* eslint-disable no-control-regex, no-useless-escape */
   function stripAnsi(str: string): string {
-    // eslint-disable-next-line no-control-regex, no-useless-escape
-    return str.replace(/\x1b\[[0-9;]*[a-zA-Z]|\x1b\][^\x07]*\x07|\x1b\[[\?]?[0-9;]*[a-zA-Z]|\x1b/g, '').replace(/[\x00-\x1f]/g, '').trim();
+    return str
+      .replace(/\x1b\[[0-9;]*[a-zA-Z]|\x1b\][^\x07]*\x07|\x1b\[[\?]?[0-9;]*[a-zA-Z]|\x1b/g, '')
+      .replace(/[\x00-\x1f]/g, '')
+      .trim();
   }
+  /* eslint-enable no-control-regex, no-useless-escape */
 
   function truncateOutput(output: null | string, maxLen = 80): string {
     if (!output) {
       return '';
     }
-    // Strip ANSI escape codes first, then take the last non-empty line
-    const cleaned = stripAnsi(output);
-    const lines = cleaned.trim().split('\n').filter(l => l.trim());
+    // Split on newlines BEFORE stripping ANSI so that \n characters survive
+    // the control-character removal pass, then strip each line individually.
+    const lines = output
+      .split('\n')
+      .map((l) => stripAnsi(l))
+      .filter((l) => l.trim());
     const lastLine = lines[lines.length - 1] || '';
     if (lastLine.length <= maxLen) {
       return lastLine;
@@ -207,7 +202,9 @@
     event.preventDefault();
     event.stopPropagation();
 
-    if (!config?.apiKey) {return;}
+    if (!config?.apiKey) {
+      return;
+    }
 
     try {
       const response = await fetch(`/api/terminals/${id}`, {
@@ -241,12 +238,12 @@
       </div>
       <div class="page-actions">
         <Button classes="btn-secondary" onclick={forceRefresh} disabled={loading}>
-            <Icon name="refresh" size={14} />
-            Refresh
+          <Icon name="refresh" size={14} />
+          Refresh
         </Button>
         <Button classes="btn-primary" onclick={handleNewTerminal}>
-            <span class="plus-icon">+</span>
-            New Terminal
+          <span class="plus-icon">+</span>
+          New Terminal
         </Button>
       </div>
     </div>
@@ -273,8 +270,8 @@
       description="Launch a new terminal session to get started. Terminal sessions will appear here once created."
     >
       <Button classes="btn-primary" onclick={handleNewTerminal}>
-          <span class="plus-icon">+</span>
-          New Terminal
+        <span class="plus-icon">+</span>
+        New Terminal
       </Button>
     </EmptyState>
   {:else}
@@ -321,7 +318,10 @@
               <span class="terminal-command">{getCommandName(terminal.command)}</span>
               <Pill text={badge.label} classes={badge.class} />
               {#if terminal.exitCode !== null}
-                <Pill text="exit {terminal.exitCode}" classes={terminal.exitCode !== 0 ? 'pill-exit-error' : 'pill-exit-ok'} />
+                <Pill
+                  text="exit {terminal.exitCode}"
+                  classes={terminal.exitCode !== 0 ? 'pill-exit-error' : 'pill-exit-ok'}
+                />
               {/if}
             </div>
             <div class="terminal-card-right">
@@ -491,8 +491,15 @@
   }
 
   @keyframes activity-pulse {
-    0%, 100% { transform: scale(1); opacity: 1; }
-    50% { transform: scale(1.5); opacity: 0.7; }
+    0%,
+    100% {
+      transform: scale(1);
+      opacity: 1;
+    }
+    50% {
+      transform: scale(1.5);
+      opacity: 0.7;
+    }
   }
 
   /* Command name */

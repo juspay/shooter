@@ -85,7 +85,9 @@ class SessionWatcher {
       const entries: Record<string, unknown>[] = [];
       for (const line of raw.split('\n')) {
         const trimmed = line.trim();
-        if (!trimmed) {continue;}
+        if (!trimmed) {
+          continue;
+        }
         try {
           entries.push(JSON.parse(trimmed));
         } catch {
@@ -315,6 +317,6 @@ function encodeCwd(cwd: string): string {
 // Use globalThis to ensure a single shared instance across module loaders.
 const SW_GLOBAL_KEY = '__shooter_session_watcher';
 export const sessionWatcher: SessionWatcher =
-	((globalThis as Record<string, unknown>)[SW_GLOBAL_KEY] as SessionWatcher) ||
-	new SessionWatcher();
+  ((globalThis as Record<string, unknown>)[SW_GLOBAL_KEY] as SessionWatcher) ||
+  new SessionWatcher();
 (globalThis as Record<string, unknown>)[SW_GLOBAL_KEY] = sessionWatcher;

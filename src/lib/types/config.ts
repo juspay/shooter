@@ -1,6 +1,1 @@
-export interface ShooterConfig {
-  apiKey: string;
-  deviceToken: string;
-  lastUpdated?: number;
-  serverUrl?: string;
-}
+export type { ShooterConfig } from '$generated/types';

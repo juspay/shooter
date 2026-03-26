@@ -21,9 +21,15 @@ let pingInterval: null | ReturnType<typeof setInterval> = null;
 
 /**
  * Track which connections have an outstanding pong we are waiting for.
- * Maps a WebSocket to its pong-timeout timer.
+ * Stores the timeout timer and the listener functions so they can be
+ * removed cleanly when stopKeepalive() is called mid-cycle.
  */
-const pendingPongs = new Map<WebSocket, ReturnType<typeof setTimeout>>();
+interface PendingPong {
+  onClose: () => void;
+  onPong: () => void;
+  timer: ReturnType<typeof setTimeout>;
+}
+const pendingPongs = new Map<WebSocket, PendingPong>();
 
 // ── Public API ───────────────────────────────────────────────────────
 
@@ -32,77 +38,88 @@ const pendingPongs = new Map<WebSocket, ReturnType<typeof setTimeout>>();
  * Safe to call multiple times — subsequent calls are no-ops until `stopKeepalive()`.
  */
 export function startKeepalive(): void {
-	if (pingInterval) {
-		return;
-	}
+  if (pingInterval) {
+    return;
+  }
 
-	pingInterval = setInterval(() => {
-		const connections = getAllConnections();
+  pingInterval = setInterval(() => {
+    const connections = getAllConnections();
 
-		for (const ws of connections) {
-			if (ws.readyState !== 1) {
-				// Not OPEN — skip (will be cleaned up by close handler)
-				continue;
-			}
+    for (const ws of connections) {
+      if (ws.readyState !== 1) {
+        // Not OPEN — skip (will be cleaned up by close handler)
+        continue;
+      }
 
-			// If there is already a pending pong timer for this connection,
-			// the previous ping was never answered. This should not happen
-			// under normal operation because the timeout fires in 10s and
-			// the interval is 30s, but guard against it anyway.
-			if (pendingPongs.has(ws)) {
-				continue;
-			}
+      // If there is already a pending pong timer for this connection,
+      // the previous ping was never answered. This should not happen
+      // under normal operation because the timeout fires in 10s and
+      // the interval is 30s, but guard against it anyway.
+      if (pendingPongs.has(ws)) {
+        continue;
+      }
 
-			// Set up a timer that fires if no pong arrives within the timeout.
-			const timeout = setTimeout(() => {
-				cleanup();
-				// No pong received — consider the connection dead.
-				ws.terminate();
-			}, PONG_TIMEOUT_MS);
+      // Shared cleanup: clear the timer and remove both listeners
+      // so that close listeners do not accumulate across ping cycles.
+      const cleanup = (): void => {
+        ws.removeListener('pong', onPong);
+        ws.removeListener('close', onClose);
+        const entry = pendingPongs.get(ws);
+        if (entry) {
+          clearTimeout(entry.timer);
+        }
+        pendingPongs.delete(ws);
+      };
 
-			pendingPongs.set(ws, timeout);
+      const onPong = (): void => {
+        cleanup();
+      };
 
-			// Shared cleanup: clear the timer and remove both listeners
-			// so that close listeners do not accumulate across ping cycles.
-			function cleanup() {
-				ws.removeListener('pong', onPong);
-				ws.removeListener('close', onClose);
-				const timer = pendingPongs.get(ws);
-				if (timer) {
-					clearTimeout(timer);
-				}
-				pendingPongs.delete(ws);
-			}
+      const onClose = (): void => {
+        cleanup();
+      };
 
-			const onPong = () => {
-				cleanup();
-			};
+      // Set up a timer that fires if no pong arrives within the timeout.
+      // unref() so this timer does not keep the event loop alive during shutdown.
+      const timeout = setTimeout(() => {
+        cleanup();
+        // No pong received — consider the connection dead.
+        ws.terminate();
+      }, PONG_TIMEOUT_MS);
+      timeout.unref();
 
-			const onClose = () => {
-				cleanup();
-			};
+      pendingPongs.set(ws, { onClose, onPong, timer: timeout });
 
-			ws.once('pong', onPong);
-			ws.once('close', onClose);
+      ws.once('pong', onPong);
+      ws.once('close', onClose);
 
-			// Send the protocol-level ping frame.
-			ws.ping();
-		}
-	}, PING_INTERVAL_MS);
+      // Send the protocol-level ping frame.
+      // Wrap in try-catch: the socket may transition to CLOSING between
+      // our readyState check above and the actual ping() call.
+      try {
+        ws.ping();
+      } catch {
+        cleanup();
+        continue;
+      }
+    }
+  }, PING_INTERVAL_MS);
 }
 
 /**
  * Stop the keepalive ping loop and clear all pending pong timers.
  */
 export function stopKeepalive(): void {
-	if (pingInterval) {
-		clearInterval(pingInterval);
-		pingInterval = null;
-	}
+  if (pingInterval) {
+    clearInterval(pingInterval);
+    pingInterval = null;
+  }
 
-	// Clear any outstanding pong timers.
-	for (const [, timer] of pendingPongs) {
-		clearTimeout(timer);
-	}
-	pendingPongs.clear();
+  // Clear any outstanding pong timers and remove pending listeners.
+  for (const [ws, entry] of pendingPongs) {
+    clearTimeout(entry.timer);
+    ws.removeListener('pong', entry.onPong);
+    ws.removeListener('close', entry.onClose);
+  }
+  pendingPongs.clear();
 }

@@ -1,0 +1,172 @@
+# Notification Module Type Definitions
+# Non-top file - referenced from index.yaml
+# Contains types for notification history, notification sessions,
+# and pending permission requests
+
+Notification:
+  # ─── Notification Status ─────────────────────────────────────────
+
+  NotificationStatus:
+    type: string
+    enum:
+      - sent
+      - failed
+      - filtered
+      - skipped
+    description: Delivery status of a notification
+
+  # ─── Session Status ──────────────────────────────────────────────
+
+  NotificationSessionStatus:
+    type: string
+    enum:
+      - active
+      - complete
+    description: Whether a notification session is still active or has completed
+
+  # ─── Permission Decision ─────────────────────────────────────────
+
+  PermissionDecision:
+    type: string
+    enum:
+      - allow
+      - deny
+    description: User decision on a permission request
+
+  # ─── Notification Record ─────────────────────────────────────────
+
+  NotificationRecord:
+    type: object
+    description: A single notification entry stored in the in-memory history
+    required:
+      - id
+      - title
+      - message
+      - status
+      - timestamp
+    properties:
+      id:
+        type: string
+        description: Unique notification identifier
+      title:
+        type: string
+        description: Notification title
+      message:
+        type: string
+        description: Notification body text
+      status:
+        $ref: './specs/types/notification.yaml#/Notification/NotificationStatus'
+        description: Delivery status of the notification
+      timestamp:
+        type: string
+        description: ISO 8601 timestamp when the notification was created
+      category:
+        type: string
+        description: Notification category (e.g. debug, feature, testing)
+      project:
+        type: string
+        description: Project name the notification relates to
+      source:
+        type: string
+        description: Source that triggered the notification (e.g. hook name)
+      tool:
+        type: string
+        description: Tool name that triggered the notification
+      error:
+        type: string
+        description: Error message if the notification failed to send
+      data:
+        type: object
+        description: Additional metadata attached to the notification
+        additionalProperties: true
+
+  # ─── Notification Session ────────────────────────────────────────
+
+  NotificationSession:
+    type: object
+    description: A grouped session of notification events, derived from notification history with 30-minute gap detection
+    required:
+      - id
+      - project
+      - runtime
+      - startTime
+      - endTime
+      - duration
+      - eventCount
+      - events
+      - toolsUsed
+      - filesModified
+      - status
+    properties:
+      id:
+        type: string
+        description: Session identifier (e.g. "session-1")
+      project:
+        type: string
+        description: Project name associated with this session
+      runtime:
+        type: string
+        description: Runtime that produced the events (e.g. "claude-code", "opencode")
+      startTime:
+        type: string
+        description: ISO 8601 timestamp of the first event in the session
+      endTime:
+        type: string
+        description: ISO 8601 timestamp of the last event in the session
+      duration:
+        type: number
+        description: Session duration in seconds
+      eventCount:
+        type: number
+        description: Total number of notification events in this session
+      events:
+        type: array
+        description: All notification records in this session, sorted chronologically
+        items:
+          $ref: './specs/types/notification.yaml#/Notification/NotificationRecord'
+      toolsUsed:
+        type: array
+        description: Distinct tool names used during this session
+        items:
+          type: string
+      filesModified:
+        type: array
+        description: Distinct file paths modified during this session
+        items:
+          type: string
+      status:
+        $ref: './specs/types/notification.yaml#/Notification/NotificationSessionStatus'
+        description: Whether the session is still active or has completed
+
+  # ─── Pending Request ─────────────────────────────────────────────
+
+  PendingRequest:
+    type: object
+    description: An in-memory pending permission request awaiting user decision via iOS notification
+    required:
+      - sessionId
+      - toolName
+      - toolInput
+      - createdAt
+    properties:
+      sessionId:
+        type: string
+        description: AI session that triggered the permission request
+      toolName:
+        type: string
+        description: Tool requesting permission (e.g. "Bash", "Edit")
+      toolInput:
+        type: object
+        description: Tool input parameters that require approval
+        additionalProperties: true
+      createdAt:
+        type: number
+        description: Unix timestamp (ms) when the request was created
+      decidedAt:
+        type: number
+        nullable: true
+        description: Unix timestamp (ms) when the user responded, or null if still pending
+      decision:
+        $ref: './specs/types/notification.yaml#/Notification/PermissionDecision'
+        nullable: true
+        description: User's decision (allow/deny), or null if still pending

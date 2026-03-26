@@ -473,12 +473,10 @@ Line 36 contains a hardcoded Vercel deployment URL. Replace with empty string so
 
 ```javascript
 // Before:
-const REMOTE_BASE_URL =
-  process.env.SHOOTER_API_URL ||
-  'https://your-shooter-app.vercel.app';
+const REMOTE_BASE_URL = process.env.SHOOTER_API_URL || 'https://your-shooter-app.vercel.app';
 
 // After:
-const REMOTE_BASE_URL = process.env.SHOOTER_API_URL || '';
+const REMOTE_BASE_URL = process.env.SHOOTER_API_URL?.trim() || '';
 ```
 
 And add a guard after BASE_URL:

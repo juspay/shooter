@@ -26,60 +26,62 @@ const rateLimitMap = new Map<string, number[]>();
  * Returns true if the request is within the rate limit, false if exceeded.
  */
 function checkRateLimit(apiKey: string): boolean {
-	const now = Date.now();
-	const cutoff = now - RATE_LIMIT_WINDOW_MS;
+  const now = Date.now();
+  const cutoff = now - RATE_LIMIT_WINDOW_MS;
 
-	let timestamps = rateLimitMap.get(apiKey);
-	if (!timestamps) {
-		timestamps = [];
-		rateLimitMap.set(apiKey, timestamps);
-	}
+  let timestamps = rateLimitMap.get(apiKey);
+  if (!timestamps) {
+    timestamps = [];
+    rateLimitMap.set(apiKey, timestamps);
+  }
 
-	// Prune timestamps outside the window
-	const recent = timestamps.filter((t) => t > cutoff);
-	rateLimitMap.set(apiKey, recent);
+  // Prune timestamps outside the window
+  const recent = timestamps.filter((t) => t > cutoff);
+  rateLimitMap.set(apiKey, recent);
 
-	if (recent.length >= RATE_LIMIT_MAX) {
-		return false;
-	}
+  if (recent.length >= RATE_LIMIT_MAX) {
+    return false;
+  }
 
-	recent.push(now);
-	return true;
+  recent.push(now);
+  return true;
 }
 
 // Cleanup stale rate limit entries every 5 minutes
 setInterval(() => {
-	const cutoff = Date.now() - RATE_LIMIT_WINDOW_MS;
-	for (const [key, timestamps] of rateLimitMap) {
-		const recent = timestamps.filter((t) => t > cutoff);
-		if (recent.length === 0) {
-			rateLimitMap.delete(key);
-		} else {
-			rateLimitMap.set(key, recent);
-		}
-	}
+  const cutoff = Date.now() - RATE_LIMIT_WINDOW_MS;
+  for (const [key, timestamps] of rateLimitMap) {
+    const recent = timestamps.filter((t) => t > cutoff);
+    if (recent.length === 0) {
+      rateLimitMap.delete(key);
+    } else {
+      rateLimitMap.set(key, recent);
+    }
+  }
 }, 300_000).unref();
 
 // ── Endpoint ────────────────────────────────────────────────────────
 
 export const POST: RequestHandler = ({ request }) => {
-	const authError = validateAuth(request);
-	if (authError) {return authError;}
+  const authError = validateAuth(request);
+  if (authError) {
+    return authError;
+  }
 
-	// Extract the API key for rate limiting
-	const apiKey = request.headers.get('authorization')!.substring(7);
+  // Extract the API key for rate limiting
+  const apiKey = request.headers.get('authorization')!.substring(7);
 
-	if (!checkRateLimit(apiKey)) {
-		return json(
-			{ error: 'Rate limit exceeded. Maximum 10 ticket requests per minute.' },
-			{ status: 429 }
-		);
-	}
+  if (!checkRateLimit(apiKey)) {
+    return json(
+      { error: 'Rate limit exceeded. Maximum 10 ticket requests per minute.' },
+      { status: 429 }
+    );
+  }
 
-	const ticket = generateTicket();
+  const ticket = generateTicket();
 
-	return json({
-		expiresIn: 30,
-		ticket,
-	});
+  return json({
+    expiresIn: 30,
+    ticket,
+  });
 };

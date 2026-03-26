@@ -15,7 +15,9 @@ export function hasScanner(): boolean {
 
 /** True when the page is running inside a native WebView with a bridge */
 export function isNativeBridge(): boolean {
-  if (typeof window === 'undefined') {return false;}
+  if (typeof window === 'undefined') {
+    return false;
+  }
   // iOS injects window.ShooterBridge, Android injects window.ShooterNativeBridge
   return (
     (typeof window.ShooterBridge === 'object' && window.ShooterBridge !== null) ||
@@ -38,13 +40,19 @@ export async function scanQR(): Promise<string> {
 
 /** Get the scanner.scan function from whichever bridge exists */
 function getScanFn(): (() => Promise<string>) | null {
-  if (typeof window === 'undefined') {return null;}
-  // Check iOS bridge first, then Android
-  if (typeof window.ShooterBridge?.scanner?.scan === 'function') {
-    return () => window.ShooterBridge!.scanner!.scan();
+  if (typeof window === 'undefined') {
+    return null;
   }
-  if (typeof window.ShooterNativeBridge?.scanner?.scan === 'function') {
-    return () => window.ShooterNativeBridge!.scanner!.scan();
+  // Check iOS bridge first, then Android.
+  // Capture the scanner object (not the bare function) to preserve `this` binding
+  // when the native side implements scan() as a method on the scanner object.
+  const iosScanner = window.ShooterBridge?.scanner;
+  if (iosScanner && typeof iosScanner.scan === 'function') {
+    return () => iosScanner.scan();
+  }
+  const androidScanner = window.ShooterNativeBridge?.scanner;
+  if (androidScanner && typeof androidScanner.scan === 'function') {
+    return () => androidScanner.scan();
   }
   return null;
 }

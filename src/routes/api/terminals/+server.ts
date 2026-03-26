@@ -1,5 +1,6 @@
 import { validateAuth } from '$lib/modules/server/auth';
 import { ptyManager } from '$lib/modules/server/terminal/pty-manager.js';
+import { toErrorMessage } from '$lib/modules/server/utils/error';
 import { json } from '@sveltejs/kit';
 import { realpathSync, statSync } from 'fs';
 import { basename } from 'path';
@@ -11,10 +12,12 @@ const ALLOWED_COMMANDS = ['zsh', 'bash', 'sh', 'fish', 'claude', 'opencode'];
 // GET /api/terminals — List all terminals (active + recently exited)
 export const GET: RequestHandler = ({ request }) => {
   const authError = validateAuth(request);
-  if (authError) {return authError;}
+  if (authError) {
+    return authError;
+  }
 
   try {
-    const terminals = ptyManager.list().map(t => ({
+    const terminals = ptyManager.list().map((t) => ({
       args: t.args,
       clientCount: t.clients.size,
       command: t.command,
@@ -35,15 +38,17 @@ export const GET: RequestHandler = ({ request }) => {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    const err = error as Error;
-    return json({ details: err.message, error: 'Failed to list terminals' }, { status: 500 });
+    console.error('[terminals] Failed to list terminals:', toErrorMessage(error));
+    return json({ error: 'Failed to list terminals' }, { status: 500 });
   }
 };
 
 // POST /api/terminals — Create a new terminal session
 export const POST: RequestHandler = async ({ request }) => {
   const authError = validateAuth(request);
-  if (authError) {return authError;}
+  if (authError) {
+    return authError;
+  }
 
   let body: { args?: string[]; cols?: number; command?: string; cwd?: string; rows?: number };
   try {
@@ -70,7 +75,7 @@ export const POST: RequestHandler = async ({ request }) => {
     if (!ALLOWED_COMMANDS.includes(commandBasename)) {
       return json(
         { error: `Command not allowed. Allowed: ${ALLOWED_COMMANDS.join(', ')}` },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -110,13 +115,7 @@ export const POST: RequestHandler = async ({ request }) => {
       return json({ error: 'rows must be a positive number' }, { status: 400 });
     }
 
-    const terminal = await ptyManager.create(
-      command,
-      args ?? [],
-      realCwd,
-      cols ?? 80,
-      rows ?? 24,
-    );
+    const terminal = await ptyManager.create(command, args ?? [], realCwd, cols ?? 80, rows ?? 24);
 
     console.log(
       `[terminals] Created terminal ${terminal.id} (pid=${terminal.pid}, command=${command})`
@@ -135,7 +134,7 @@ export const POST: RequestHandler = async ({ request }) => {
       { status: 201 }
     );
   } catch (error) {
-    const err = error as Error;
-    return json({ details: err.message, error: 'Failed to create terminal' }, { status: 500 });
+    console.error('[terminals] Failed to create terminal:', toErrorMessage(error));
+    return json({ error: 'Failed to create terminal' }, { status: 500 });
   }
 };

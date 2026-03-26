@@ -7,267 +7,291 @@
  * so PtyManager can slot it in as `ManagedTerminal.pty`.
  */
 
+import type { ConnectResult } from '$generated/types';
+
 import * as net from 'net';
 
 // ── Local Protocol Types ──────────────────────────────────────────────
-// The generated union types (HolderClientMessage, HolderServerMessage)
-// use numbered interfaces without const discriminants, making them hard
-// to narrow. We define simple local types matching the ndjson protocol
-// from the design spec instead.
-
-interface ConnectResult {
-	exitCode: null | number;
-	exited: boolean;
-	pid: number;
-	scrollback: string;
-}
+// The generated union types (IncomingMessage, OutgoingMessage) use
+// class wrappers and non-literal discriminants, making them hard to
+// narrow with switch/case. We keep simple local types matching the
+// ndjson protocol from the design spec for runtime dispatch.
 
 /** Messages received from the holder process. */
 type IncomingMessage =
-	| { active: boolean; type: 'activity'; }
-	| { code: null | number; signal: null | string; type: 'exit'; }
-	| { data: string; type: 'output'; }
-	| { data: string; type: 'scrollback'; }
-	| { exitCode: null | number; exited: boolean; pid: number; type: 'info'; }
-	| { path: string; type: 'cwd'; };
+  | { active: boolean; type: 'activity' }
+  | { code: null | number; signal: null | string; type: 'exit' }
+  | { data: string; type: 'output' }
+  | { data: string; type: 'scrollback' }
+  | { exitCode: null | number; exited: boolean; pid: number; type: 'info' }
+  | { path: string; type: 'cwd' };
 
 // ── Connect Result ────────────────────────────────────────────────────
 
 /** Messages sent to the holder process. */
 type OutgoingMessage =
-	| { cols: number; rows: number; type: 'resize'; }
-	| { data: string; type: 'input'; }
-	| { signal?: string; type: 'kill'; };
+  | { cols: number; rows: number; type: 'resize' }
+  | { data: string; type: 'input' }
+  | { signal?: string; type: 'kill' };
 
 // ── HolderClient ──────────────────────────────────────────────────────
 
 export class HolderClient {
-	connected = false;
-	pid = 0;
+  connected = false;
+  pid = 0;
 
-	private activityCb: ((active: boolean) => void) | null = null;
-	private cwdCb: ((path: string) => void) | null = null;
-	private disconnectCb: (() => void) | null = null;
-	private exitCb: ((code: null | number) => void) | null = null;
+  private activityCb: ((active: boolean) => void) | null = null;
+  private cwdCb: ((path: string) => void) | null = null;
+  private disconnectCb: (() => void) | null = null;
+  private exitCb: ((code: null | number) => void) | null = null;
 
-	private lineBuf = '';
-	private outputCb: ((data: string) => void) | null = null;
-	private socket: net.Socket | null = null;
+  private lineBuf = '';
+  private outputCb: ((data: string) => void) | null = null;
+  private socket: net.Socket | null = null;
 
-	/**
-	 * Connect to a holder process via its Unix domain socket.
-	 * Resolves once the initial `info` and `scrollback` handshake messages
-	 * have been received.
-	 */
-	connect(socketPath: string): Promise<ConnectResult> {
-		return new Promise<ConnectResult>((resolve, reject) => {
-			let settled = false;
-			let info: null | { exitCode: null | number; exited: boolean; pid: number; } = null;
-			let scrollback = '';
-			const pendingMessages: IncomingMessage[] = [];
+  /**
+   * Connect to a holder process via its Unix domain socket.
+   * Resolves once the initial `info` and `scrollback` handshake messages
+   * have been received.
+   */
+  connect(socketPath: string): Promise<ConnectResult> {
+    return new Promise<ConnectResult>((resolve, reject) => {
+      let settled = false;
+      let info: null | { exitCode: null | number; exited: boolean; pid: number } = null;
+      let scrollback = '';
+      const pendingMessages: IncomingMessage[] = [];
 
-			const socket = net.createConnection(socketPath);
-			this.socket = socket;
+      // Handshake timeout: if the holder never sends info/scrollback,
+      // reject so the caller does not hang indefinitely.
+      const HANDSHAKE_TIMEOUT_MS = 10_000;
+      const handshakeTimer = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          this.connected = false;
+          if (this.socket) {
+            this.socket.destroy();
+            this.socket = null;
+          }
+          reject(
+            new Error(`Handshake timeout: holder did not respond within ${HANDSHAKE_TIMEOUT_MS}ms`)
+          );
+        }
+      }, HANDSHAKE_TIMEOUT_MS);
 
-			socket.setEncoding('utf8');
+      const socket = net.createConnection(socketPath);
+      this.socket = socket;
 
-			socket.on('connect', () => {
-				this.connected = true;
-			});
+      socket.setEncoding('utf8');
 
-			socket.on('data', (chunk: string) => {
-				this.lineBuf += chunk;
-				const lines = this.lineBuf.split('\n');
-				// Keep the last element — it is either empty (complete line)
-				// or a partial line still being received.
-				this.lineBuf = lines.pop()!;
+      socket.on('connect', () => {
+        this.connected = true;
+      });
 
-				for (const line of lines) {
-					if (line.length === 0) {continue;}
+      socket.on('data', (chunk: string) => {
+        this.lineBuf += chunk;
+        const lines = this.lineBuf.split('\n');
+        // Keep the last element — it is either empty (complete line)
+        // or a partial line still being received.
+        this.lineBuf = lines.pop()!;
 
-					let msg: IncomingMessage;
-					try {
-						msg = JSON.parse(line) as IncomingMessage;
-					} catch {
-						continue;
-					}
+        for (const line of lines) {
+          if (line.length === 0) {
+            continue;
+          }
 
-					if (!settled) {
-						// During handshake, collect info + scrollback.
-						// Queue other messages (activity, cwd) to replay after settlement.
-						if (msg.type === 'info') {
-							info = { exitCode: msg.exitCode, exited: msg.exited, pid: msg.pid };
-							this.pid = msg.pid;
-						} else if (msg.type === 'scrollback') {
-							scrollback = msg.data;
-						} else {
-							// Queue activity/cwd/exit messages received during handshake
-							pendingMessages.push(msg);
-						}
+          let msg: IncomingMessage;
+          try {
+            // TODO: Apply generated holder decoders (decodeHolderClientMessage)
+            // at this socket boundary once the generated union discriminant
+            // types support literal narrowing with switch/case. Currently the
+            // generated wrappers use non-literal discriminants, so we keep
+            // local IncomingMessage types for runtime dispatch.
+            msg = JSON.parse(line) as IncomingMessage;
+          } catch {
+            continue;
+          }
 
-						// Handshake complete once we have info.
-						if (info !== null) {
-							const settle = () => {
-								if (settled) {return;}
-								settled = true;
-								resolve({
-									exitCode: info!.exitCode,
-									exited: info!.exited,
-									pid: info!.pid,
-									scrollback
-								});
-								// Replay queued messages in the next macrotask so that
-								// callbacks registered after `await connect()` are wired
-								// before the replay fires.
-								const queued = [...pendingMessages];
-								pendingMessages.length = 0;
-								setTimeout(() => {
-									for (const pending of queued) {
-										this.handleMessage(pending);
-									}
-								}, 0);
-							};
+          if (!settled) {
+            // During handshake, collect info + scrollback.
+            // Queue other messages (activity, cwd) to replay after settlement.
+            if (msg.type === 'info') {
+              info = { exitCode: msg.exitCode, exited: msg.exited, pid: msg.pid };
+              this.pid = msg.pid;
+            } else if (msg.type === 'scrollback') {
+              scrollback = msg.data;
+            } else {
+              // Queue activity/cwd/exit messages received during handshake
+              pendingMessages.push(msg);
+            }
 
-							if (msg.type === 'scrollback' || info.exited) {
-								// Got scrollback or PTY already exited — resolve immediately.
-								settle();
-							} else if (msg.type === 'info') {
-								// Got info but no scrollback yet. The holder sends
-								// scrollback right after info if there IS data. Wait
-								// 100ms to give scrollback time to arrive in a separate
-								// TCP frame before resolving with empty scrollback.
-								setTimeout(settle, 100);
-							}
-						}
-					} else {
-						this.handleMessage(msg);
-					}
-				}
-			});
+            // Handshake complete once we have info.
+            if (info !== null) {
+              const settle = () => {
+                if (settled) {
+                  return;
+                }
+                settled = true;
+                clearTimeout(handshakeTimer);
+                resolve({
+                  exitCode: info!.exitCode,
+                  exited: info!.exited,
+                  pid: info!.pid,
+                  scrollback,
+                });
+                // Replay queued messages in the next macrotask so that
+                // callbacks registered after `await connect()` are wired
+                // before the replay fires.
+                const queued = [...pendingMessages];
+                pendingMessages.length = 0;
+                setTimeout(() => {
+                  for (const pending of queued) {
+                    this.handleMessage(pending);
+                  }
+                }, 0);
+              };
 
-			socket.on('error', (err) => {
-				if (!settled) {
-					settled = true;
-					this.connected = false;
-					this.socket = null;
-					reject(err);
-				}
-			});
+              if (msg.type === 'scrollback') {
+                // Got scrollback — resolve immediately.
+                settle();
+              } else if (msg.type === 'info') {
+                // Got info but no scrollback yet. The holder sends
+                // scrollback right after info if there IS data. Wait
+                // 100ms to give scrollback time to arrive in a separate
+                // TCP frame before resolving with empty scrollback.
+                setTimeout(settle, 100);
+              }
+            }
+          } else {
+            this.handleMessage(msg);
+          }
+        }
+      });
 
-			socket.on('close', () => {
-				const wasConnected = this.connected;
-				this.connected = false;
-				this.socket = null;
-				this.lineBuf = '';
+      socket.on('error', (err) => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(handshakeTimer);
+          this.connected = false;
+          this.socket = null;
+          reject(err);
+        }
+      });
 
-				if (!settled) {
-					settled = true;
-					reject(new Error('Socket closed before handshake completed'));
-					return;
-				}
+      socket.on('close', () => {
+        const wasConnected = this.connected;
+        this.connected = false;
+        this.socket = null;
+        this.lineBuf = '';
 
-				// Unexpected disconnect after successful handshake.
-				if (wasConnected && this.disconnectCb) {
-					this.disconnectCb();
-				}
-			});
-		});
-	}
+        if (!settled) {
+          settled = true;
+          clearTimeout(handshakeTimer);
+          reject(new Error('Socket closed before handshake completed'));
+          return;
+        }
 
-	/** Gracefully disconnect from the holder (does NOT kill the holder). */
-	disconnect(): void {
-		this.connected = false;
-		if (this.socket) {
-			this.socket.destroy();
-			this.socket = null;
-		}
-		this.lineBuf = '';
-	}
+        // Unexpected disconnect after successful handshake.
+        if (wasConnected && this.disconnectCb) {
+          this.disconnectCb();
+        }
+      });
+    });
+  }
 
-	/** Send a signal to the PTY process (default SIGTERM). */
-	kill(signal?: string): void {
-		const msg: OutgoingMessage = { type: 'kill' };
-		if (signal) {
-			msg.signal = signal;
-		}
-		this.send(msg);
-	}
+  /** Gracefully disconnect from the holder (does NOT kill the holder). */
+  disconnect(): void {
+    this.connected = false;
+    if (this.socket) {
+      this.socket.destroy();
+      this.socket = null;
+    }
+    this.lineBuf = '';
+  }
 
-	/** Register callback for activity state changes. */
-	onActivity(cb: (active: boolean) => void): void {
-		this.activityCb = cb;
-	}
+  /** Send a signal to the PTY process (default SIGTERM). */
+  kill(signal?: string): void {
+    const msg: OutgoingMessage = { type: 'kill' };
+    if (signal) {
+      msg.signal = signal;
+    }
+    this.send(msg);
+  }
 
-	/** Register callback for CWD changes. */
-	onCwd(cb: (path: string) => void): void {
-		this.cwdCb = cb;
-	}
+  /** Register callback for activity state changes. */
+  onActivity(cb: (active: boolean) => void): void {
+    this.activityCb = cb;
+  }
 
-	/** Register callback for unexpected disconnect from holder. */
-	onDisconnect(cb: () => void): void {
-		this.disconnectCb = cb;
-	}
+  /** Register callback for CWD changes. */
+  onCwd(cb: (path: string) => void): void {
+    this.cwdCb = cb;
+  }
 
-	/** Register callback for PTY exit. */
-	onExit(cb: (code: null | number) => void): void {
-		this.exitCb = cb;
-	}
+  /** Register callback for unexpected disconnect from holder. */
+  onDisconnect(cb: () => void): void {
+    this.disconnectCb = cb;
+  }
 
-	/** Register callback for PTY output data. */
-	onOutput(cb: (data: string) => void): void {
-		this.outputCb = cb;
-	}
+  /** Register callback for PTY exit. */
+  onExit(cb: (code: null | number) => void): void {
+    this.exitCb = cb;
+  }
 
-	/** Resize the PTY. */
-	resize(cols: number, rows: number): void {
-		this.send({ cols, rows, type: 'resize' });
-	}
+  /** Register callback for PTY output data. */
+  onOutput(cb: (data: string) => void): void {
+    this.outputCb = cb;
+  }
 
-	/** Write data to the PTY stdin. */
-	write(data: string): void {
-		this.send({ data, type: 'input' });
-	}
+  /** Resize the PTY. */
+  resize(cols: number, rows: number): void {
+    this.send({ cols, rows, type: 'resize' });
+  }
 
-	// ── Private Helpers ────────────────────────────────────────────────
+  /** Write data to the PTY stdin. */
+  write(data: string): void {
+    this.send({ data, type: 'input' });
+  }
 
-	/** Dispatch a post-handshake message from the holder. */
-	private handleMessage(msg: IncomingMessage): void {
-		switch (msg.type) {
-			case 'activity':
-				if (this.activityCb) {
-					this.activityCb(msg.active);
-				}
-				break;
+  // ── Private Helpers ────────────────────────────────────────────────
 
-			case 'cwd':
-				if (this.cwdCb) {
-					this.cwdCb(msg.path);
-				}
-				break;
+  /** Dispatch a post-handshake message from the holder. */
+  private handleMessage(msg: IncomingMessage): void {
+    switch (msg.type) {
+      case 'activity':
+        if (this.activityCb) {
+          this.activityCb(msg.active);
+        }
+        break;
 
-			case 'exit':
-				if (this.exitCb) {
-					this.exitCb(msg.code);
-				}
-				break;
+      case 'cwd':
+        if (this.cwdCb) {
+          this.cwdCb(msg.path);
+        }
+        break;
 
-			case 'output':
-				if (this.outputCb) {
-					this.outputCb(msg.data);
-				}
-				break;
+      case 'exit':
+        if (this.exitCb) {
+          this.exitCb(msg.code);
+        }
+        break;
 
-			// info / scrollback after handshake are ignored.
-			default:
-				break;
-		}
-	}
+      case 'output':
+        if (this.outputCb) {
+          this.outputCb(msg.data);
+        }
+        break;
 
-	/** Send an ndjson message to the holder. */
-	private send(msg: OutgoingMessage): void {
-		if (!this.socket || !this.connected) {
-			return;
-		}
-		this.socket.write(`${JSON.stringify(msg)  }\n`);
-	}
+      // info / scrollback after handshake are ignored.
+      default:
+        break;
+    }
+  }
+
+  /** Send an ndjson message to the holder. */
+  private send(msg: OutgoingMessage): void {
+    if (!this.socket || !this.connected) {
+      return;
+    }
+    this.socket.write(`${JSON.stringify(msg)}\n`);
+  }
 }

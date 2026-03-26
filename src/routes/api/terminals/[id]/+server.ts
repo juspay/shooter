@@ -1,5 +1,6 @@
 import { validateAuth } from '$lib/modules/server/auth';
 import { ptyManager } from '$lib/modules/server/terminal/pty-manager.js';
+import { toErrorMessage } from '$lib/modules/server/utils/error';
 import { json } from '@sveltejs/kit';
 
 import type { RequestHandler } from './$types';
@@ -7,7 +8,9 @@ import type { RequestHandler } from './$types';
 // GET /api/terminals/:id — Get terminal details by ID
 export const GET: RequestHandler = ({ params, request }) => {
   const authError = validateAuth(request);
-  if (authError) {return authError;}
+  if (authError) {
+    return authError;
+  }
 
   try {
     const terminal = ptyManager.get(params.id);
@@ -25,7 +28,8 @@ export const GET: RequestHandler = ({ params, request }) => {
       exitCode: terminal.exitCode,
       exitedAt: terminal.exitedAt?.toISOString() ?? null,
       id: terminal.id,
-      lastOutput: terminal.scrollback.length > 0 ? terminal.scrollback[terminal.scrollback.length - 1] : null,
+      lastOutput:
+        terminal.scrollback.length > 0 ? terminal.scrollback[terminal.scrollback.length - 1] : null,
       pid: terminal.pid,
       sessionWs: `/ws/session/${terminal.id}`,
       status: terminal.status,
@@ -33,15 +37,17 @@ export const GET: RequestHandler = ({ params, request }) => {
       ws: `/ws/terminal/${terminal.id}`,
     });
   } catch (error) {
-    const err = error as Error;
-    return json({ details: err.message, error: 'Failed to get terminal' }, { status: 500 });
+    console.error('[terminals] Failed to get terminal:', toErrorMessage(error));
+    return json({ error: 'Failed to get terminal' }, { status: 500 });
   }
 };
 
 // DELETE /api/terminals/:id — Kill terminal by ID (SIGTERM)
 export const DELETE: RequestHandler = ({ params, request }) => {
   const authError = validateAuth(request);
-  if (authError) {return authError;}
+  if (authError) {
+    return authError;
+  }
 
   try {
     const terminal = ptyManager.get(params.id);
@@ -69,7 +75,7 @@ export const DELETE: RequestHandler = ({ params, request }) => {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    const err = error as Error;
-    return json({ details: err.message, error: 'Failed to kill terminal' }, { status: 500 });
+    console.error('[terminals] Failed to kill terminal:', toErrorMessage(error));
+    return json({ error: 'Failed to kill terminal' }, { status: 500 });
   }
 };

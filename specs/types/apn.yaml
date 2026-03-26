@@ -20,6 +20,10 @@ APN:
         type: string
         nullable: true
         description: Alternative message field
+      category:
+        type: string
+        nullable: true
+        description: Notification category for actionable notifications
       badge:
         type: number
         nullable: true
@@ -164,7 +168,7 @@ APN:
       headers:
         type: object
         description: Response headers from APNs
-        properties: {}
+        additionalProperties: true
       responseBody:
         type: string
         description: Raw response body from APNs

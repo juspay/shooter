@@ -56,7 +56,7 @@
     "format:check": "prettier --check .",
     "lint:fix:generated": "eslint './src/generated/**/*.{js,ts}' --fix",
     "format:generated": "prettier --write ./src/generated/*",
-    "gen:types": "npx type-crafter generate typescript-with-decoders ./specs/types/index.yaml ./src/generated/types SingleFile SingleFile && pnpm run lint:fix:generated && pnpm run format:generated",
+    "gen:types": "npx type-crafter generate typescript-with-decoders ./specs/types/index.yaml ./src/generated/types SingleFile SingleFile && bash scripts/fix-generated-types.sh && pnpm run format:generated",
     "setup": "node scripts/setup.cjs"
   },
   "devDependencies": {
@@ -70,7 +70,6 @@
     "@types/node": "^25.2.0",
     "@types/qrcode": "^1.5.6",
     "@types/ws": "^8.18.1",
-    "@vite-pwa/sveltekit": "^1.1.0",
     "eslint": "^9.39.2",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-perfectionist": "^5.4.0",

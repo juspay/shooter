@@ -14,21 +14,6 @@ Terminal:
       - orphaned
     description: Lifecycle status of a terminal session
 
-  ToolExecutionStatus:
-    type: string
-    enum:
-      - running
-      - done
-      - error
-    description: Current execution status of a tool invocation
-
-  ToolResultStatus:
-    type: string
-    enum:
-      - done
-      - error
-    description: Whether a tool completed successfully or with an error
-
   # ─── REST API Types ────────────────────────────────────────────────
 
   ManagedTerminalInfo:
@@ -195,353 +180,528 @@ Terminal:
 
   # Channel 1: Terminal I/O — ws://host/ws/terminal/:id
 
+  # Named variant types for WsTerminalMessage oneOf
+  WsTerminalInputMessage:
+    type: object
+    description: Send keyboard input to the terminal PTY
+    required:
+      - type
+      - data
+    properties:
+      type:
+        type: string
+        const: input
+      data:
+        type: string
+        description: Raw terminal input data (keystrokes, pasted text)
+
+  WsTerminalResizeMessage:
+    type: object
+    description: Resize the terminal PTY dimensions
+    required:
+      - type
+      - cols
+      - rows
+    properties:
+      type:
+        type: string
+        const: resize
+      cols:
+        type: number
+        minimum: 1
+        maximum: 500
+        description: New terminal width in columns (1-500)
+      rows:
+        type: number
+        minimum: 1
+        maximum: 200
+        description: New terminal height in rows (1-200)
+
+  WsTerminalSignalMessage:
+    type: object
+    description: Send a signal to the terminal process
+    required:
+      - type
+      - signal
+    properties:
+      type:
+        type: string
+        const: signal
+      signal:
+        type: string
+        enum:
+          - SIGINT
+          - SIGTERM
+          - SIGTSTP
+        description: Signal name to send to the terminal process
+
   WsTerminalMessage:
     description: Messages sent from client to server on the terminal I/O WebSocket channel
     oneOf:
-      - type: object
-        description: Send keyboard input to the terminal PTY
-        required:
-          - type
-          - data
-        properties:
-          type:
-            type: string
-            const: input
-          data:
-            type: string
-            description: Raw terminal input data (keystrokes, pasted text)
-      - type: object
-        description: Resize the terminal PTY dimensions
-        required:
-          - type
-          - cols
-          - rows
-        properties:
-          type:
-            type: string
-            const: resize
-          cols:
-            type: number
-            description: New terminal width in columns
-          rows:
-            type: number
-            description: New terminal height in rows
-      - type: object
-        description: Send a signal to the terminal process
-        required:
-          - type
-          - signal
-        properties:
-          type:
-            type: string
-            const: signal
-          signal:
-            type: string
-            description: Signal name to send (e.g. "SIGINT", "SIGTERM", "SIGTSTP")
+      - $ref: './specs/types/terminal.yaml#/Terminal/WsTerminalInputMessage'
+      - $ref: './specs/types/terminal.yaml#/Terminal/WsTerminalResizeMessage'
+      - $ref: './specs/types/terminal.yaml#/Terminal/WsTerminalSignalMessage'
+
+  # Named variant types for WsTerminalOutput oneOf
+  WsTerminalOutputData:
+    type: object
+    description: Terminal output data from the PTY
+    required:
+      - type
+      - data
+    properties:
+      type:
+        type: string
+        const: output
+      data:
+        type: string
+        description: Raw terminal output data
+
+  WsTerminalExitData:
+    type: object
+    description: Terminal process has exited
+    required:
+      - type
+    properties:
+      type:
+        type: string
+        const: exit
+      code:
+        type: number
+        nullable: true
+        description: Process exit code, or null if terminated by signal
+      signal:
+        type: string
+        nullable: true
+        description: Signal that caused the exit, or null if exited normally
+
+  WsTerminalScrollbackData:
+    type: object
+    description: Scrollback chunk sent on reconnection
+    required:
+      - type
+      - data
+      - chunk
+      - total
+    properties:
+      type:
+        type: string
+        const: scrollback
+      data:
+        type: string
+        description: Scrollback content for this chunk (max 50KB)
+      chunk:
+        type: number
+        description: 1-based chunk index
+      total:
+        type: number
+        description: Total number of scrollback chunks
+
+  WsTerminalErrorData:
+    type: object
+    description: Error message from the terminal server
+    required:
+      - type
+      - message
+    properties:
+      type:
+        type: string
+        const: error
+      message:
+        type: string
+        description: Human-readable error message
+
+  WsTerminalOutputDroppedData:
+    type: object
+    description: Notification that output was dropped due to backpressure
+    required:
+      - type
+      - bytes
+    properties:
+      type:
+        type: string
+        const: output-dropped
+      bytes:
+        type: number
+        description: Number of bytes that were dropped
+
+  WsTerminalActivityData:
+    type: object
+    description: Terminal activity state change (active/idle)
+    required:
+      - type
+      - active
+    properties:
+      type:
+        type: string
+        const: activity
+      active:
+        type: boolean
+        description: Whether the terminal is currently producing output
+
+  WsTerminalCwdData:
+    type: object
+    description: Current working directory change detected via OSC 7
+    required:
+      - type
+      - path
+    properties:
+      type:
+        type: string
+        const: cwd
+      path:
+        type: string
+        description: Absolute path of the new working directory
 
   WsTerminalOutput:
     description: Messages sent from server to client on the terminal I/O WebSocket channel
     oneOf:
-      - type: object
-        description: Terminal output data from the PTY
-        required:
-          - type
-          - data
-        properties:
-          type:
-            type: string
-            const: output
-          data:
-            type: string
-            description: Raw terminal output data
-      - type: object
-        description: Terminal process has exited
-        required:
-          - type
-          - code
-        properties:
-          type:
-            type: string
-            const: exit
-          code:
-            type: number
-            description: Process exit code
-          signal:
-            type: string
-            nullable: true
-            description: Signal that caused the exit, or null if exited normally
-      - type: object
-        description: Scrollback chunk sent on reconnection
-        required:
-          - type
-          - data
-          - chunk
-          - total
-        properties:
-          type:
-            type: string
-            const: scrollback
-          data:
-            type: string
-            description: Scrollback content for this chunk (max 50KB)
-          chunk:
-            type: number
-            description: 1-based chunk index
-          total:
-            type: number
-            description: Total number of scrollback chunks
-      - type: object
-        description: Error message from the terminal server
-        required:
-          - type
-          - message
-        properties:
-          type:
-            type: string
-            const: error
-          message:
-            type: string
-            description: Human-readable error message
+      - $ref: './specs/types/terminal.yaml#/Terminal/WsTerminalOutputData'
+      - $ref: './specs/types/terminal.yaml#/Terminal/WsTerminalExitData'
+      - $ref: './specs/types/terminal.yaml#/Terminal/WsTerminalScrollbackData'
+      - $ref: './specs/types/terminal.yaml#/Terminal/WsTerminalErrorData'
+      - $ref: './specs/types/terminal.yaml#/Terminal/WsTerminalOutputDroppedData'
+      - $ref: './specs/types/terminal.yaml#/Terminal/WsTerminalActivityData'
+      - $ref: './specs/types/terminal.yaml#/Terminal/WsTerminalCwdData'
 
   # Channel 2: Live Session — ws://host/ws/session/:id
+
+  # Named variant types for WsSessionMessage oneOf
+  WsSessionSubscribeMessage:
+    type: object
+    description: Subscribe to a live AI session stream
+    required:
+      - type
+      - sessionId
+    properties:
+      type:
+        type: string
+        const: subscribe
+      sessionId:
+        type: string
+        minLength: 1
+        description: Terminal ID used to find the associated session file for streaming
+
+  WsSessionSendInputMessage:
+    type: object
+    description: Send text input to the AI session (writes to PTY stdin with newline)
+    required:
+      - type
+      - text
+    properties:
+      type:
+        type: string
+        const: send-input
+      text:
+        type: string
+        minLength: 1
+        maxLength: 10240
+        description: Text to send to the AI session (max 10KB)
+
+  WsSessionCancelMessage:
+    type: object
+    description: Cancel the current AI operation (sends SIGINT to PTY)
+    required:
+      - type
+    properties:
+      type:
+        type: string
+        const: cancel
 
   WsSessionMessage:
     description: Messages sent from client to server on the live session WebSocket channel
     oneOf:
-      - type: object
-        description: Subscribe to a live AI session stream
-        required:
-          - type
-          - sessionId
-        properties:
-          type:
-            type: string
-            const: subscribe
-          sessionId:
-            type: string
-            description: Session ID to subscribe to
-      - type: object
-        description: Send text input to the AI session (writes to PTY stdin with newline)
-        required:
-          - type
-          - text
-        properties:
-          type:
-            type: string
-            const: send-input
-          text:
-            type: string
-            description: Text to send to the AI session
-      - type: object
-        description: Cancel the current AI operation (sends SIGINT to PTY)
-        required:
-          - type
-        properties:
-          type:
-            type: string
-            const: cancel
+      - $ref: './specs/types/terminal.yaml#/Terminal/WsSessionSubscribeMessage'
+      - $ref: './specs/types/terminal.yaml#/Terminal/WsSessionSendInputMessage'
+      - $ref: './specs/types/terminal.yaml#/Terminal/WsSessionCancelMessage'
+
+  # Named variant types for WsSessionOutput oneOf
+  SessionMessageItem:
+    type: object
+    description: A session message entry
+    additionalProperties: true
+
+  WsSessionHistoryOutput:
+    type: object
+    description: Full conversation history sent on connect
+    required:
+      - type
+      - messages
+    properties:
+      type:
+        type: string
+        const: history
+      messages:
+        type: array
+        description: All session messages from the beginning up to the current point
+        items:
+          $ref: './specs/types/terminal.yaml#/Terminal/SessionMessageItem'
+
+  ContentBlockItem:
+    type: object
+    description: A content block (text, code, etc.)
+    additionalProperties: true
+
+  WsSessionMessageOutput:
+    type: object
+    description: A new conversation message (user or assistant)
+    required:
+      - type
+      - role
+      - content
+      - timestamp
+    properties:
+      type:
+        type: string
+        const: message
+      role:
+        type: string
+        enum:
+          - user
+          - assistant
+        description: Who sent the message
+      content:
+        type: array
+        description: Message content blocks
+        items:
+          $ref: './specs/types/terminal.yaml#/Terminal/ContentBlockItem'
+      timestamp:
+        type: string
+        description: ISO 8601 timestamp of the message
+
+  WsSessionToolUseOutput:
+    type: object
+    description: A tool invocation by the AI assistant
+    required:
+      - type
+      - id
+      - name
+      - input
+      - status
+    properties:
+      type:
+        type: string
+        const: tool-use
+      id:
+        type: string
+        description: Unique tool use identifier for correlating with tool-result
+      name:
+        type: string
+        description: Tool name (e.g. "Edit", "Bash", "Read")
+      input:
+        type: object
+        description: Tool input parameters
+        additionalProperties: true
+      status:
+        type: string
+        const: running
+        description: Tool use is always emitted with running status
+
+  WsSessionToolResultOutput:
+    type: object
+    description: Result from a completed tool invocation
+    required:
+      - type
+      - id
+      - output
+      - isError
+      - status
+    properties:
+      type:
+        type: string
+        const: tool-result
+      id:
+        type: string
+        description: Tool use ID this result corresponds to
+      output:
+        type: string
+        description: Tool output text
+      isError:
+        type: boolean
+        description: Whether the tool execution resulted in an error
+      status:
+        type: string
+        const: done
+        description: Tool result is always emitted with done status
+
+  WsSessionThinkingOutput:
+    type: object
+    description: AI thinking/reasoning block (extended thinking)
+    required:
+      - type
+      - text
+    properties:
+      type:
+        type: string
+        const: thinking
+      text:
+        type: string
+        description: Thinking content text
+
+  WsSessionEndOutput:
+    type: object
+    description: Session has ended (process exited or session file closed)
+    required:
+      - type
+    properties:
+      type:
+        type: string
+        const: session-end
+
+  WsSessionErrorOutput:
+    type: object
+    description: Error message from the session handler
+    required:
+      - type
+      - message
+    properties:
+      type:
+        type: string
+        const: error
+      message:
+        type: string
+        description: Human-readable error message
 
   WsSessionOutput:
     description: Messages sent from server to client on the live session WebSocket channel
     oneOf:
-      - type: object
-        description: Full conversation history sent on connect
-        required:
-          - type
-          - messages
-        properties:
-          type:
-            type: string
-            const: history
-          messages:
-            type: array
-            description: All session messages from the beginning up to the current point
-            items:
-              type: object
-              description: A session message entry
-              additionalProperties: true
-      - type: object
-        description: A new conversation message (user or assistant)
-        required:
-          - type
-          - role
-          - content
-          - timestamp
-        properties:
-          type:
-            type: string
-            const: message
-          role:
-            type: string
-            enum:
-              - user
-              - assistant
-            description: Who sent the message
-          content:
-            type: array
-            description: Message content blocks
-            items:
-              type: object
-              description: A content block (text, code, etc.)
-              additionalProperties: true
-          timestamp:
-            type: string
-            description: ISO 8601 timestamp of the message
-      - type: object
-        description: A tool invocation by the AI assistant
-        required:
-          - type
-          - name
-          - input
-          - status
-        properties:
-          type:
-            type: string
-            const: tool-use
-          name:
-            type: string
-            description: Tool name (e.g. "Edit", "Bash", "Read")
-          input:
-            type: object
-            description: Tool input parameters
-            additionalProperties: true
-          status:
-            $ref: './specs/types/terminal.yaml#/Terminal/ToolExecutionStatus'
-            description: Current execution status of the tool
-      - type: object
-        description: Result from a completed tool invocation
-        required:
-          - type
-          - id
-          - output
-          - status
-        properties:
-          type:
-            type: string
-            const: tool-result
-          id:
-            type: string
-            description: Tool use ID this result corresponds to
-          output:
-            type: string
-            description: Tool output text
-          status:
-            $ref: './specs/types/terminal.yaml#/Terminal/ToolResultStatus'
-            description: Whether the tool completed successfully
-      - type: object
-        description: AI thinking/reasoning block (extended thinking)
-        required:
-          - type
-          - text
-        properties:
-          type:
-            type: string
-            const: thinking
-          text:
-            type: string
-            description: Thinking content text
-      - type: object
-        description: Session has ended (process exited or session file closed)
-        required:
-          - type
-        properties:
-          type:
-            type: string
-            const: session-end
+      - $ref: './specs/types/terminal.yaml#/Terminal/WsSessionHistoryOutput'
+      - $ref: './specs/types/terminal.yaml#/Terminal/WsSessionMessageOutput'
+      - $ref: './specs/types/terminal.yaml#/Terminal/WsSessionToolUseOutput'
+      - $ref: './specs/types/terminal.yaml#/Terminal/WsSessionToolResultOutput'
+      - $ref: './specs/types/terminal.yaml#/Terminal/WsSessionThinkingOutput'
+      - $ref: './specs/types/terminal.yaml#/Terminal/WsSessionEndOutput'
+      - $ref: './specs/types/terminal.yaml#/Terminal/WsSessionErrorOutput'
 
   # Channel 3: Global Events — ws://host/ws/events
+
+  # Named variant types for WsEvent oneOf
+  WsSessionStartedEvent:
+    type: object
+    description: A new AI session has started
+    required:
+      - type
+      - sessionId
+      - project
+      - source
+    properties:
+      type:
+        type: string
+        const: session-started
+      sessionId:
+        type: string
+        description: Unique session identifier
+      project:
+        type: string
+        description: Project name or path
+      source:
+        $ref: './specs/types/sessions.yaml#/Sessions/SessionSource'
+        description: Source tool that started the session
+
+  WsSessionEndedEvent:
+    type: object
+    description: An AI session has ended
+    required:
+      - type
+      - sessionId
+      - summary
+    properties:
+      type:
+        type: string
+        const: session-ended
+      sessionId:
+        type: string
+        description: Session identifier that ended
+      summary:
+        type: string
+        description: Summary of what happened in the session
+
+  WsPermissionRequestedEvent:
+    type: object
+    description: A permission request is awaiting approval
+    required:
+      - type
+      - requestId
+      - tool
+      - input
+    properties:
+      type:
+        type: string
+        const: permission-requested
+      requestId:
+        type: string
+        description: Unique request identifier for the permission flow
+      tool:
+        type: string
+        description: Tool requesting permission (e.g. "Bash", "Edit")
+      input:
+        type: object
+        description: Tool input that requires approval
+        additionalProperties: true
+
+  WsPermissionResolvedEvent:
+    type: object
+    description: A permission request has been resolved
+    required:
+      - type
+      - requestId
+      - decision
+    properties:
+      type:
+        type: string
+        const: permission-resolved
+      requestId:
+        type: string
+        description: Request identifier that was resolved
+      decision:
+        $ref: './specs/types/notification.yaml#/Notification/PermissionDecision'
+        description: Whether the permission was allowed or denied
+
+  WsTerminalCreatedEvent:
+    type: object
+    description: A new managed terminal has been created
+    required:
+      - type
+      - terminalId
+      - command
+    properties:
+      type:
+        type: string
+        const: terminal-created
+      terminalId:
+        type: string
+        description: Unique terminal identifier
+      command:
+        type: string
+        description: Command that was launched
+
+  WsTerminalExitedEvent:
+    type: object
+    description: A managed terminal process has exited
+    required:
+      - type
+      - terminalId
+    properties:
+      type:
+        type: string
+        const: terminal-exited
+      terminalId:
+        type: string
+        description: Terminal identifier that exited
+      code:
+        type: number
+        nullable: true
+        description: Process exit code, or null if terminated by signal
 
   WsEvent:
     description: Broadcast events sent from server to all connected clients on the global events channel
     oneOf:
-      - type: object
-        description: A new AI session has started
-        required:
-          - type
-          - sessionId
-          - project
-          - source
-        properties:
-          type:
-            type: string
-            const: session-started
-          sessionId:
-            type: string
-            description: Unique session identifier
-          project:
-            type: string
-            description: Project name or path
-          source:
-            type: string
-            description: Source tool that started the session (e.g. "claude-code", "opencode")
-      - type: object
-        description: An AI session has ended
-        required:
-          - type
-          - sessionId
-        properties:
-          type:
-            type: string
-            const: session-ended
-          sessionId:
-            type: string
-            description: Session identifier that ended
-          summary:
-            type: string
-            description: Optional summary of what happened in the session
-      - type: object
-        description: A permission request is awaiting approval
-        required:
-          - type
-          - requestId
-          - tool
-          - input
-        properties:
-          type:
-            type: string
-            const: permission-requested
-          requestId:
-            type: string
-            description: Unique request identifier for the permission flow
-          tool:
-            type: string
-            description: Tool requesting permission (e.g. "Bash", "Edit")
-          input:
-            type: object
-            description: Tool input that requires approval
-            additionalProperties: true
-      - type: object
-        description: A new managed terminal has been created
-        required:
-          - type
-          - terminalId
-          - command
-        properties:
-          type:
-            type: string
-            const: terminal-created
-          terminalId:
-            type: string
-            description: Unique terminal identifier
-          command:
-            type: string
-            description: Command that was launched
-      - type: object
-        description: A managed terminal process has exited
-        required:
-          - type
-          - terminalId
-          - code
-        properties:
-          type:
-            type: string
-            const: terminal-exited
-          terminalId:
-            type: string
-            description: Terminal identifier that exited
-          code:
-            type: number
-            description: Process exit code
+      - $ref: './specs/types/terminal.yaml#/Terminal/WsSessionStartedEvent'
+      - $ref: './specs/types/terminal.yaml#/Terminal/WsSessionEndedEvent'
+      - $ref: './specs/types/terminal.yaml#/Terminal/WsPermissionRequestedEvent'
+      - $ref: './specs/types/terminal.yaml#/Terminal/WsPermissionResolvedEvent'
+      - $ref: './specs/types/terminal.yaml#/Terminal/WsTerminalCreatedEvent'
+      - $ref: './specs/types/terminal.yaml#/Terminal/WsTerminalExitedEvent'
 
   # ─── SQLite Persistence Types ─────────────────────────────────────
 
@@ -613,134 +773,163 @@ Terminal:
 
   # ─── PTY Holder Protocol Types ────────────────────────────────────
 
+  # Named variant types for HolderServerMessage oneOf
+  HolderInputMessage:
+    type: object
+    description: Write data to PTY stdin
+    required:
+      - type
+      - data
+    properties:
+      type:
+        type: string
+        const: input
+      data:
+        type: string
+        description: Raw input data to write to PTY
+
+  HolderResizeMessage:
+    type: object
+    description: Resize the PTY dimensions
+    required:
+      - type
+      - cols
+      - rows
+    properties:
+      type:
+        type: string
+        const: resize
+      cols:
+        type: number
+        description: New width in columns
+      rows:
+        type: number
+        description: New height in rows
+
+  HolderKillMessage:
+    type: object
+    description: Send a signal to the PTY process
+    required:
+      - type
+    properties:
+      type:
+        type: string
+        const: kill
+      signal:
+        type: string
+        description: Signal name to send (default SIGTERM)
+
   HolderServerMessage:
     description: Messages sent from server to PTY holder over Unix socket (ndjson)
     oneOf:
-      - type: object
-        description: Write data to PTY stdin
-        required:
-          - type
-          - data
-        properties:
-          type:
-            type: string
-            const: input
-          data:
-            type: string
-            description: Raw input data to write to PTY
-      - type: object
-        description: Resize the PTY dimensions
-        required:
-          - type
-          - cols
-          - rows
-        properties:
-          type:
-            type: string
-            const: resize
-          cols:
-            type: number
-            description: New width in columns
-          rows:
-            type: number
-            description: New height in rows
-      - type: object
-        description: Send a signal to the PTY process
-        required:
-          - type
-        properties:
-          type:
-            type: string
-            const: kill
-          signal:
-            type: string
-            description: Signal name to send (default SIGTERM)
+      - $ref: './specs/types/terminal.yaml#/Terminal/HolderInputMessage'
+      - $ref: './specs/types/terminal.yaml#/Terminal/HolderResizeMessage'
+      - $ref: './specs/types/terminal.yaml#/Terminal/HolderKillMessage'
+
+  # Named variant types for HolderClientMessage oneOf
+  HolderInfoMessage:
+    type: object
+    description: Current holder state sent on connection
+    required:
+      - type
+      - pid
+      - exited
+    properties:
+      type:
+        type: string
+        const: info
+      pid:
+        type: number
+        description: PTY child process ID
+      exited:
+        type: boolean
+        description: Whether the PTY process has exited
+      exitCode:
+        type: number
+        nullable: true
+        description: Exit code if process has exited
+
+  HolderScrollbackMessage:
+    type: object
+    description: Full scrollback replay sent on connection
+    required:
+      - type
+      - data
+    properties:
+      type:
+        type: string
+        const: scrollback
+      data:
+        type: string
+        description: Full scrollback buffer content
+
+  HolderOutputMessage:
+    type: object
+    description: PTY output chunk during normal operation
+    required:
+      - type
+      - data
+    properties:
+      type:
+        type: string
+        const: output
+      data:
+        type: string
+        description: Raw PTY output data
+
+  HolderExitMessage:
+    type: object
+    description: PTY process has exited
+    required:
+      - type
+      - code
+    properties:
+      type:
+        type: string
+        const: exit
+      code:
+        type: number
+        nullable: true
+        description: Process exit code
+      signal:
+        type: string
+        nullable: true
+        description: Signal that caused exit
+
+  HolderActivityMessage:
+    type: object
+    description: Terminal activity state change (active/idle)
+    required:
+      - type
+      - active
+    properties:
+      type:
+        type: string
+        const: activity
+      active:
+        type: boolean
+        description: Whether the terminal is currently producing output
+
+  HolderCwdMessage:
+    type: object
+    description: Current working directory change detected via OSC 7
+    required:
+      - type
+      - path
+    properties:
+      type:
+        type: string
+        const: cwd
+      path:
+        type: string
+        description: Absolute path of the new working directory
 
   HolderClientMessage:
     description: Messages sent from PTY holder to server over Unix socket (ndjson)
     oneOf:
-      - type: object
-        description: Current holder state sent on connection
-        required:
-          - type
-          - pid
-          - exited
-        properties:
-          type:
-            type: string
-            const: info
-          pid:
-            type: number
-            description: PTY child process ID
-          exited:
-            type: boolean
-            description: Whether the PTY process has exited
-          exitCode:
-            type: number
-            nullable: true
-            description: Exit code if process has exited
-      - type: object
-        description: Full scrollback replay sent on connection
-        required:
-          - type
-          - data
-        properties:
-          type:
-            type: string
-            const: scrollback
-          data:
-            type: string
-            description: Full scrollback buffer content
-      - type: object
-        description: PTY output chunk during normal operation
-        required:
-          - type
-          - data
-        properties:
-          type:
-            type: string
-            const: output
-          data:
-            type: string
-            description: Raw PTY output data
-      - type: object
-        description: PTY process has exited
-        required:
-          - type
-          - code
-        properties:
-          type:
-            type: string
-            const: exit
-          code:
-            type: number
-            nullable: true
-            description: Process exit code
-          signal:
-            type: string
-            nullable: true
-            description: Signal that caused exit
-      - type: object
-        description: Terminal activity state change (active/idle)
-        required:
-          - type
-          - active
-        properties:
-          type:
-            type: string
-            const: activity
-          active:
-            type: boolean
-            description: Whether the terminal is currently producing output
-      - type: object
-        description: Current working directory change detected via OSC 7
-        required:
-          - type
-          - path
-        properties:
-          type:
-            type: string
-            const: cwd
-          path:
-            type: string
-            description: Absolute path of the new working directory
+      - $ref: './specs/types/terminal.yaml#/Terminal/HolderInfoMessage'
+      - $ref: './specs/types/terminal.yaml#/Terminal/HolderScrollbackMessage'
+      - $ref: './specs/types/terminal.yaml#/Terminal/HolderOutputMessage'
+      - $ref: './specs/types/terminal.yaml#/Terminal/HolderExitMessage'
+      - $ref: './specs/types/terminal.yaml#/Terminal/HolderActivityMessage'
+      - $ref: './specs/types/terminal.yaml#/Terminal/HolderCwdMessage'

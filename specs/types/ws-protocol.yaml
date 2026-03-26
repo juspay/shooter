@@ -1,0 +1,666 @@
+# WebSocket Protocol Type Definitions
+# Non-top file - referenced from index.yaml
+# Contains all data types for the three WebSocket protocol channels:
+#   1. Terminal I/O   — /ws/terminal/:id (raw PTY stream)
+#   2. Session Stream — /ws/session/:id  (structured AI conversation)
+#   3. Global Events  — /ws/events       (broadcast event bus)
+# Also includes the ticket-store Ticket type used for WS auth.
+#
+# NOTE: PtyManagerLike, SessionWatcherLike, ManagedTerminal, and
+# ConnectionState are behavioral/runtime interfaces — NOT data transfer
+# types — so they are intentionally excluded from this spec.
+
+WsProtocol:
+  # ═══════════════════════════════════════════════════════════════════════
+  # Shared Enums
+  # ═══════════════════════════════════════════════════════════════════════
+
+  TerminalSignal:
+    type: string
+    enum:
+      - SIGINT
+      - SIGTERM
+      - SIGTSTP
+    description: Signals that can be sent to a terminal process
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # Channel 1: Terminal I/O — /ws/terminal/:id
+  # Source: terminal-handler.ts
+  # ═══════════════════════════════════════════════════════════════════════
+
+  # ── Named variant types for TerminalClientMessage oneOf ─────────────
+
+  TerminalInputMessage:
+    type: object
+    description: Send keyboard input to the terminal PTY
+    required:
+      - type
+      - data
+    properties:
+      type:
+        type: string
+        const: input
+      data:
+        type: string
+        description: Raw terminal input data (keystrokes, pasted text)
+
+  TerminalResizeMessage:
+    type: object
+    description: Resize the terminal PTY dimensions
+    required:
+      - type
+      - cols
+      - rows
+    properties:
+      type:
+        type: string
+        const: resize
+      cols:
+        type: number
+        minimum: 1
+        maximum: 500
+        description: New terminal width in columns (1-500)
+      rows:
+        type: number
+        minimum: 1
+        maximum: 200
+        description: New terminal height in rows (1-200)
+
+  TerminalSignalMessage:
+    type: object
+    description: Send a signal to the terminal process
+    required:
+      - type
+      - signal
+    properties:
+      type:
+        type: string
+        const: signal
+      signal:
+        $ref: './specs/types/ws-protocol.yaml#/WsProtocol/TerminalSignal'
+        description: Signal name to send to the PTY process
+
+  # ── Client → Server ──────────────────────────────────────────────────
+
+  TerminalClientMessage:
+    description: Inbound messages from the client on the terminal I/O channel
+    oneOf:
+      - $ref: './specs/types/ws-protocol.yaml#/WsProtocol/TerminalInputMessage'
+      - $ref: './specs/types/ws-protocol.yaml#/WsProtocol/TerminalResizeMessage'
+      - $ref: './specs/types/ws-protocol.yaml#/WsProtocol/TerminalSignalMessage'
+
+  # ── Named variant types for TerminalServerMessage oneOf ─────────────
+
+  TerminalOutputMessage:
+    type: object
+    description: Terminal output data from the PTY
+    required:
+      - type
+      - data
+    properties:
+      type:
+        type: string
+        const: output
+      data:
+        type: string
+        description: Raw terminal output data
+
+  TerminalOutputDroppedMessage:
+    type: object
+    description: Notification that output was dropped due to backpressure
+    required:
+      - type
+      - bytes
+    properties:
+      type:
+        type: string
+        const: output-dropped
+      bytes:
+        type: number
+        description: Number of bytes that were dropped
+
+  TerminalScrollbackMessage:
+    type: object
+    description: Scrollback chunk sent on reconnection
+    required:
+      - type
+      - data
+      - chunk
+      - total
+    properties:
+      type:
+        type: string
+        const: scrollback
+      data:
+        type: string
+        description: Scrollback content for this chunk
+      chunk:
+        type: number
+        description: 1-based chunk index
+      total:
+        type: number
+        description: Total number of scrollback chunks
+
+  TerminalExitMessage:
+    type: object
+    description: Terminal process has exited
+    required:
+      - type
+    properties:
+      type:
+        type: string
+        const: exit
+      code:
+        type: number
+        nullable: true
+        description: Process exit code, or null if unknown
+      signal:
+        type: string
+        nullable: true
+        description: Signal that caused the exit, or null if exited normally
+
+  TerminalErrorMessage:
+    type: object
+    description: Error message from the terminal server
+    required:
+      - type
+      - message
+    properties:
+      type:
+        type: string
+        const: error
+      message:
+        type: string
+        description: Human-readable error message
+
+  # ── Server → Client ──────────────────────────────────────────────────
+
+  TerminalServerMessage:
+    description: Outbound messages to the client on the terminal I/O channel
+    oneOf:
+      - $ref: './specs/types/ws-protocol.yaml#/WsProtocol/TerminalOutputMessage'
+      - $ref: './specs/types/ws-protocol.yaml#/WsProtocol/TerminalOutputDroppedMessage'
+      - $ref: './specs/types/ws-protocol.yaml#/WsProtocol/TerminalScrollbackMessage'
+      - $ref: './specs/types/ws-protocol.yaml#/WsProtocol/TerminalExitMessage'
+      - $ref: './specs/types/ws-protocol.yaml#/WsProtocol/TerminalErrorMessage'
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # Channel 2: Session Stream — /ws/session/:id
+  # Source: session-handler.ts
+  # ═══════════════════════════════════════════════════════════════════════
+
+  # ── Shared sub-types ─────────────────────────────────────────────────
+
+  TextContentBlock:
+    type: object
+    description: Content block in the live 'message' payload
+    required:
+      - type
+      - content
+    properties:
+      type:
+        type: string
+        const: text
+      content:
+        type: string
+        description: Text content of the block
+
+  # ── Named variant types for HistoryPart oneOf ───────────────────────
+
+  HistoryTextPart:
+    type: object
+    description: Plain text content
+    required:
+      - type
+      - content
+    properties:
+      type:
+        type: string
+        const: text
+      content:
+        type: string
+        description: Text content
+
+  HistoryThinkingPart:
+    type: object
+    description: AI thinking/reasoning content
+    required:
+      - type
+      - content
+    properties:
+      type:
+        type: string
+        const: thinking
+      content:
+        type: string
+        description: Thinking content
+
+  HistoryToolUsePart:
+    type: object
+    description: A tool invocation by the AI
+    required:
+      - type
+      - id
+      - toolName
+      - input
+    properties:
+      type:
+        type: string
+        const: tool_use
+      id:
+        type: string
+        description: Unique tool use identifier
+      toolName:
+        type: string
+        description: Name of the tool being invoked
+      input:
+        type: object
+        description: Tool input parameters
+        additionalProperties: true
+
+  HistoryToolResultPart:
+    type: object
+    description: Result from a completed tool invocation
+    required:
+      - type
+      - toolUseId
+      - output
+      - isError
+    properties:
+      type:
+        type: string
+        const: tool_result
+      toolUseId:
+        type: string
+        description: Tool use ID this result corresponds to
+      output:
+        type: string
+        description: Tool output text
+      isError:
+        type: boolean
+        description: Whether the tool execution resulted in an error
+
+  HistoryPart:
+    description: A single part within a history message — discriminated union on type
+    oneOf:
+      - $ref: './specs/types/ws-protocol.yaml#/WsProtocol/HistoryTextPart'
+      - $ref: './specs/types/ws-protocol.yaml#/WsProtocol/HistoryThinkingPart'
+      - $ref: './specs/types/ws-protocol.yaml#/WsProtocol/HistoryToolUsePart'
+      - $ref: './specs/types/ws-protocol.yaml#/WsProtocol/HistoryToolResultPart'
+
+  HistoryMessage:
+    type: object
+    description: A message in the history payload sent on session connect
+    required:
+      - id
+      - role
+      - timestamp
+      - content
+    properties:
+      id:
+        type: string
+        description: Unique message identifier
+      role:
+        $ref: './specs/types/sessions.yaml#/Sessions/MessageRole'
+        description: Who sent the message
+      timestamp:
+        type: string
+        description: ISO 8601 timestamp of the message
+      content:
+        type: array
+        description: Array of content parts making up the message
+        items:
+          $ref: './specs/types/ws-protocol.yaml#/WsProtocol/HistoryPart'
+
+  # ── Named variant types for SessionClientMessage oneOf ──────────────
+
+  SessionSubscribeMessage:
+    type: object
+    description: Subscribe to a live AI session stream
+    required:
+      - type
+      - sessionId
+    properties:
+      type:
+        type: string
+        const: subscribe
+      sessionId:
+        type: string
+        minLength: 1
+        description: Terminal ID used to find the associated session file for streaming
+
+  SessionSendInputMessage:
+    type: object
+    description: Send text input to the AI session (writes to PTY stdin with newline)
+    required:
+      - type
+      - text
+    properties:
+      type:
+        type: string
+        const: send-input
+      text:
+        type: string
+        minLength: 1
+        maxLength: 10240
+        description: Text to send to the AI session (max 10KB)
+
+  SessionCancelMessage:
+    type: object
+    description: Cancel the current AI operation (sends SIGINT to PTY)
+    required:
+      - type
+    properties:
+      type:
+        type: string
+        const: cancel
+
+  # ── Client → Server ──────────────────────────────────────────────────
+
+  SessionClientMessage:
+    description: Inbound messages from the client on the session stream channel
+    oneOf:
+      - $ref: './specs/types/ws-protocol.yaml#/WsProtocol/SessionSubscribeMessage'
+      - $ref: './specs/types/ws-protocol.yaml#/WsProtocol/SessionSendInputMessage'
+      - $ref: './specs/types/ws-protocol.yaml#/WsProtocol/SessionCancelMessage'
+
+  # ── Named variant types for SessionServerMessage oneOf ──────────────
+
+  SessionHistoryMessage:
+    type: object
+    description: Full conversation history sent on connect
+    required:
+      - type
+      - messages
+    properties:
+      type:
+        type: string
+        const: history
+      messages:
+        type: array
+        description: All session messages from the beginning up to the current point
+        items:
+          $ref: './specs/types/ws-protocol.yaml#/WsProtocol/HistoryMessage'
+
+  SessionNewMessage:
+    type: object
+    description: A new conversation message (user or assistant)
+    required:
+      - type
+      - role
+      - content
+      - timestamp
+    properties:
+      type:
+        type: string
+        const: message
+      role:
+        $ref: './specs/types/sessions.yaml#/Sessions/MessageRole'
+        description: Who sent the message
+      content:
+        type: array
+        description: Message content blocks
+        items:
+          $ref: './specs/types/ws-protocol.yaml#/WsProtocol/TextContentBlock'
+      timestamp:
+        type: string
+        description: ISO 8601 timestamp of the message
+
+  SessionToolUseMessage:
+    type: object
+    description: A tool invocation by the AI assistant
+    required:
+      - type
+      - id
+      - name
+      - input
+      - status
+    properties:
+      type:
+        type: string
+        const: tool-use
+      id:
+        type: string
+        description: Unique tool use identifier
+      name:
+        type: string
+        description: Tool name (e.g. "Edit", "Bash", "Read")
+      input:
+        type: object
+        description: Tool input parameters
+        additionalProperties: true
+      status:
+        type: string
+        const: running
+        description: Execution status (always 'running' for tool-use messages)
+
+  SessionToolResultMessage:
+    type: object
+    description: Result from a completed tool invocation
+    required:
+      - type
+      - id
+      - output
+      - isError
+      - status
+    properties:
+      type:
+        type: string
+        const: tool-result
+      id:
+        type: string
+        description: Tool use ID this result corresponds to
+      output:
+        type: string
+        description: Tool output text
+      isError:
+        type: boolean
+        description: Whether the tool execution resulted in an error
+      status:
+        type: string
+        const: done
+        description: Execution status (always 'done' for tool-result messages)
+
+  SessionThinkingMessage:
+    type: object
+    description: AI thinking/reasoning block (extended thinking)
+    required:
+      - type
+      - text
+    properties:
+      type:
+        type: string
+        const: thinking
+      text:
+        type: string
+        description: Thinking content text
+
+  SessionEndMessage:
+    type: object
+    description: Session has ended (process exited or session file closed)
+    required:
+      - type
+    properties:
+      type:
+        type: string
+        const: session-end
+
+  SessionErrorMessage:
+    type: object
+    description: Error message from the session handler
+    required:
+      - type
+      - message
+    properties:
+      type:
+        type: string
+        const: error
+      message:
+        type: string
+        description: Human-readable error message
+
+  # ── Server → Client ──────────────────────────────────────────────────
+
+  SessionServerMessage:
+    description: Outbound messages to the client on the session stream channel
+    oneOf:
+      - $ref: './specs/types/ws-protocol.yaml#/WsProtocol/SessionHistoryMessage'
+      - $ref: './specs/types/ws-protocol.yaml#/WsProtocol/SessionNewMessage'
+      - $ref: './specs/types/ws-protocol.yaml#/WsProtocol/SessionToolUseMessage'
+      - $ref: './specs/types/ws-protocol.yaml#/WsProtocol/SessionToolResultMessage'
+      - $ref: './specs/types/ws-protocol.yaml#/WsProtocol/SessionThinkingMessage'
+      - $ref: './specs/types/ws-protocol.yaml#/WsProtocol/SessionEndMessage'
+      - $ref: './specs/types/ws-protocol.yaml#/WsProtocol/SessionErrorMessage'
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # Channel 3: Global Events — /ws/events
+  # Source: events-handler.ts
+  # ═══════════════════════════════════════════════════════════════════════
+
+  # ── Named variant types for ShooterEvent oneOf ──────────────────────
+
+  EventTerminalCreated:
+    type: object
+    description: A new managed terminal has been created
+    required:
+      - type
+      - terminalId
+      - command
+    properties:
+      type:
+        type: string
+        const: terminal-created
+      terminalId:
+        type: string
+        description: Unique terminal identifier
+      command:
+        type: string
+        description: Command that was launched
+
+  EventTerminalExited:
+    type: object
+    description: A managed terminal process has exited
+    required:
+      - type
+      - terminalId
+    properties:
+      type:
+        type: string
+        const: terminal-exited
+      terminalId:
+        type: string
+        description: Terminal identifier that exited
+      code:
+        type: number
+        nullable: true
+        description: Process exit code, or null if unknown
+
+  EventPermissionRequested:
+    type: object
+    description: A permission request is awaiting approval
+    required:
+      - type
+      - requestId
+      - tool
+      - input
+    properties:
+      type:
+        type: string
+        const: permission-requested
+      requestId:
+        type: string
+        description: Unique request identifier for the permission flow
+      tool:
+        type: string
+        description: Tool requesting permission (e.g. "Bash", "Edit")
+      input:
+        type: object
+        description: Tool input that requires approval
+        additionalProperties: true
+
+  EventPermissionResolved:
+    type: object
+    description: A permission request has been resolved
+    required:
+      - type
+      - requestId
+      - decision
+    properties:
+      type:
+        type: string
+        const: permission-resolved
+      requestId:
+        type: string
+        description: Request identifier that was resolved
+      decision:
+        $ref: './specs/types/notification.yaml#/Notification/PermissionDecision'
+        description: Whether the permission was allowed or denied
+
+  EventSessionStarted:
+    type: object
+    description: A new AI session has started
+    required:
+      - type
+      - sessionId
+      - project
+      - source
+    properties:
+      type:
+        type: string
+        const: session-started
+      sessionId:
+        type: string
+        description: Unique session identifier
+      project:
+        type: string
+        description: Project name or path
+      source:
+        $ref: './specs/types/sessions.yaml#/Sessions/SessionSource'
+        description: Source tool that started the session
+
+  EventSessionEnded:
+    type: object
+    description: An AI session has ended
+    required:
+      - type
+      - sessionId
+      - summary
+    properties:
+      type:
+        type: string
+        const: session-ended
+      sessionId:
+        type: string
+        description: Session identifier that ended
+      summary:
+        type: string
+        description: Summary of what happened in the session
+
+  ShooterEvent:
+    description: Broadcast events sent from server to all connected clients on the global events channel
+    oneOf:
+      - $ref: './specs/types/ws-protocol.yaml#/WsProtocol/EventTerminalCreated'
+      - $ref: './specs/types/ws-protocol.yaml#/WsProtocol/EventTerminalExited'
+      - $ref: './specs/types/ws-protocol.yaml#/WsProtocol/EventPermissionRequested'
+      - $ref: './specs/types/ws-protocol.yaml#/WsProtocol/EventPermissionResolved'
+      - $ref: './specs/types/ws-protocol.yaml#/WsProtocol/EventSessionStarted'
+      - $ref: './specs/types/ws-protocol.yaml#/WsProtocol/EventSessionEnded'
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # WebSocket Auth — Ticket Store
+  # Source: ticket-store.ts
+  # ═══════════════════════════════════════════════════════════════════════
+
+  Ticket:
+    type: object
+    description: Short-lived single-use ticket for authenticating WebSocket upgrade requests
+    required:
+      - createdAt
+      - used
+    properties:
+      createdAt:
+        type: number
+        description: Unix timestamp (ms) when the ticket was created
+      used:
+        type: boolean
+        description: Whether the ticket has been consumed (single-use)

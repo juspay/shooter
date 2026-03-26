@@ -62,12 +62,14 @@ Android device action (Allow/Deny)
 There are two possible approaches:
 
 **Option A: Keep APNs direct + add FCM for Android only (recommended)**
+
 - Existing iOS APNs path stays unchanged (proven, working)
 - New FCM path added only for Android devices
 - Server maintains two sender modules side by side
 - No Firebase SDK needed in the iOS app
 
 **Option B: Route everything through FCM (both iOS and Android)**
+
 - FCM can proxy iOS notifications through APNs automatically
 - Simplifies server to a single sender API
 - Requires adding Firebase SDK to the iOS app and uploading the APNs key to Firebase console
@@ -117,7 +119,7 @@ dependencies {
 pnpm add firebase-admin
 ```
 
-The `firebase-admin` package (latest: 13.7.0) provides `getMessaging().send()` for the FCM HTTP v1 API. It handles OAuth 2.0 token management automatically.
+The `firebase-admin` package (use a current stable version) provides `getMessaging().send()` for the FCM HTTP v1 API. It handles OAuth 2.0 token management automatically.
 
 ### Environment Variables (new, for server)
 
@@ -180,13 +182,13 @@ FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
 
 ### Key Differences from APNs
 
-| Aspect | APNs (iOS) | FCM (Android) |
-|--------|-----------|---------------|
-| Token format | Hex-encoded binary (64 chars) | Opaque string (~163 chars) |
-| Token source | `didRegisterForRemoteNotificationsWithDeviceToken` | `FirebaseMessagingService.onNewToken()` |
-| On-demand retrieval | Not directly available | `FirebaseMessaging.getInstance().token` |
-| Token rotation | Rare (app reinstall, device restore) | More frequent (security rotation, app data clear) |
-| Registration call | `UIApplication.shared.registerForRemoteNotifications()` | Automatic on app start (Firebase SDK handles it) |
+| Aspect              | APNs (iOS)                                              | FCM (Android)                                     |
+| ------------------- | ------------------------------------------------------- | ------------------------------------------------- |
+| Token format        | Hex-encoded binary (64 chars)                           | Opaque string (~163 chars)                        |
+| Token source        | `didRegisterForRemoteNotificationsWithDeviceToken`      | `FirebaseMessagingService.onNewToken()`           |
+| On-demand retrieval | Not directly available                                  | `FirebaseMessaging.getInstance().token`           |
+| Token rotation      | Rare (app reinstall, device restore)                    | More frequent (security rotation, app data clear) |
+| Registration call   | `UIApplication.shared.registerForRemoteNotifications()` | Automatic on app start (Firebase SDK handles it)  |
 
 ---
 
@@ -231,7 +233,7 @@ FCM has two fundamentally different message types. The choice matters for intera
 }
 ```
 
-- Always delivered to `onMessageReceived()` regardless of app state (foreground/background)
+- Delivered to `onMessageReceived()` in foreground and background, but **not guaranteed** if the user has force-stopped the app or OEM battery optimization has killed the process
 - App is responsible for creating and displaying the notification
 - **Can** add custom action buttons, RemoteInput, etc.
 - Full control over notification appearance and behavior
@@ -242,6 +244,7 @@ FCM has two fundamentally different message types. The choice matters for intera
 Use **data-only messages** for all notifications. This matches the iOS approach where the `category` field controls what actions appear, and gives the Android app full control over notification construction.
 
 The server should send:
+
 - **Permission requests**: data message with `category: "CLAUDE_PERMISSION"` and `requestId`
 - **Informational notifications**: data message with notification content (title, body, type, metadata)
 
@@ -424,12 +427,12 @@ object NotificationChannels {
 
 ### Importance Levels Mapping
 
-| iOS Sound/Alert Behavior | Android Importance | Behavior |
-|--------------------------|-------------------|----------|
-| Critical alert | `IMPORTANCE_HIGH` | Heads-up notification, sound |
-| Default (sound + banner) | `IMPORTANCE_DEFAULT` | Sound, status bar |
-| No sound | `IMPORTANCE_LOW` | No sound, status bar only |
-| Silent | `IMPORTANCE_MIN` | No sound, no status bar |
+| iOS Sound/Alert Behavior | Android Importance   | Behavior                     |
+| ------------------------ | -------------------- | ---------------------------- |
+| Critical alert           | `IMPORTANCE_HIGH`    | Heads-up notification, sound |
+| Default (sound + banner) | `IMPORTANCE_DEFAULT` | Sound, status bar            |
+| No sound                 | `IMPORTANCE_LOW`     | No sound, status bar only    |
+| Silent                   | `IMPORTANCE_MIN`     | No sound, no status bar      |
 
 ### Key Rules
 
@@ -453,7 +456,11 @@ class ShooterFirebaseMessagingService : FirebaseMessagingService() {
     override fun onMessageReceived(remoteMessage: RemoteMessage) {
         super.onMessageReceived(remoteMessage)
 
-        // Data messages are always delivered here (foreground + background)
+        // Data messages are delivered here while the app is in the foreground or background.
+        // WARNING: Delivery is NOT guaranteed when the app has been force-killed by the
+        // user, killed by the OS under memory pressure, or killed by OEM-specific battery
+        // optimization (e.g., Xiaomi, Samsung, Huawei aggressive app killers). This
+        // applies to ALL Android OEMs, not just AOSP. See https://dontkillmyapp.com/
         if (remoteMessage.data.isNotEmpty()) {
             val category = remoteMessage.data["category"]
 
@@ -507,13 +514,15 @@ override fun onMessageReceived(remoteMessage: RemoteMessage) {
 
 ### Data Messages vs Notification Messages in Background
 
-| Message Type | App in Foreground | App in Background | App Killed |
-|-------------|-------------------|-------------------|------------|
-| Notification message | `onMessageReceived()` | System tray (auto) | System tray (auto) |
-| Data message | `onMessageReceived()` | `onMessageReceived()` | `onMessageReceived()` |
-| Both | `onMessageReceived()` | System tray (notification), data in extras | System tray, data in extras |
+| Message Type         | App in Foreground     | App in Background                          | App Killed                             |
+| -------------------- | --------------------- | ------------------------------------------ | -------------------------------------- |
+| Notification message | `onMessageReceived()` | System tray (auto)                         | System tray (auto)                     |
+| Data message         | `onMessageReceived()` | `onMessageReceived()`                      | `onMessageReceived()`\* (with caveats) |
+| Both                 | `onMessageReceived()` | System tray (notification), data in extras | System tray, data in extras            |
 
-This is why **data-only messages are essential** for the permission flow -- they always reach `onMessageReceived()`, allowing the app to construct notifications with action buttons.
+_\*Caveats: data messages are **not** delivered if (a) the user **force-stops** the app (Settings > Apps > Force Stop), (b) aggressive OEM battery optimization kills the process (common on Xiaomi, Samsung, Huawei), or (c) the system reclaims the process under heavy memory pressure. Force-stop puts the app in a "stopped state" where no broadcasts, alarms, or FCM messages arrive until the user manually re-launches. Regular swipe-away from recents does **not** trigger this restriction._
+
+This is why **data-only messages are essential** for the permission flow -- they reach `onMessageReceived()` as long as the app has not been force-stopped, allowing the app to construct notifications with action buttons.
 
 ---
 
@@ -691,6 +700,7 @@ if (platform === 'android') {
 ### No Changes Needed
 
 The following server components need **no changes** for FCM support:
+
 - `/api/response` endpoint -- Android app posts to the same endpoint with `{ requestId, decision }`
 - `pending-requests.ts` -- platform-agnostic, stores requestId/decision pairs
 - `notification-history.ts` -- platform-agnostic
@@ -803,10 +813,10 @@ fun getChannelForCategory(category: String?): String {
 
 ### Mapping Table
 
-| iOS Category | iOS Actions | Android Equivalent |
-|-------------|-------------|-------------------|
-| `CLAUDE_PERMISSION` | Allow (auth required), Deny (destructive) | `addAction("Allow", allowPendingIntent)` + `addAction("Deny", denyPendingIntent)` on `IMPORTANCE_HIGH` channel |
-| Default (no category) | Tap to open | `setContentIntent(openAppPendingIntent)` on `IMPORTANCE_DEFAULT` channel |
+| iOS Category          | iOS Actions                               | Android Equivalent                                                                                             |
+| --------------------- | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `CLAUDE_PERMISSION`   | Allow (auth required), Deny (destructive) | `addAction("Allow", allowPendingIntent)` + `addAction("Deny", denyPendingIntent)` on `IMPORTANCE_HIGH` channel |
+| Default (no category) | Tap to open                               | `setContentIntent(openAppPendingIntent)` on `IMPORTANCE_DEFAULT` channel                                       |
 
 ---
 
@@ -983,12 +993,12 @@ class ShooterFirebaseMessagingService : FirebaseMessagingService() {
 
 ### Comparison with APNs Token Lifecycle
 
-| Aspect | APNs (iOS) | FCM (Android) |
-|--------|-----------|---------------|
-| Token rotation frequency | Rare | Periodic (security-driven) |
-| Stale token handling | APNs returns `BadDeviceToken` | FCM returns `UNREGISTERED` after 270 days |
-| Recommended refresh check | On app launch | On app launch + monthly `getToken()` call |
-| Server error on invalid token | HTTP 400 + `BadDeviceToken` | HTTP 404 + `UNREGISTERED` |
+| Aspect                        | APNs (iOS)                    | FCM (Android)                             |
+| ----------------------------- | ----------------------------- | ----------------------------------------- |
+| Token rotation frequency      | Rare                          | Periodic (security-driven)                |
+| Stale token handling          | APNs returns `BadDeviceToken` | FCM returns `UNREGISTERED` after 270 days |
+| Recommended refresh check     | On app launch                 | On app launch + monthly `getToken()` call |
+| Server error on invalid token | HTTP 400 + `BadDeviceToken`   | HTTP 404 + `UNREGISTERED`                 |
 
 ---
 
@@ -996,22 +1006,22 @@ class ShooterFirebaseMessagingService : FirebaseMessagingService() {
 
 Complete mapping of current iOS features to their Android equivalents:
 
-| iOS Feature | iOS Implementation | Android Equivalent | Notes |
-|------------|-------------------|-------------------|-------|
-| Push notification permission | `UNUserNotificationCenter.requestAuthorization()` | `POST_NOTIFICATIONS` runtime permission (API 33+) | Auto-granted below Android 13 |
-| Device token registration | `didRegisterForRemoteNotificationsWithDeviceToken` | `FirebaseMessagingService.onNewToken()` | FCM tokens are longer strings |
-| Notification categories | `UNNotificationCategory` + `UNNotificationAction` | `NotificationCompat.Builder.addAction()` per notification | No pre-registration; built per-notification |
-| Allow/Deny buttons | `UNNotificationAction` with `.authenticationRequired` / `.destructive` | `NotificationCompat.Action` with `PendingIntent.getBroadcast()` | Handled by `BroadcastReceiver` |
-| Text input from notification | `UNTextInputNotificationAction` | `RemoteInput.Builder` + `NotificationCompat.Action` | Direct reply inline |
-| Notification history (local) | `UserDefaults` + `[NotificationItem]` Codable | `SharedPreferences` or Room database | Room recommended for larger datasets |
-| Background notification handling | Automatic via APNs + delegate | `FirebaseMessagingService.onMessageReceived()` | Requires data-only messages |
-| Foreground notification display | `willPresent` delegate with `.banner, .sound, .badge` | Build notification in `onMessageReceived()` | Always manual with data messages |
-| Notification sound | `UNNotificationSound.default` | `NotificationChannel` sound setting | Per-channel in Android 8+ |
-| Badge count | `notification.badge = 1` | `NotificationCompat.Builder.setNumber()` | Behavior varies by launcher |
-| Server connection check | `URLSession` GET to `/api/health` | `OkHttp` / `Retrofit` GET to `/api/health` | Same endpoint |
-| Permission response to server | `URLSession` POST to `/api/response` | `OkHttp` / `Retrofit` POST to `/api/response` | Same endpoint, same payload |
-| Configuration storage | `UserDefaults` | `SharedPreferences` or `DataStore` | DataStore is newer/preferred |
-| Notification tap handling | `didReceive response:` delegate | `PendingIntent` on notification + `Intent` extras | Deep link via intent extras |
+| iOS Feature                      | iOS Implementation                                                     | Android Equivalent                                              | Notes                                       |
+| -------------------------------- | ---------------------------------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------- |
+| Push notification permission     | `UNUserNotificationCenter.requestAuthorization()`                      | `POST_NOTIFICATIONS` runtime permission (API 33+)               | Auto-granted below Android 13               |
+| Device token registration        | `didRegisterForRemoteNotificationsWithDeviceToken`                     | `FirebaseMessagingService.onNewToken()`                         | FCM tokens are longer strings               |
+| Notification categories          | `UNNotificationCategory` + `UNNotificationAction`                      | `NotificationCompat.Builder.addAction()` per notification       | No pre-registration; built per-notification |
+| Allow/Deny buttons               | `UNNotificationAction` with `.authenticationRequired` / `.destructive` | `NotificationCompat.Action` with `PendingIntent.getBroadcast()` | Handled by `BroadcastReceiver`              |
+| Text input from notification     | `UNTextInputNotificationAction`                                        | `RemoteInput.Builder` + `NotificationCompat.Action`             | Direct reply inline                         |
+| Notification history (local)     | `UserDefaults` + `[NotificationItem]` Codable                          | `SharedPreferences` or Room database                            | Room recommended for larger datasets        |
+| Background notification handling | Automatic via APNs + delegate                                          | `FirebaseMessagingService.onMessageReceived()`                  | Requires data-only messages                 |
+| Foreground notification display  | `willPresent` delegate with `.banner, .sound, .badge`                  | Build notification in `onMessageReceived()`                     | Always manual with data messages            |
+| Notification sound               | `UNNotificationSound.default`                                          | `NotificationChannel` sound setting                             | Per-channel in Android 8+                   |
+| Badge count                      | `notification.badge = 1`                                               | `NotificationCompat.Builder.setNumber()`                        | Behavior varies by launcher                 |
+| Server connection check          | `URLSession` GET to `/api/health`                                      | `OkHttp` / `Retrofit` GET to `/api/health`                      | Same endpoint                               |
+| Permission response to server    | `URLSession` POST to `/api/response`                                   | `OkHttp` / `Retrofit` POST to `/api/response`                   | Same endpoint, same payload                 |
+| Configuration storage            | `UserDefaults`                                                         | `SharedPreferences` or `DataStore`                              | DataStore is newer/preferred                |
+| Notification tap handling        | `didReceive response:` delegate                                        | `PendingIntent` on notification + `Intent` extras               | Deep link via intent extras                 |
 
 ---
 

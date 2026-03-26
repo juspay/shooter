@@ -109,26 +109,26 @@ See [`docs/ENVIRONMENT.md`](./ENVIRONMENT.md) for the complete reference table o
 
 ### Minimum Required for Production
 
-| Variable       | Purpose                          |
-| -------------- | -------------------------------- |
-| `API_KEY`      | Bearer token for all API auth    |
-| `APNS_KEY`     | APNs .p8 private key contents    |
-| `APNS_KEY_ID`  | APNs key identifier              |
-| `APNS_TEAM_ID` | Apple Developer Team ID          |
-| `APNS_BUNDLE_ID` | iOS app bundle identifier      |
-| `DEVICE_TOKEN` | Target iOS device push token     |
+| Variable         | Purpose                       |
+| ---------------- | ----------------------------- |
+| `API_KEY`        | Bearer token for all API auth |
+| `APNS_KEY`       | APNs .p8 private key contents |
+| `APNS_KEY_ID`    | APNs key identifier           |
+| `APNS_TEAM_ID`   | Apple Developer Team ID       |
+| `APNS_BUNDLE_ID` | iOS app bundle identifier     |
+| `DEVICE_TOKEN`   | Target iOS device push token  |
 
 ### Hook Environment
 
 The Claude Code hooks (`notifier.cjs`) use their own set of environment variables, configured inline in `.claude/settings.json`:
 
-| Variable                   | Purpose                                  |
-| -------------------------- | ---------------------------------------- |
-| `SHOOTER_API_KEY`          | Auth token for hook-to-server calls      |
-| `SHOOTER_USE_LOCAL`        | Route hooks to local server (`true`)     |
-| `SHOOTER_LOCAL_PORT`       | Local server port (default `5173`)       |
-| `SHOOTER_API_URL`          | Remote server URL (when not using local) |
-| `SHOOTER_PERMISSION_TIMEOUT` | Permission poll timeout in seconds     |
+| Variable                     | Purpose                                  |
+| ---------------------------- | ---------------------------------------- |
+| `API_KEY`                    | Auth token for hook-to-server calls      |
+| `SHOOTER_USE_LOCAL`          | Route hooks to local server (`true`)     |
+| `SHOOTER_LOCAL_PORT`         | Local server port (default `3000`)       |
+| `SHOOTER_API_URL`            | Remote server URL (when not using local) |
+| `SHOOTER_PERMISSION_TIMEOUT` | Permission poll timeout in seconds       |
 
 ---
 
@@ -358,19 +358,19 @@ WebSocket connections require a valid auth ticket. A 401 on upgrade means the ti
 
 Common causes:
 
-1. **`SHOOTER_API_KEY` not set in shell** -- The hooks and API clients need this variable to obtain tickets. Verify it is exported:
+1. **`API_KEY` not set in shell** -- The hooks and API clients need this variable to obtain tickets. Verify it is exported:
 
    ```bash
-   echo $SHOOTER_API_KEY
+   echo $API_KEY
    ```
 
    If empty, set it in your shell profile (`~/.zshrc`):
 
    ```bash
-   export SHOOTER_API_KEY="your-api-key-here"
+   export API_KEY="your-api-key-here"
    ```
 
-2. **`API_KEY` mismatch** -- The server validates tickets against `API_KEY` from `.env`. Make sure `SHOOTER_API_KEY` and `API_KEY` contain the same value.
+2. **`API_KEY` mismatch** -- The server validates tickets against `API_KEY` from `.env`. Make sure the hook `API_KEY` and server `API_KEY` contain the same value.
 
 3. **Ticket expired** -- Tickets are single-use and short-lived. If the connection was delayed, request a new ticket via `POST /api/ws-ticket`.
 
@@ -408,11 +408,11 @@ If the tunnel is running but requests fail or time out:
 
 1. **Check `APNS_PRODUCTION` matches your build type:**
 
-   | Build Type               | `APNS_PRODUCTION` | APNs Gateway         |
-   | ------------------------ | ----------------- | -------------------- |
-   | Xcode debug (simulator)  | `false` (default) | Sandbox              |
-   | Xcode debug (device)     | `false` (default) | Sandbox              |
-   | TestFlight / App Store   | `true`            | Production           |
+   | Build Type              | `APNS_PRODUCTION` | APNs Gateway |
+   | ----------------------- | ----------------- | ------------ |
+   | Xcode debug (simulator) | `false` (default) | Sandbox      |
+   | Xcode debug (device)    | `false` (default) | Sandbox      |
+   | TestFlight / App Store  | `true`            | Production   |
 
    The iOS app entitlements declare `aps-environment = production`. For TestFlight builds, the server **must** use `APNS_PRODUCTION=true`.
 
@@ -445,7 +445,7 @@ If the tunnel is running but requests fail or time out:
    echo '{"tool_name":"test"}' | \
      SHOOTER_USE_LOCAL=true \
      SHOOTER_LOCAL_PORT=3000 \
-     SHOOTER_API_KEY=your-key \
+     API_KEY=your-key \
      node .claude/hooks/notifier.cjs PreToolUse
    ```
 

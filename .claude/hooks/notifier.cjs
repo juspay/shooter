@@ -34,7 +34,7 @@ const RUNTIME = IS_OPENCODE ? 'opencode' : 'claude-code';
 // Environment configuration
 const USE_LOCAL = process.env.SHOOTER_USE_LOCAL === 'true';
 const LOCAL_PORT = process.env.SHOOTER_LOCAL_PORT || '3000';
-const REMOTE_BASE_URL = process.env.SHOOTER_API_URL || '';
+const REMOTE_BASE_URL = process.env.SHOOTER_API_URL?.trim() || '';
 const LOCAL_BASE_URL = `http://localhost:${LOCAL_PORT}`;
 const BASE_URL = USE_LOCAL ? LOCAL_BASE_URL : REMOTE_BASE_URL;
 const API_URL = `${BASE_URL}/api/notify`;
@@ -80,28 +80,35 @@ async function hasWebSocketClients() {
     const url = `${BASE_URL}/api/ws-status`;
     const protocol = url.startsWith('https') ? https : http;
     return new Promise((resolve) => {
-      const req = protocol.request(url, {
-        method: 'GET',
-        headers: { Authorization: `Bearer ${AUTH_KEY}` },
-        timeout: 3000,
-      }, (res) => {
-        let data = '';
-        res.on('data', (chunk) => (data += chunk));
-        res.on('end', () => {
-          if (res.statusCode === 200) {
-            try {
-              const parsed = JSON.parse(data);
-              resolve(parsed.connectedClients > 0);
-            } catch (e) {
+      const req = protocol.request(
+        url,
+        {
+          method: 'GET',
+          headers: { Authorization: `Bearer ${AUTH_KEY}` },
+          timeout: 3000,
+        },
+        (res) => {
+          let data = '';
+          res.on('data', (chunk) => (data += chunk));
+          res.on('end', () => {
+            if (res.statusCode === 200) {
+              try {
+                const parsed = JSON.parse(data);
+                resolve(parsed.connectedClients > 0);
+              } catch (e) {
+                resolve(false);
+              }
+            } else {
               resolve(false);
             }
-          } else {
-            resolve(false);
-          }
-        });
-      });
+          });
+        }
+      );
       req.on('error', () => resolve(false));
-      req.on('timeout', () => { req.destroy(); resolve(false); });
+      req.on('timeout', () => {
+        req.destroy();
+        resolve(false);
+      });
       req.end();
     });
   } catch (e) {
@@ -625,26 +632,20 @@ async function handlePermission(event) {
         console.error(`=== REGISTERING REQUEST & POLLING VIA WEBSOCKET CHANNEL ===\n`);
       }
 
-      // POST to /api/notify with waitForResponse so the server creates a pending
-      // request entry. Without this, GET /api/response returns 404 every time.
+      // Register the pending request but skip the actual push notification —
+      // the events channel will broadcast the permission to connected clients.
       result = await sendNotificationAndPoll(
         title,
         body,
         'permission',
         event.source,
         requestId,
-        d
+        d,
+        { skipPush: true }
       );
     } else {
       // No WebSocket clients — send push notification and poll
-      result = await sendNotificationAndPoll(
-        title,
-        body,
-        'permission',
-        event.source,
-        requestId,
-        d
-      );
+      result = await sendNotificationAndPoll(title, body, 'permission', event.source, requestId, d);
     }
 
     if (result && result.decision) {
@@ -1022,13 +1023,96 @@ function createCompletionMessage(state, projectName) {
  *
  * Returns { decision: 'allow' | 'deny' } or null on timeout.
  */
-function sendNotificationAndPoll(title, body, category, source, requestId, eventData) {
+function sendNotificationAndPoll(
+  title,
+  body,
+  category,
+  source,
+  requestId,
+  eventData,
+  { skipPush = false } = {}
+) {
   return new Promise((resolve) => {
     const timestamp = new Date().toISOString();
 
     const runtimePrefix = source === 'opencode' ? '[OpenCode]' : '[Claude]';
     const envPrefix = USE_LOCAL ? '[LOCAL]' : '';
     const finalTitle = `${runtimePrefix}${envPrefix ? ' ' + envPrefix : ''} ${title}`;
+
+    // When skipPush is true (WebSocket clients connected), skip the actual
+    // POST to /api/notify but still register the pending request and poll.
+    if (skipPush) {
+      debugLog(
+        `Skipping push notification (WebSocket active), going straight to polling (requestId: ${requestId})`
+      );
+      // Register the pending request on the server so polling finds it.
+      // We still need to POST with waitForResponse so the server creates
+      // the pending-request entry, but we mark it as ws-only.
+      const registerPayload = JSON.stringify({
+        title: finalTitle,
+        message: body,
+        waitForResponse: true,
+        skipPush: true,
+        ...(DEVICE_TOKEN && { deviceToken: DEVICE_TOKEN }),
+        data: {
+          category,
+          project: getProjectName(),
+          timestamp,
+          requestId,
+          clientTimestamp: timestamp,
+          source: 'shooter-completion-detector',
+          environment: USE_LOCAL ? 'local' : 'remote',
+          runtime: source,
+          toolName: eventData.tool || '',
+          toolInput: eventData.toolInput || {},
+          sessionId: eventData.sessionId || '',
+        },
+      });
+
+      const registerOptions = {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${AUTH_KEY}`,
+          'Content-Length': Buffer.byteLength(registerPayload),
+          'User-Agent': `Shooter-Notifier/3.0 ${source}`,
+        },
+      };
+
+      const protocol = API_URL.startsWith('https') ? https : http;
+      const req = protocol.request(API_URL, registerOptions, (res) => {
+        let responseData = '';
+        res.on('data', (chunk) => (responseData += chunk));
+        res.on('end', () => {
+          debugLog(`Pending request registered (skipPush): status=${res.statusCode}`);
+          if (res.statusCode !== 200) {
+            debugLog(
+              `Registration failed (skipPush): ${res.statusCode} - falling through to local dialog`
+            );
+            resolve(null);
+            return;
+          }
+          // Start polling only after successful registration — the WebSocket
+          // events channel will deliver the permission to connected clients.
+          startPolling(requestId, resolve);
+        });
+      });
+
+      req.on('error', (error) => {
+        debugLog(
+          `Register request error (skipPush): ${error.message} - falling through to local dialog`
+        );
+        resolve(null);
+      });
+
+      req.setTimeout(10000, () => {
+        req.destroy(new Error('Request timeout'));
+      });
+
+      req.write(registerPayload);
+      req.end();
+      return;
+    }
 
     debugLog(`Sending bidirectional notification: "${finalTitle}" (requestId: ${requestId})`);
 

@@ -1,33 +1,15 @@
+import type { NotificationData } from '$generated/types';
+
 import { env } from '$env/dynamic/private';
 import { LibraryAPNsService } from '$lib/modules/server/apn/library-apns';
 import { addNotification, getNotifications } from '$lib/modules/server/apn/notification-history';
 import { createPendingRequest } from '$lib/modules/server/apn/pending-requests';
 import { validateAuth } from '$lib/modules/server/auth';
 import { isFCMConfigured, sendFCMNotification } from '$lib/modules/server/fcm/fcm-service.js';
+import { toErrorMessage } from '$lib/modules/server/utils/error';
 import { json } from '@sveltejs/kit';
 
 import type { RequestHandler } from './$types';
-
-interface FilterResult {
-  reason: string;
-  send: boolean;
-}
-
-interface NotificationData {
-  [key: string]: unknown;
-  category?: string;
-  files?: string;
-  project?: string;
-  source?: string;
-  tool?: string;
-}
-
-interface NotificationRequest {
-  data?: NotificationData;
-  message: string;
-  title: string;
-  waitForResponse?: boolean;
-}
 
 // Singleton APNs client - reuses HTTP/2 connection across requests
 let apnsSingleton: LibraryAPNsService | null = null;
@@ -42,12 +24,11 @@ function getAPNsClient(): LibraryAPNsService {
 const notificationCache = new Map<string, number>();
 const DEDUP_WINDOW = 10000; // 10 seconds deduplication window
 
-// 🎯 INTELLIGENT NOTIFICATION FILTERING
 function intelligentNotificationFilter(
   title: string,
   message: string,
   data?: NotificationData
-): FilterResult {
+): { reason: string; send: boolean } {
   const source = data?.source || 'unknown';
 
   // Check for duplicate notifications first
@@ -137,7 +118,7 @@ function isDuplicateNotification(title: string, message: string, data?: Notifica
     }
   }
 
-  // Do NOT record here — caller must call recordNotification() after
+  // Do NOT record here -- caller must call recordNotification() after
   // successful delivery to avoid cache poisoning on send failure.
   return false;
 }
@@ -155,14 +136,35 @@ export const POST: RequestHandler = async ({ request }) => {
 
     // Validate API key using timing-safe comparison
     const authError = validateAuth(request);
-    if (authError) {return authError;}
+    if (authError) {
+      return authError;
+    }
 
     // Parse request body
-    const body = (await request.json()) as NotificationRequest;
-    const { data, message, title, waitForResponse } = body;
+    const rawBody: unknown = await request.json();
 
-    if (!title || !message) {
-      return json({ error: 'Title and message are required' }, { status: 400 });
+    if (!rawBody || typeof rawBody !== 'object' || Array.isArray(rawBody)) {
+      return json({ error: 'Request body must be a JSON object' }, { status: 400 });
+    }
+
+    const body = rawBody as Record<string, unknown>;
+    const data = body.data as NotificationData | undefined;
+    const requestDeviceToken = body.deviceToken as string | undefined;
+    const message = body.message as string;
+    const title = body.title as string;
+
+    // Coerce skipPush and waitForResponse to booleans — string "false" would
+    // be truthy so we require an actual boolean, defaulting to false otherwise.
+    const skipPush = typeof body.skipPush === 'boolean' ? body.skipPush : false;
+    const waitForResponse =
+      typeof body.waitForResponse === 'boolean' ? body.waitForResponse : false;
+
+    if (!title || typeof title !== 'string' || !message || typeof message !== 'string') {
+      return json({ error: 'Title and message are required and must be strings' }, { status: 400 });
+    }
+
+    if (requestDeviceToken !== undefined && typeof requestDeviceToken !== 'string') {
+      return json({ error: 'deviceToken must be a string' }, { status: 400 });
     }
 
     // Smart notification filtering
@@ -173,22 +175,57 @@ export const POST: RequestHandler = async ({ request }) => {
 
     if (!shouldSendNotification.send) {
       addNotification({
-        category: data?.category,
-        data: data as Record<string, unknown>,
+        category: data?.category ?? null,
+        data: (data as Record<string, unknown>) ?? null,
         error: shouldSendNotification.reason,
         id: canonicalRequestId,
         message,
-        project: data?.project,
-        source: data?.source,
+        project: data?.project ?? null,
+        source: data?.source ?? null,
         status: 'filtered',
         timestamp: new Date().toISOString(),
         title,
-        tool: data?.tool,
+        tool: data?.tool ?? null,
       });
 
       return json({
         message: 'Notification filtered (not sent)',
         reason: shouldSendNotification.reason,
+        success: true,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    // When skipPush is true, the caller wants to register a pending request
+    // (for bidirectional permission polling) without actually sending a push
+    // notification.  This happens when WebSocket clients are connected and the
+    // events channel will broadcast the permission-requested event instead.
+    if (skipPush) {
+      if (waitForResponse) {
+        createPendingRequest(canonicalRequestId, {
+          sessionId: (data?.sessionId as string) || '',
+          toolInput: (data?.toolInput as Record<string, unknown>) || {},
+          toolName: (data?.toolName as string) || '',
+        });
+      }
+
+      addNotification({
+        category: data?.category ?? null,
+        data: (data as Record<string, unknown>) ?? null,
+        error: null,
+        id: canonicalRequestId,
+        message,
+        project: data?.project ?? null,
+        source: data?.source ?? null,
+        status: 'skipped',
+        timestamp: new Date().toISOString(),
+        title,
+        tool: data?.tool ?? null,
+      });
+
+      return json({
+        message: 'Push skipped (WebSocket clients connected)',
+        requestId: canonicalRequestId,
         success: true,
         timestamp: new Date().toISOString(),
       });
@@ -219,19 +256,23 @@ export const POST: RequestHandler = async ({ request }) => {
       if (!isFCMConfigured()) {
         return json(
           {
-            details: 'Missing FCM_PROJECT_ID, FCM_CLIENT_EMAIL, or FCM_PRIVATE_KEY environment variables',
+            details:
+              'Missing FCM_PROJECT_ID, FCM_CLIENT_EMAIL, or FCM_PRIVATE_KEY environment variables',
             error: 'FCM not configured',
           },
           { status: 500 }
         );
       }
 
-      const androidToken = (env.ANDROID_DEVICE_TOKEN || env.DEVICE_TOKEN)?.trim();
+      // Honor request-scoped deviceToken, falling back to environment variables.
+      const androidToken =
+        requestDeviceToken?.trim() || (env.ANDROID_DEVICE_TOKEN || env.DEVICE_TOKEN)?.trim();
 
       if (!androidToken) {
         return json(
           {
-            details: 'ANDROID_DEVICE_TOKEN or DEVICE_TOKEN environment variable is missing',
+            details:
+              'ANDROID_DEVICE_TOKEN or DEVICE_TOKEN environment variable is missing and no deviceToken in request body',
             error: 'No device token configured',
           },
           { status: 500 }
@@ -253,16 +294,17 @@ export const POST: RequestHandler = async ({ request }) => {
         }
 
         addNotification({
-          category: data?.category,
-          data: data as Record<string, unknown>,
+          category: data?.category ?? null,
+          data: (data as Record<string, unknown>) ?? null,
+          error: null,
           id: canonicalRequestId,
           message,
-          project: data?.project,
-          source: data?.source,
+          project: data?.project ?? null,
+          source: data?.source ?? null,
           status: 'sent',
           timestamp: new Date().toISOString(),
           title,
-          tool: data?.tool,
+          tool: data?.tool ?? null,
         });
 
         return json({
@@ -276,17 +318,17 @@ export const POST: RequestHandler = async ({ request }) => {
         console.error(`[notify] FCM delivery failed: ${fcmResult.error}`);
 
         addNotification({
-          category: data?.category,
-          data: data as Record<string, unknown>,
-          error: fcmResult.error,
+          category: data?.category ?? null,
+          data: (data as Record<string, unknown>) ?? null,
+          error: fcmResult.error ?? null,
           id: canonicalRequestId,
           message,
-          project: data?.project,
-          source: data?.source,
+          project: data?.project ?? null,
+          source: data?.source ?? null,
           status: 'failed',
           timestamp: new Date().toISOString(),
           title,
-          tool: data?.tool,
+          tool: data?.tool ?? null,
         });
 
         return json(
@@ -311,12 +353,15 @@ export const POST: RequestHandler = async ({ request }) => {
         );
       }
 
-      const deviceToken = env.DEVICE_TOKEN?.trim();
+      // Honor request-scoped deviceToken (e.g., from config page test),
+      // falling back to the server-wide environment variable.
+      const deviceToken = requestDeviceToken?.trim() || env.DEVICE_TOKEN?.trim();
 
       if (!deviceToken) {
         return json(
           {
-            details: 'DEVICE_TOKEN environment variable is missing',
+            details:
+              'DEVICE_TOKEN environment variable is missing and no deviceToken in request body',
             error: 'No device token configured',
           },
           { status: 500 }
@@ -340,16 +385,17 @@ export const POST: RequestHandler = async ({ request }) => {
         }
 
         addNotification({
-          category: data?.category,
-          data: data as Record<string, unknown>,
+          category: data?.category ?? null,
+          data: (data as Record<string, unknown>) ?? null,
+          error: null,
           id: canonicalRequestId,
           message,
-          project: data?.project,
-          source: data?.source,
+          project: data?.project ?? null,
+          source: data?.source ?? null,
           status: 'sent',
           timestamp: new Date().toISOString(),
           title,
-          tool: data?.tool,
+          tool: data?.tool ?? null,
         });
 
         return json({
@@ -360,26 +406,26 @@ export const POST: RequestHandler = async ({ request }) => {
           timestamp: new Date().toISOString(),
         });
       } catch (notificationError) {
-        const err = notificationError as Error;
-        console.error(`[notify] APNs delivery failed: ${err.message}`);
+        const notifErrMsg = toErrorMessage(notificationError);
+        console.error(`[notify] APNs delivery failed: ${notifErrMsg}`);
 
         addNotification({
-          category: data?.category,
-          data: data as Record<string, unknown>,
-          error: err.message,
+          category: data?.category ?? null,
+          data: (data as Record<string, unknown>) ?? null,
+          error: notifErrMsg,
           id: canonicalRequestId,
           message,
-          project: data?.project,
-          source: data?.source,
+          project: data?.project ?? null,
+          source: data?.source ?? null,
           status: 'failed',
           timestamp: new Date().toISOString(),
           title,
-          tool: data?.tool,
+          tool: data?.tool ?? null,
         });
 
         return json(
           {
-            details: err.message,
+            details: notifErrMsg,
             error: 'Failed to send notification',
             requestId: canonicalRequestId,
             timestamp: new Date().toISOString(),
@@ -389,11 +435,10 @@ export const POST: RequestHandler = async ({ request }) => {
       }
     }
   } catch (error) {
-    const err = error as Error;
-    console.error('Notification error:', err);
+    console.error('Notification error:', error);
     return json(
       {
-        details: err.message,
+        details: toErrorMessage(error),
         error: 'Failed to send notification',
         timestamp: new Date().toISOString(),
       },
@@ -405,7 +450,9 @@ export const POST: RequestHandler = async ({ request }) => {
 export const GET: RequestHandler = ({ request, url }) => {
   // Validate API key using timing-safe comparison
   const authError = validateAuth(request);
-  if (authError) {return authError;}
+  if (authError) {
+    return authError;
+  }
 
   const limit = parseInt(url.searchParams.get('limit') || '50');
   const notifications = getNotifications(limit);

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ShooterConfig } from '$lib/types/config';
+  import type { ProjectGroup, ShooterConfig } from '$generated/types';
 
   import { page } from '$app/state';
   import {
@@ -12,27 +12,6 @@
   } from '$lib/modules/client/common';
   import { Button, Pill, Shimmer } from '@juspay/svelte-ui-components';
   import { onDestroy, onMount } from 'svelte';
-
-  interface Session {
-    created: string;
-    gitBranch: string;
-    id: string;
-    messageCount: number;
-    modified: string;
-    projectPath: string;
-    source: 'claude-code' | 'opencode';
-    summary: string;
-    title: string;
-  }
-
-  interface ProjectGroup {
-    fullPath: string;
-    id: string;
-    lastModified: string;
-    name: string;
-    sessionCount: number;
-    sessions: Session[];
-  }
 
   const POLL_INTERVAL_MS = 15_000;
   const PAGE_SIZE = 20;
@@ -235,7 +214,9 @@
       </div>
       {#if hasMore}
         <div style="text-align: center; padding: 1rem;">
-          <Button classes="btn-secondary" onclick={loadMore}
+          <Button
+            classes="btn-secondary"
+            onclick={loadMore}
             text={`Load More (${project.sessions.length - visibleCount} remaining)`}
           />
         </div>

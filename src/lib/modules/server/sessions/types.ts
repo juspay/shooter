@@ -1,32 +1,21 @@
+// Re-export generated types that match 1:1
+export type { MessageRole, ProjectGroup, SessionInfo } from '$generated/types';
+import type { MessageRole } from '$generated/types';
+
+// ── Local interfaces ─────────────────────────────────────────────────
+// These remain local because the generated versions differ structurally:
+// generated MessagePart uses wrapper classes (CMessagePartTextPart, etc.)
+// and part types use `type: string` instead of string literals needed
+// for discriminated unions. Declared as interfaces per ESLint rules.
+
 export interface ConversationMessage {
   id: string;
   parts: MessagePart[];
-  role: 'assistant' | 'system' | 'user';
+  role: MessageRole;
   timestamp: string;
 }
 
 export type MessagePart = TextPart | ThinkingPart | ToolResultPart | ToolUsePart;
-
-export interface ProjectGroup {
-  fullPath: string;
-  id: string;
-  lastModified: string;
-  name: string;
-  sessionCount: number;
-  sessions: SessionInfo[];
-}
-
-export interface SessionInfo {
-  created: string;
-  gitBranch: string;
-  id: string;
-  messageCount: number;
-  modified: string;
-  projectPath: string;
-  source: 'claude-code' | 'opencode';
-  summary: string;
-  title: string;
-}
 
 export interface TextPart {
   content: string;

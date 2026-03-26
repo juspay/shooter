@@ -13,11 +13,7 @@
 </script>
 
 {#if open}
-  <Modal
-    header={{ text: 'Keyboard Shortcuts' }}
-    onoverlayClick={onClose}
-    classes="shortcuts-modal"
-  >
+  <Modal header={{ text: 'Keyboard Shortcuts' }} onoverlayClick={onClose} classes="shortcuts-modal">
     {#snippet content()}
       <div class="shortcuts-list">
         {#each shortcuts as shortcut (shortcut.keys)}

@@ -1,6 +1,6 @@
 # Shooter: Complete Bug Report & Fix Priority List
 
-> Last updated: 2026-03-20. Verified by 5 parallel deep-scan agents reading every source file.
+> Last updated: 2026-03-26. Verified by 5 parallel deep-scan agents reading every source file.
 > Supersedes all previous analysis. All line numbers verified against current working tree.
 
 ---
@@ -105,11 +105,11 @@ History sends `{ type: 'text', content: string }` (via `partToHistoryPart`). Liv
 
 ### H6. Client Missing WS Message Types
 
-| Message Type | `session/[id]` | `terminals/[id]` | `ChatView.svelte` |
-|-------------|----------------|-------------------|-------------------|
-| `error` | NOT HANDLED | NOT HANDLED | NOT HANDLED |
-| `thinking` | Handled | **NOT HANDLED** | Handled |
-| `permission-requested` | NOT HANDLED | NOT HANDLED | Handled (dead code) |
+| Message Type           | `session/[id]` | `terminals/[id]` | `ChatView.svelte`   |
+| ---------------------- | -------------- | ---------------- | ------------------- |
+| `error`                | NOT HANDLED    | NOT HANDLED      | NOT HANDLED         |
+| `thinking`             | Handled        | **NOT HANDLED**  | Handled             |
+| `permission-requested` | NOT HANDLED    | NOT HANDLED      | Handled (dead code) |
 
 **Fix:** Add `error` handling to all three. Add `thinking` to `terminals/[id]`. Either integrate `ChatView.svelte` (which handles everything) or add missing types to inline handlers.
 
@@ -179,41 +179,41 @@ Neither platform pushes refreshed tokens to the server. After token rotation, pu
 
 ## LOW — Technical Debt
 
-| ID | Issue | File |
-|----|-------|------|
-| L1 | `pty-manager.ts:244-246` — sort comparator variables swapped (exited terminals sort ascending instead of descending) | `pty-manager.ts` |
-| L2 | `ManagedTerminal.watcherOffset` field declared but never used | `pty-manager.ts:34` |
-| L3 | `getCached`/`setCache` duplicated in 4 Svelte files | `+page`, `project`, `session/[id]`, `terminals` |
-| L4 | `renderMarkdown` duplicated in 3 files | `session/[id]`, `terminals/[id]`, `ChatView` |
-| L5 | `getToolDescription` duplicated in 3 files (no `input.description` fallback) | `session/[id]`, `terminals/[id]`, `ChatView` |
-| L6 | `isShooterConfig` type guard duplicated in 4 files | Multiple pages |
-| L7 | `formatRelativeTime` duplicated in 3 files | `+page`, `project`, `terminals` |
-| L8 | Chat message rendering HTML block duplicated in 3 files | `session/[id]`, `terminals/[id]`, `ChatView` |
-| L9 | Triple `StatusEnum` in generated `Terminal.ts` (compile error, dead code) | `src/generated/types/Terminal.ts:163,172,182` |
-| L10 | Generated JWT types entirely dead (never imported) | `src/generated/types/JWT.ts` |
-| L11 | `/api/webhook` is dead stub code with no auth | `src/routes/api/webhook/+server.ts` |
-| L12 | `/api/health` exposes config details without auth (including new FCM status) | `src/routes/api/health/+server.ts` |
-| L13 | `APNS_KEY_BASE64` referenced in health check but never used by APNs service | `health/+server.ts:49` |
-| L14 | `.page-title` letter-spacing: global `-0.04em` vs scoped `-0.03em` in 3 pages | `app.css` vs page styles |
-| L15 | `--ds-red-200`, `--bg-secondary`, `--bg-tertiary`, `--gray-600` CSS tokens undefined (fallbacks used) | Various |
-| L16 | `security-crypto:1.1.0-alpha06` (Android) — alpha dependency for credential storage | `libs.versions.toml:10` |
-| L17 | iOS `SetupView` accepts blank API key (empty string saved) | `SetupView.swift:106` |
-| L18 | iOS `isSetupComplete` binding setter is no-op (works via UserDefaults side-channel) | `ShooterApp.swift:15` |
-| L19 | Scrollback chunking can split multi-byte UTF-8 characters | `pty-manager.ts:540-541` |
-| L20 | `jsonl-parser.ts` has no declarative skip list for known internal event types | `jsonl-parser.ts` |
+| ID  | Issue                                                                                                                                          | File                                            |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| L1  | `pty-manager.ts:244-246` — sort comparator variables swapped (exited terminals sort ascending instead of descending)                           | `pty-manager.ts`                                |
+| L2  | `ManagedTerminal.watcherOffset` field declared but never used                                                                                  | `pty-manager.ts:34`                             |
+| L3  | `getCached`/`setCache` duplicated in 4 Svelte files                                                                                            | `+page`, `project`, `session/[id]`, `terminals` |
+| L4  | `renderMarkdown` duplicated in 3 files                                                                                                         | `session/[id]`, `terminals/[id]`, `ChatView`    |
+| L5  | `getToolDescription` duplicated in 3 files (no `input.description` fallback)                                                                   | `session/[id]`, `terminals/[id]`, `ChatView`    |
+| L6  | `isShooterConfig` type guard duplicated in 4 files                                                                                             | Multiple pages                                  |
+| L7  | `formatRelativeTime` duplicated in 3 files                                                                                                     | `+page`, `project`, `terminals`                 |
+| L8  | Chat message rendering HTML block duplicated in 3 files                                                                                        | `session/[id]`, `terminals/[id]`, `ChatView`    |
+| L9  | ~~Triple `StatusEnum` in generated `Terminal.ts` (compile error, dead code)~~ **RESOLVED** — type-crafter migration eliminated duplicate enums | `src/generated/types/Terminal.ts`               |
+| L10 | Generated JWT types unused/unreachable — re-exported from index.ts but never imported by app code                                              | `src/generated/types/JWT.ts`                    |
+| L11 | `/api/webhook` is dead stub code with no auth                                                                                                  | `src/routes/api/webhook/+server.ts`             |
+| L12 | `/api/health` exposes config details without auth (including new FCM status)                                                                   | `src/routes/api/health/+server.ts`              |
+| L13 | `APNS_KEY_BASE64` referenced in health check but never used by APNs service                                                                    | `health/+server.ts:49`                          |
+| L14 | `.page-title` letter-spacing: global `-0.04em` vs scoped `-0.03em` in 3 pages                                                                  | `app.css` vs page styles                        |
+| L15 | `--ds-red-200`, `--bg-secondary`, `--bg-tertiary`, `--gray-600` CSS tokens undefined (fallbacks used)                                          | Various                                         |
+| L16 | `security-crypto:1.1.0-alpha06` (Android) — alpha dependency for credential storage                                                            | `libs.versions.toml:10`                         |
+| L17 | iOS `SetupView` accepts blank API key (empty string saved)                                                                                     | `SetupView.swift:106`                           |
+| L18 | iOS `isSetupComplete` binding setter is no-op (works via UserDefaults side-channel)                                                            | `ShooterApp.swift:15`                           |
+| L19 | Scrollback chunking can split multi-byte UTF-8 characters                                                                                      | `pty-manager.ts:540-541`                        |
+| L20 | `jsonl-parser.ts` has no declarative skip list for known internal event types                                                                  | `jsonl-parser.ts`                               |
 
 ---
 
 ## Happy Patterns Still Worth Extracting
 
-| Pattern | Status | Complexity | What to Do |
-|---------|--------|-----------|------------|
-| Multi-subscriber watcher | **STILL NEEDED** (H2) | Low | Convert `SessionWatcher` to `Set<callback>` like `OpenCodeWatcher` |
-| Turn lifecycle (turn-start/turn-end) | **STILL NEEDED** | Medium | Add to `ServerMessage` union in `session-handler.ts`; handle in both page clients |
-| Generic `toolTitle()` from description | **STILL NEEDED** | Low | Extract shared `toolTitle.ts` utility, replace 3 duplicate `getToolDescription` functions |
-| Declarative JSONL skip list | **STILL NEEDED** | Trivial | Add `INTERNAL_EVENT_TYPES` Set to `jsonl-parser.ts` |
-| UUID dedup for --resume | **NOT APPLICABLE** | — | Shooter uses single-file byte-offset tracking, not multi-file scanning |
-| Session-level tool allowlists | **NOT APPLICABLE** | — | Shooter uses hook-based permissions, not SDK-based |
+| Pattern                                | Status                | Complexity | What to Do                                                                                |
+| -------------------------------------- | --------------------- | ---------- | ----------------------------------------------------------------------------------------- |
+| Multi-subscriber watcher               | **STILL NEEDED** (H2) | Low        | Convert `SessionWatcher` to `Set<callback>` like `OpenCodeWatcher`                        |
+| Turn lifecycle (turn-start/turn-end)   | **STILL NEEDED**      | Medium     | Add to `ServerMessage` union in `session-handler.ts`; handle in both page clients         |
+| Generic `toolTitle()` from description | **STILL NEEDED**      | Low        | Extract shared `toolTitle.ts` utility, replace 3 duplicate `getToolDescription` functions |
+| Declarative JSONL skip list            | **STILL NEEDED**      | Trivial    | Add `INTERNAL_EVENT_TYPES` Set to `jsonl-parser.ts`                                       |
+| UUID dedup for --resume                | **NOT APPLICABLE**    | —          | Shooter uses single-file byte-offset tracking, not multi-file scanning                    |
+| Session-level tool allowlists          | **NOT APPLICABLE**    | —          | Shooter uses hook-based permissions, not SDK-based                                        |
 
 ---
 

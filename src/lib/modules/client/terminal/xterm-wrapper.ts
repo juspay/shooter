@@ -1,11 +1,12 @@
 // IMPORTANT: This module must NEVER be imported at module top level in a Svelte component.
 // Always call createTerminal() inside onMount() only.
 
+import type { FitAddon } from '@xterm/addon-fit';
 import type { Terminal } from '@xterm/xterm';
 
 interface TerminalInstance {
   dispose: () => void;
-  fitAddon: any; // FitAddon type
+  fitAddon: FitAddon | null;
   sendInput: (data: string) => void;
   term: Terminal;
 }
@@ -75,10 +76,15 @@ export async function createTerminal(options: TerminalOptions): Promise<Terminal
   // Allow Ctrl+<letter> terminal signals (Ctrl+C/D/L/R/Z etc.) through.
   const browserShortcuts = new Set(['f', 'g', 'h', 'j', 'n', 'o', 'p', 'q', 's', 't', 'u', 'w']);
   term.attachCustomKeyEventHandler((e) => {
+    const key = e.key.toLowerCase();
     // Cmd+key on Mac: block known browser shortcuts, allow the rest
     if (e.metaKey) {
-      if (e.key === 'c' || e.key === 'v') { return true; } // allow copy/paste
-      if (browserShortcuts.has(e.key)) { return false; }    // block browser shortcuts
+      if (key === 'c' || key === 'v') {
+        return true;
+      } // allow copy/paste
+      if (browserShortcuts.has(key)) {
+        return false;
+      } // block browser shortcuts
       return true;
     }
     // Ctrl+key (non-Mac modifier): allow all through to PTY (Ctrl+C/D/L/R/Z etc.)
@@ -94,19 +100,27 @@ export async function createTerminal(options: TerminalOptions): Promise<Terminal
     pasteListener = (e: ClipboardEvent) => {
       void (async () => {
         try {
-          if (!e.clipboardData) {return;}
+          if (!e.clipboardData) {
+            return;
+          }
           const items = Array.from(e.clipboardData.items);
-          const imageItem = items.find(item => item.type.startsWith('image/'));
-          if (!imageItem) {return;} // No image — let normal paste proceed
+          const imageItem = items.find((item) => item.type.startsWith('image/'));
+          if (!imageItem) {
+            return;
+          } // No image — let normal paste proceed
 
-          e.preventDefault();
           const blob = imageItem.getAsFile();
-          if (!blob) {return;}
+          if (!blob) {
+            return;
+          }
+          e.preventDefault();
 
           // Read image as base64
           const reader = new FileReader();
           const base64 = await new Promise<string>((resolve, reject) => {
-            reader.onload = () => { resolve(reader.result as string); };
+            reader.onload = () => {
+              resolve(reader.result as string);
+            };
             reader.onerror = reject;
             reader.readAsDataURL(blob);
           });
@@ -115,7 +129,7 @@ export async function createTerminal(options: TerminalOptions): Promise<Terminal
           const res = await fetch(`/api/terminals/${pasteTermId}/paste-image`, {
             body: JSON.stringify({ image: base64 }),
             headers: {
-              'Authorization': `Bearer ${pasteApiKey}`,
+              Authorization: `Bearer ${pasteApiKey}`,
               'Content-Type': 'application/json',
             },
             method: 'POST',
@@ -141,7 +155,9 @@ export async function createTerminal(options: TerminalOptions): Promise<Terminal
   let disposed = false;
 
   async function connect() {
-    if (disposed) {return;}
+    if (disposed) {
+      return;
+    }
 
     let ticket: string;
     try {
@@ -158,7 +174,9 @@ export async function createTerminal(options: TerminalOptions): Promise<Terminal
       return;
     }
 
-    if (disposed) {return;}
+    if (disposed) {
+      return;
+    }
 
     ws = new WebSocket(`${options.wsUrl}?ticket=${ticket}`);
 
@@ -177,7 +195,9 @@ export async function createTerminal(options: TerminalOptions): Promise<Terminal
         term.write(`\r\n\x1b[90m[Process exited with code ${msg.code}]\x1b[0m\r\n`);
         // Process exited — stop reconnection and notify parent
         disposed = true;
-        if (reconnectTimer) {clearTimeout(reconnectTimer);}
+        if (reconnectTimer) {
+          clearTimeout(reconnectTimer);
+        }
         options.onExit?.(msg.code);
       } else if (msg.type === 'output-dropped') {
         term.write(`\r\n\x1b[33m[${msg.bytes} bytes dropped]\x1b[0m\r\n`);
@@ -189,7 +209,9 @@ export async function createTerminal(options: TerminalOptions): Promise<Terminal
     };
 
     ws.onclose = () => {
-      if (disposed) {return;}
+      if (disposed) {
+        return;
+      }
       options.onDisconnect?.();
       // Exponential backoff reconnect
       reconnectTimer = setTimeout(() => {
@@ -219,7 +241,9 @@ export async function createTerminal(options: TerminalOptions): Promise<Terminal
 
   function dispose() {
     disposed = true;
-    if (reconnectTimer) {clearTimeout(reconnectTimer);}
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+    }
     if (pasteListener) {
       options.container.removeEventListener('paste', pasteListener as EventListener);
     }
