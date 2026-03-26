@@ -13,6 +13,14 @@ interface ShooterBridgeScanner {
   scan: () => Promise<string>;
 }
 
+interface ShooterNativeBridge {
+  getConfig?: () => string;
+  getFcmToken?: () => string;
+  getPlatform?: () => string;
+  saveConfig?: (config: string) => void;
+  scanner?: ShooterBridgeScanner;
+}
+
 declare global {
   namespace App {
     // interface Error {}
@@ -25,6 +33,7 @@ declare global {
   interface Window {
     handleNativeResponse?: (callbackId: string, response: string) => void;
     ShooterBridge?: ShooterBridge;
+    ShooterNativeBridge?: ShooterNativeBridge;
   }
 }
 

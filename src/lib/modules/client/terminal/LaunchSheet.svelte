@@ -125,6 +125,9 @@
   }
 
   function handleKeydown(event: KeyboardEvent): void {
+    if (!open) {
+      return;
+    }
     if (event.key === 'Escape') {
       onClose();
     }
@@ -135,7 +138,7 @@
 
 {#if open}
   <div class="overlay" role="presentation" onclick={handleBackdropClick}>
-    <div class="sheet" role="dialog" aria-label="New Terminal">
+    <div class="sheet" role="dialog" aria-modal="true" aria-label="New Terminal">
       <div class="handle-bar">
         <div class="handle"></div>
       </div>

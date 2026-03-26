@@ -43,7 +43,6 @@
     "node": ">=20"
   },
   "scripts": {
-    "preinstall": "npx only-allow pnpm",
     "postinstall": "node-gyp rebuild --directory=node_modules/node-pty || true",
     "build": "vite build",
     "postbuild": "cp src/lib/modules/server/terminal/pty-holder.cjs build/pty-holder.cjs",

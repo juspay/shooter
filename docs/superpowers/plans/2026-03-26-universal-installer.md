@@ -1,3 +1,148 @@
+# Universal Installer & Full Lifecycle CLI — Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Make Shooter installable on any macOS machine with one command and controllable via a full lifecycle `shooter` CLI — no knowledge of pnpm, tsx, or launchd required.
+
+**Architecture:** Three entry points (`curl|sh`, `npx`, `brew`) funnel into one setup wizard. A rewritten `bin/shooter.cjs` CLI handles start/stop/restart/status/update/logs/autostart. pnpm is used internally but invisible. A generated launcher wrapper with self-healing Node detection enables launchd auto-start.
+
+**Tech Stack:** POSIX shell (installer), Node.js/CJS (CLI + setup wizard), corepack (pnpm bootstrapping), launchd (macOS auto-start)
+
+**Spec:** `docs/superpowers/specs/2026-03-26-universal-installer-design.md`
+
+---
+
+## File Structure
+
+### Modified files
+
+| File | Responsibility | Changes |
+|------|---------------|---------|
+| `bin/shooter.cjs` | CLI entry point — all user-facing commands | Rewrite: expand from 4 to 11 commands, add PID management, pnpm resolution, launcher generation |
+| `scripts/install.sh` | `curl\|sh` bootstrap installer | Rewrite: Node detection chain, Xcode CLT check, corepack/pnpm fallback, `~/.shooter/repo` directory layout |
+| `scripts/setup.cjs` | Interactive configuration wizard | Modify: write `.env` to `~/.shooter/.env`, remove pnpm prerequisite check, update ROOT resolution |
+| `package.json` | Project metadata | Remove `preinstall` only-allow-pnpm gate |
+| `server.ts` | Server entry point | Modify: load `.env` from `~/.shooter/.env` via `SHOOTER_HOME` env var with CWD fallback |
+
+### New files
+
+| File | Responsibility |
+|------|---------------|
+| `scripts/homebrew/shooter.rb` | Homebrew formula skeleton for `juspay/homebrew-shooter` tap |
+
+### Deleted files
+
+| File | Why |
+|------|-----|
+| `scripts/start-server.sh` | Replaced by dynamically generated `~/.shooter/launcher.sh` |
+
+> **Note:** `docs/screenshots/verify/` contains actual PNG files (command-palette.png, shortcuts-help.png). Only delete if confirmed unnecessary. The empty subdirs (after/, audit/, baseline/) can be removed.
+
+---
+
+## Task 1: Remove pnpm gate from package.json
+
+**Files:**
+- Modify: `package.json:46`
+
+- [ ] **Step 1: Remove the preinstall script**
+
+In `package.json`, change line 46 from:
+```json
+"preinstall": "npx only-allow pnpm",
+```
+to remove the line entirely. The `scripts` block should go from `"preinstall"` directly to `"postinstall"`.
+
+```json
+"scripts": {
+    "postinstall": "node-gyp rebuild --directory=node_modules/node-pty || true",
+```
+
+- [ ] **Step 2: Verify pnpm still works**
+
+Run: `pnpm install`
+Expected: No errors. The `packageManager` field still exists so corepack/pnpm will still work, but npm/npx won't be blocked.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add package.json
+git commit -m "chore: remove preinstall pnpm-only gate
+
+Allow npm/npx to interact with the package (needed for npx entry point).
+pnpm is still the internal package manager via packageManager field."
+```
+
+---
+
+## Task 2: Update server.ts to support external .env location
+
+**Files:**
+- Modify: `server.ts:5-6`
+
+- [ ] **Step 1: Replace dotenv/config import with explicit path resolution**
+
+Replace lines 5-6 of `server.ts`:
+
+```typescript
+// Load .env into process.env before anything else (adapter-node reads process.env at runtime).
+import 'dotenv/config';
+```
+
+With:
+
+```typescript
+// Load .env — check SHOOTER_HOME first (set by CLI/launcher), fall back to CWD.
+import { config } from 'dotenv';
+import { existsSync } from 'fs';
+import { join } from 'path';
+
+const shooterHome = process.env.SHOOTER_HOME || '';
+const envPath = shooterHome
+	? join(shooterHome, '.env')
+	: undefined; // undefined = dotenv default (CWD/.env)
+
+if (envPath && existsSync(envPath)) {
+	config({ path: envPath });
+} else {
+	config(); // CWD fallback — works for local dev
+}
+```
+
+- [ ] **Step 2: Verify server still starts in dev mode**
+
+Run: `pnpm build && pnpm start`
+Expected: Server starts normally on port 3000, loads `.env` from CWD (no `SHOOTER_HOME` set).
+
+Run: `curl http://localhost:3000/api/health`
+Expected: `{"status":"healthy",...}`
+
+Stop the server with Ctrl+C.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add server.ts
+git commit -m "feat: support SHOOTER_HOME env var for .env location
+
+When SHOOTER_HOME is set (by CLI or launcher), load .env from there.
+Falls back to CWD/.env for local development."
+```
+
+---
+
+## Task 3: Rewrite bin/shooter.cjs — Core infrastructure
+
+The CLI rewrite is large, so it's split into sub-tasks. This task builds the shared helpers and basic commands.
+
+**Files:**
+- Modify: `bin/shooter.cjs` (full rewrite)
+
+- [ ] **Step 1: Write the complete CLI file with all commands**
+
+Rewrite `bin/shooter.cjs` with:
+
+```javascript
 #!/usr/bin/env node
 
 // Shooter CLI — full lifecycle management.
@@ -102,22 +247,7 @@ function isProcessAlive(pid) {
 	catch { return false; }
 }
 
-function isValidPid(pid) {
-	return Number.isFinite(pid) && pid > 0 && pid === Math.floor(pid);
-}
-
-function isValidPort(port) {
-	const p = parseInt(port, 10);
-	return Number.isFinite(p) && p >= 1 && p <= 65535;
-}
-
-function shellEscape(s) { return s.replace(/'/g, "'\\''"); }
-function xmlEscape(s) {
-	return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
 function isShooterProcess(pid) {
-	if (!isValidPid(pid)) return false;
 	try {
 		const cmd = execSync(`ps -p ${pid} -o command=`, { encoding: 'utf-8' }).trim();
 		return cmd.includes('server.ts') || cmd.includes('tsx') || cmd.includes('shooter');
@@ -173,12 +303,6 @@ function cmdStart() {
 
 	// Read PORT from .env if not already in environment
 	const port = process.env.PORT || readEnvPort() || '3000';
-
-	// Validate port before using in shell command
-	if (!isValidPort(port)) {
-		error(`Invalid port value: ${port}. Must be a number between 1 and 65535.`);
-		process.exit(1);
-	}
 
 	// Check if port is already in use
 	try {
@@ -284,7 +408,7 @@ function cmdRestart() {
 			// Wait for exit (up to 10s)
 			const deadline = Date.now() + 10000;
 			while (isProcessAlive(pidInfo.pid) && Date.now() < deadline) {
-				Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500);
+				execSync('sleep 0.5');
 			}
 			if (isProcessAlive(pidInfo.pid)) {
 				warn('Graceful stop timed out. Sending SIGKILL...');
@@ -322,11 +446,8 @@ function cmdStatus() {
 		}
 	}
 
-	// Health check — prefer the port the running server actually bound to
-	const pidInfoForHealth = readPid();
-	const port = (pidInfoForHealth && pidInfoForHealth.port)
-		? String(pidInfoForHealth.port)
-		: (readEnvPort() || '3000');
+	// Health check
+	const port = process.env.PORT || '3000';
 	const req = http.get(`http://localhost:${port}/api/health`, (res) => {
 		let body = '';
 		res.on('data', (chunk) => { body += chunk; });
@@ -382,7 +503,7 @@ function cmdSetup() {
 		} catch {
 			try { execSync('npm install -g pnpm', { stdio: 'pipe' }); } catch { /* will use local */ }
 		}
-		execSync('npx pnpm install', { cwd: SHOOTER_REPO, stdio: 'inherit' });
+		execSync('pnpm install', { cwd: SHOOTER_REPO, stdio: 'inherit' });
 	}
 
 	const repoRoot = fs.existsSync(path.join(SHOOTER_REPO, 'scripts', 'setup.cjs'))
@@ -516,17 +637,13 @@ function cmdAutostartOn() {
 	// Detect current Node path for fast path
 	const nodeBin = process.execPath;
 
-	// Shell-escaped copies for embedding in the launcher script
-	const repoForLauncherEsc = shellEscape(repoForLauncher);
-	const nodeBinEsc = shellEscape(nodeBin);
-
 	// Generate launcher.sh
 	const launcherContent = `#!/bin/bash
 # Auto-generated by shooter autostart — do not edit manually
 # Regenerate with: shooter autostart on
 
 SHOOTER_HOME="$HOME/.shooter"
-SHOOTER_REPO='${repoForLauncherEsc}'
+SHOOTER_REPO="${repoForLauncher}"
 
 # ── Source environment ──
 set -a
@@ -537,7 +654,7 @@ cd "$SHOOTER_REPO"
 export SHOOTER_HOME
 
 # ── Fast path: hardcoded Node (set at install time) ──
-NODE_BIN='${nodeBinEsc}'
+NODE_BIN="${nodeBin}"
 
 if [ -x "$NODE_BIN" ]; then
     NODE_VERSION=$("$NODE_BIN" --version 2>/dev/null | sed 's/v//' | cut -d. -f1)
@@ -589,28 +706,22 @@ exec "$SHOOTER_REPO/node_modules/.bin/tsx" "$SHOOTER_REPO/server.ts"
 	fs.writeFileSync(LAUNCHER_FILE, launcherContent, { mode: 0o755 });
 	success(`Generated ${LAUNCHER_FILE}`);
 
-	// XML-escaped copies for embedding in the plist
-	const plistLabelX = xmlEscape(PLIST_LABEL);
-	const launcherFileX = xmlEscape(LAUNCHER_FILE);
-	const repoForLauncherX = xmlEscape(repoForLauncher);
-	const logDirX = xmlEscape(LOG_DIR);
-
 	// Generate plist
 	const plistContent = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>${plistLabelX}</string>
+    <string>${PLIST_LABEL}</string>
 
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>
-        <string>${launcherFileX}</string>
+        <string>${LAUNCHER_FILE}</string>
     </array>
 
     <key>WorkingDirectory</key>
-    <string>${repoForLauncherX}</string>
+    <string>${repoForLauncher}</string>
 
     <key>RunAtLoad</key>
     <true/>
@@ -622,10 +733,10 @@ exec "$SHOOTER_REPO/node_modules/.bin/tsx" "$SHOOTER_REPO/server.ts"
     </dict>
 
     <key>StandardOutPath</key>
-    <string>${logDirX}/stdout.log</string>
+    <string>${LOG_DIR}/stdout.log</string>
 
     <key>StandardErrorPath</key>
-    <string>${logDirX}/stderr.log</string>
+    <string>${LOG_DIR}/stderr.log</string>
 
     <key>ThrottleInterval</key>
     <integer>10</integer>
@@ -723,3 +834,541 @@ switch (command) {
 		cmdHelp();
 		process.exit(1);
 }
+```
+
+- [ ] **Step 2: Verify the CLI loads without errors**
+
+Run: `node bin/shooter.cjs help`
+Expected: Shows the help text with all commands listed.
+
+Run: `node bin/shooter.cjs version`
+Expected: Shows version, node version, install path, data path.
+
+- [ ] **Step 3: Test shooter start + stop cycle**
+
+Run: `node bin/shooter.cjs start` (in one terminal)
+Expected: Server starts, PID file created at `~/.shooter/shooter.pid`.
+
+In another terminal:
+Run: `node bin/shooter.cjs status`
+Expected: Shows running with PID and uptime.
+
+Run: `node bin/shooter.cjs stop`
+Expected: Server stops gracefully, PID file removed.
+
+- [ ] **Step 4: Test autostart on/off**
+
+Run: `node bin/shooter.cjs autostart on`
+Expected: Generates `~/.shooter/launcher.sh` and `~/Library/LaunchAgents/com.shooter.server.plist`, loads the service.
+
+Run: `node bin/shooter.cjs autostart off`
+Expected: Removes plist and launcher, stops launchd service.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add bin/shooter.cjs
+git commit -m "feat: rewrite shooter CLI with full lifecycle management
+
+Commands: start, stop, restart, status, setup, update, logs, autostart
+on/off, version, help. PID tracking with atomic writes and process
+verification. pnpm resolution cascade. Self-healing launcher wrapper
+generation for launchd auto-start."
+```
+
+---
+
+## Task 4: Update setup.cjs for new directory layout
+
+**Files:**
+- Modify: `scripts/setup.cjs:36-37` (ROOT and DOT_ENV_PATH)
+- Modify: `scripts/setup.cjs:103-141` (checkPrerequisites — remove pnpm hard check)
+- Modify: `scripts/setup.cjs:339-356` (writeEnv — path to `~/.shooter/.env`)
+
+- [ ] **Step 1: Update ROOT and DOT_ENV_PATH constants**
+
+In `scripts/setup.cjs`, change lines 36-37:
+
+From:
+```javascript
+const ROOT = path.resolve(__dirname, '..');
+const DOT_ENV_PATH = path.join(ROOT, '.env');
+```
+
+To:
+```javascript
+const ROOT = process.env.SHOOTER_PKG_ROOT || path.resolve(__dirname, '..');
+const SHOOTER_HOME = process.env.SHOOTER_HOME || path.join(require('os').homedir(), '.shooter');
+const DOT_ENV_PATH = path.join(SHOOTER_HOME, '.env');
+```
+
+- [ ] **Step 2: Soften the pnpm prerequisite check**
+
+In `scripts/setup.cjs`, lines 116-123 check for pnpm and `process.exit(1)` if missing. Change to a warning instead:
+
+From:
+```javascript
+  try {
+    const pnpmVersion = execSync('pnpm --version', { encoding: 'utf-8' }).trim();
+    console.log(green(`  pnpm v${pnpmVersion}`));
+  } catch {
+    console.log(red('  pnpm is not installed.'));
+    console.log(dim('  Install it: npm install -g pnpm'));
+    process.exit(1);
+  }
+```
+
+To:
+```javascript
+  // pnpm check — soft (installer or CLI handle pnpm resolution)
+  try {
+    const pnpmVersion = execSync('pnpm --version', { encoding: 'utf-8' }).trim();
+    console.log(green(`  pnpm v${pnpmVersion}`));
+  } catch {
+    console.log(yellow('  pnpm not found globally (will use local or corepack)'));
+  }
+```
+
+- [ ] **Step 3: Ensure SHOOTER_HOME directory exists before writing .env**
+
+In the `writeEnv` function (around line 339), add directory creation before writing:
+
+Add before `fs.writeFileSync(DOT_ENV_PATH, content, 'utf-8');`:
+```javascript
+  // Ensure ~/.shooter/ directory exists
+  const envDir = path.dirname(DOT_ENV_PATH);
+  if (!fs.existsSync(envDir)) {
+    fs.mkdirSync(envDir, { recursive: true });
+  }
+```
+
+- [ ] **Step 4: Update user-facing strings to use `shooter` CLI**
+
+In `scripts/setup.cjs`, update the final output messages (around lines 553-561):
+
+Change:
+```javascript
+  console.log(`  Start the server:  ${cyan('pnpm start')}`);
+  console.log(`  Dev mode:          ${cyan('pnpm dev')}`);
+```
+To:
+```javascript
+  console.log(`  Start the server:  ${cyan('shooter start')}`);
+  console.log(`  Status:            ${cyan('shooter status')}`);
+```
+
+And change:
+```javascript
+    console.log(dim('  Run pnpm setup again to add iOS or Android push notifications.'));
+```
+To:
+```javascript
+    console.log(dim('  Run shooter setup again to add iOS or Android push notifications.'));
+```
+
+- [ ] **Step 5: Verify setup wizard runs with new paths**
+
+Run: `SHOOTER_HOME=~/.shooter node scripts/setup.cjs`
+Expected: Wizard starts, prerequisites pass (pnpm check is soft), offers to write `.env` to `~/.shooter/.env`.
+
+Press Ctrl+C to exit after verifying the paths look correct.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add scripts/setup.cjs
+git commit -m "feat: update setup wizard for ~/.shooter directory layout
+
+.env now writes to SHOOTER_HOME (~/.shooter/) instead of repo root.
+pnpm check is now a soft warning (CLI handles resolution).
+User-facing strings now reference shooter CLI instead of pnpm.
+ROOT resolves from SHOOTER_PKG_ROOT env var."
+```
+
+---
+
+## Task 5: Rewrite install.sh with Node detection chain
+
+**Files:**
+- Modify: `scripts/install.sh` (significant rewrite)
+
+- [ ] **Step 1: Rewrite the installer**
+
+Replace the entire contents of `scripts/install.sh` with the new version that includes:
+
+1. **Xcode CLT check** — `xcode-select -p` early, offer `xcode-select --install` if missing
+2. **Node detection chain** — PATH -> nvm -> fnm -> volta -> Homebrew common paths -> `brew install node` fallback
+3. **Version check** — each candidate checked for >= 20
+4. **corepack/pnpm bootstrap** — try `corepack enable`, fall back to `npm install -g pnpm`, fall back to `npx pnpm`
+5. **Clone to `~/.shooter/repo`** — separate code from data
+6. **Create `~/.shooter/` data dir** — mkdir if needed
+7. **Updated `handle_existing()`** — only `rm -rf ~/.shooter/repo`, never touch `~/.shooter/.env` or `~/.shooter/shooter.db`
+8. **Global CLI link** — symlink `bin/shooter.cjs` to `~/.local/bin/shooter`
+
+Key functions to add/modify:
+
+```bash
+# ── Xcode CLT check ─────────────────────────────────────────────────
+check_xcode_clt() {
+    if ! xcode-select -p >/dev/null 2>&1; then
+        warn "Xcode Command Line Tools are required for native modules (node-pty, better-sqlite3)."
+        if ask_yes_no "  Install Xcode Command Line Tools now?" "y"; then
+            info "Running xcode-select --install..."
+            xcode-select --install 2>/dev/null
+            info "Follow the system dialog to complete installation, then re-run this script."
+            exit 0
+        else
+            error "Cannot continue without Xcode Command Line Tools."
+            exit 1
+        fi
+    fi
+    success "Xcode Command Line Tools installed"
+}
+
+# ── Node detection chain ────────────────────────────────────────────
+check_node_version() {
+    candidate="$1"
+    ver="$("$candidate" --version 2>/dev/null | sed 's/^v//' | cut -d. -f1)"
+    [ -n "$ver" ] && [ "$ver" -ge "$REQUIRED_NODE_MAJOR" ] 2>/dev/null
+}
+
+find_node() {
+    # 1. PATH
+    candidate="$(command -v node 2>/dev/null)"
+    if [ -n "$candidate" ] && check_node_version "$candidate"; then
+        printf '%s' "$candidate"
+        return 0
+    fi
+
+    # 2. nvm
+    NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+    if [ -s "$NVM_DIR/nvm.sh" ]; then
+        . "$NVM_DIR/nvm.sh"
+        candidate="$(command -v node 2>/dev/null)"
+        if [ -n "$candidate" ] && check_node_version "$candidate"; then
+            printf '%s' "$candidate"
+            return 0
+        fi
+    fi
+
+    # 3. fnm
+    if command -v fnm >/dev/null 2>&1; then
+        eval "$(fnm env 2>/dev/null)"
+        candidate="$(command -v node 2>/dev/null)"
+        if [ -n "$candidate" ] && check_node_version "$candidate"; then
+            printf '%s' "$candidate"
+            return 0
+        fi
+    fi
+
+    # 4. volta
+    if [ -x "$HOME/.volta/bin/node" ] && check_node_version "$HOME/.volta/bin/node"; then
+        printf '%s' "$HOME/.volta/bin/node"
+        return 0
+    fi
+
+    # 5. Homebrew (installed but not linked)
+    for brew_node in /opt/homebrew/bin/node /usr/local/bin/node; do
+        if [ -x "$brew_node" ] && check_node_version "$brew_node"; then
+            printf '%s' "$brew_node"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+check_node() {
+    NODE_BIN="$(find_node)"
+    if [ -n "$NODE_BIN" ]; then
+        node_version="$("$NODE_BIN" --version)"
+        success "Node.js $node_version ($NODE_BIN)"
+        export PATH="$(dirname "$NODE_BIN"):$PATH"
+        return 0
+    fi
+
+    # Fallback: install via Homebrew
+    if command -v brew >/dev/null 2>&1; then
+        warn "Node.js >= $REQUIRED_NODE_MAJOR not found."
+        if ask_yes_no "  Install Node.js via Homebrew?" "y"; then
+            info "Installing Node.js..."
+            brew install node
+            NODE_BIN="$(command -v node)"
+            if [ -n "$NODE_BIN" ] && check_node_version "$NODE_BIN"; then
+                success "Node.js $("$NODE_BIN" --version) (installed via Homebrew)"
+                return 0
+            fi
+        fi
+    fi
+
+    error "Node.js >= $REQUIRED_NODE_MAJOR is required."
+    printf '  Install from: https://nodejs.org\n'
+    exit 1
+}
+```
+
+Update `SHOOTER_DIR` references:
+```bash
+SHOOTER_HOME="$HOME/.shooter"
+SHOOTER_REPO="$SHOOTER_HOME/repo"
+```
+
+Update `handle_existing()` to only touch `$SHOOTER_REPO`, never `$SHOOTER_HOME` root.
+
+Update `clone_repo()` to clone into `$SHOOTER_REPO`.
+
+Update `install_deps()` to `cd "$SHOOTER_REPO" && pnpm install`.
+
+Add bootstrap_pnpm():
+```bash
+bootstrap_pnpm() {
+    # Try corepack first
+    if command -v corepack >/dev/null 2>&1; then
+        if corepack enable 2>/dev/null; then
+            success "pnpm enabled via corepack"
+            return 0
+        fi
+    fi
+
+    # Try npm install -g pnpm
+    if command -v npm >/dev/null 2>&1; then
+        info "Installing pnpm via npm..."
+        npm install -g pnpm 2>/dev/null
+        if command -v pnpm >/dev/null 2>&1; then
+            success "pnpm $(pnpm --version) (installed via npm)"
+            return 0
+        fi
+    fi
+
+    # Will use npx pnpm as last resort during install
+    warn "pnpm not available globally. Will use npx pnpm."
+    return 0
+}
+```
+
+Update `offer_global_command()` to symlink to `~/.local/bin/`:
+```bash
+offer_global_command() {
+    step "Global command"
+    BIN_DIR="$HOME/.local/bin"
+    SHOOTER_BIN="$BIN_DIR/shooter"
+
+    if [ -x "$SHOOTER_BIN" ]; then
+        success "'shooter' command already linked."
+        return
+    fi
+
+    if ask_yes_no "  Install 'shooter' as a global command?" "y"; then
+        mkdir -p "$BIN_DIR"
+        ln -sf "$SHOOTER_REPO/bin/shooter.cjs" "$SHOOTER_BIN"
+        chmod +x "$SHOOTER_BIN"
+        success "'shooter' linked to $SHOOTER_BIN"
+
+        # Check if ~/.local/bin is in PATH
+        case ":$PATH:" in
+            *":$BIN_DIR:"*) ;;
+            *)
+                warn "$BIN_DIR is not in your PATH."
+                info "Add to your shell profile: export PATH=\"\$HOME/.local/bin:\$PATH\""
+                ;;
+        esac
+    fi
+}
+```
+
+- [ ] **Step 2: Test the installer locally (dry run)**
+
+Run: `bash scripts/install.sh` (will detect existing install, choose "Update")
+Expected: Finds Node, checks Xcode CLT, bootstraps pnpm, pulls latest, runs setup wizard.
+
+- [ ] **Step 3: Test Node detection with nvm disabled**
+
+Run: `bash -c 'unset NVM_DIR; PATH="/usr/bin:/bin:/usr/sbin:/sbin" bash scripts/install.sh'`
+Expected: Falls through PATH check, tries nvm/fnm/volta, finds Homebrew node, or offers to install.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add scripts/install.sh
+git commit -m "feat: rewrite installer with Node detection chain and directory separation
+
+Supports nvm, fnm, volta, Homebrew, direct installs. Checks Xcode CLT.
+Bootstraps pnpm via corepack with fallbacks. Clones to ~/.shooter/repo,
+data stays in ~/.shooter/. Global CLI linked to ~/.local/bin/shooter."
+```
+
+---
+
+## Task 6: Delete obsolete files
+
+**Files:**
+- Delete: `scripts/start-server.sh`
+- Delete: `docs/screenshots/after/`, `docs/screenshots/audit/`, `docs/screenshots/baseline/` (empty dirs)
+- Keep: `docs/screenshots/verify/` (contains actual PNGs — command-palette.png, shortcuts-help.png)
+
+- [ ] **Step 1: Remove the files**
+
+```bash
+rm -f scripts/start-server.sh
+rmdir docs/screenshots/after docs/screenshots/audit docs/screenshots/baseline 2>/dev/null || true
+```
+
+- [ ] **Step 2: Verify nothing references start-server.sh**
+
+Run: `grep -r 'start-server.sh' . --include='*.ts' --include='*.js' --include='*.cjs' --include='*.md' | grep -v node_modules`
+Expected: No references (may appear in this plan/spec only).
+
+- [ ] **Step 3: Commit**
+
+```bash
+git rm -f scripts/start-server.sh
+git commit -m "chore: remove obsolete start-server.sh
+
+Replaced by dynamically generated ~/.shooter/launcher.sh via shooter autostart on."
+```
+
+---
+
+## Task 7: Create Homebrew formula skeleton
+
+**Files:**
+- Create: `scripts/homebrew/shooter.rb`
+
+- [ ] **Step 1: Create the formula**
+
+```ruby
+# Homebrew formula for Shooter
+# To use: brew tap juspay/shooter && brew install shooter
+
+class Shooter < Formula
+  desc "Mobile-first dev notifications & remote terminal for Claude Code"
+  homepage "https://github.com/juspay/shooter"
+  url "https://github.com/juspay/shooter/archive/refs/tags/v1.0.0.tar.gz"
+  # sha256 "UPDATE_WITH_REAL_SHA"
+  license "MIT"
+
+  depends_on "node@22"
+
+  def install
+    # Enable corepack for pnpm
+    system "corepack", "enable"
+    system "corepack", "prepare", "pnpm@10.28.2", "--activate"
+
+    # Install dependencies and build
+    system "pnpm", "install", "--frozen-lockfile"
+    system "pnpm", "build"
+
+    # Install to libexec (keeps node_modules contained)
+    libexec.install Dir["*"]
+
+    # Create wrapper script
+    (bin/"shooter").write <<~EOS
+      #!/bin/bash
+      exec "#{Formula["node@22"].opt_bin}/node" "#{libexec}/bin/shooter.cjs" "$@"
+    EOS
+  end
+
+  def post_install
+    ohai "Run 'shooter setup' to configure Shooter"
+  end
+
+  service do
+    run [opt_bin/"shooter", "start"]
+    keep_alive crashed: true
+    log_path var/"log/shooter/stdout.log"
+    error_log_path var/"log/shooter/stderr.log"
+    working_dir var/"lib/shooter"
+  end
+
+  test do
+    assert_match "shooter v", shell_output("#{bin}/shooter version")
+  end
+end
+```
+
+- [ ] **Step 2: Commit**
+
+```bash
+mkdir -p scripts/homebrew
+git add scripts/homebrew/shooter.rb
+git commit -m "feat: add Homebrew formula skeleton
+
+Template for juspay/homebrew-shooter tap. Uses node@22 dep,
+corepack for pnpm, and the shooter CLI wrapper."
+```
+
+---
+
+## Task 8: Integration test — full install flow
+
+- [ ] **Step 1: Test the full CLI lifecycle**
+
+```bash
+# Build first
+pnpm build
+
+# Test help
+node bin/shooter.cjs help
+
+# Test version
+node bin/shooter.cjs version
+
+# Test status when stopped
+node bin/shooter.cjs status
+
+# Test start (background it for testing)
+node bin/shooter.cjs start &
+sleep 3
+
+# Test status when running
+node bin/shooter.cjs status
+
+# Test health
+curl -s http://localhost:3000/api/health | head -1
+
+# Test stop
+node bin/shooter.cjs stop
+
+# Verify stopped
+node bin/shooter.cjs status
+```
+
+- [ ] **Step 2: Test autostart cycle**
+
+```bash
+# Enable autostart
+node bin/shooter.cjs autostart on
+
+# Verify files exist
+ls -la ~/.shooter/launcher.sh
+ls -la ~/Library/LaunchAgents/com.shooter.server.plist
+
+# Verify launcher is executable
+file ~/.shooter/launcher.sh
+
+# Check launchd loaded it
+launchctl list | grep com.shooter.server
+
+# Disable autostart
+node bin/shooter.cjs autostart off
+
+# Verify cleanup
+ls ~/Library/LaunchAgents/com.shooter.server.plist 2>&1 || echo "plist removed"
+ls ~/.shooter/launcher.sh 2>&1 || echo "launcher removed"
+```
+
+- [ ] **Step 3: Test update command**
+
+```bash
+node bin/shooter.cjs update
+```
+
+Expected: Pulls, installs, builds, reports version.
+
+- [ ] **Step 4: Final commit with any fixes**
+
+If any issues were found and fixed during testing:
+```bash
+git add -A
+git commit -m "fix: integration test fixes for CLI lifecycle"
+```

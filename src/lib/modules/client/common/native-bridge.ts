@@ -19,7 +19,7 @@ export function isNativeBridge(): boolean {
   // iOS injects window.ShooterBridge, Android injects window.ShooterNativeBridge
   return (
     (typeof window.ShooterBridge === 'object' && window.ShooterBridge !== null) ||
-    (typeof (window as any).ShooterNativeBridge === 'object' && (window as any).ShooterNativeBridge !== null)
+    (typeof window.ShooterNativeBridge === 'object' && window.ShooterNativeBridge !== null)
   );
 }
 
@@ -43,8 +43,8 @@ function getScanFn(): (() => Promise<string>) | null {
   if (typeof window.ShooterBridge?.scanner?.scan === 'function') {
     return () => window.ShooterBridge!.scanner!.scan();
   }
-  if (typeof (window as any).ShooterNativeBridge?.scanner?.scan === 'function') {
-    return () => (window as any).ShooterNativeBridge.scanner.scan();
+  if (typeof window.ShooterNativeBridge?.scanner?.scan === 'function') {
+    return () => window.ShooterNativeBridge!.scanner!.scan();
   }
   return null;
 }

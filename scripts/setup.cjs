@@ -33,8 +33,9 @@ function dim(s) { return `${C.dim}${s}${C.reset}`; }
 function mask(secret) { return secret.slice(0, 4) + '****'; }
 
 // ── Globals ──────────────────────────────────────────────────────────
-const ROOT = path.resolve(__dirname, '..');
-const DOT_ENV_PATH = path.join(ROOT, '.env');
+const ROOT = process.env.SHOOTER_PKG_ROOT || path.resolve(__dirname, '..');
+const SHOOTER_HOME = process.env.SHOOTER_HOME || path.join(require('os').homedir(), '.shooter');
+const DOT_ENV_PATH = path.join(SHOOTER_HOME, '.env');
 
 let rl; // readline interface — created in main()
 
@@ -112,14 +113,12 @@ function checkPrerequisites() {
   }
   console.log(green(`  Node.js v${nodeVersion}`));
 
-  // pnpm
+  // pnpm check — soft (installer or CLI handle pnpm resolution)
   try {
     const pnpmVersion = execSync('pnpm --version', { encoding: 'utf-8' }).trim();
     console.log(green(`  pnpm v${pnpmVersion}`));
   } catch {
-    console.log(red('  pnpm is not installed.'));
-    console.log(dim('  Install it: npm install -g pnpm'));
-    process.exit(1);
+    console.log(yellow('  pnpm not found globally (will use local or corepack)'));
   }
 
   // dependencies installed?
@@ -349,7 +348,14 @@ async function writeEnv(config) {
   }
 
   const content = buildEnvContent(config);
-  fs.writeFileSync(DOT_ENV_PATH, content, 'utf-8');
+
+  // Ensure ~/.shooter/ directory exists
+  const envDir = path.dirname(DOT_ENV_PATH);
+  if (!fs.existsSync(envDir)) {
+    fs.mkdirSync(envDir, { recursive: true, mode: 0o700 });
+  }
+
+  fs.writeFileSync(DOT_ENV_PATH, content, { mode: 0o600 });
   console.log(green('  .env written successfully.'));
   console.log('');
   return true;
@@ -453,7 +459,7 @@ function testHealth() {
     serverProcess = spawn('node', ['--import', 'tsx', 'server.ts'], {
       cwd: ROOT,
       stdio: 'pipe',
-      env: { ...process.env, PORT: String(port) },
+      env: { ...process.env, PORT: port.toString(), SHOOTER_HOME, SHOOTER_PKG_ROOT: ROOT },
     });
 
     serverProcess.on('error', (err) => {
@@ -550,13 +556,13 @@ async function main() {
   console.log('');
   console.log(green(bold('  Setup complete!')));
   console.log('');
-  console.log(`  Start the server:  ${cyan('pnpm start')}`);
-  console.log(`  Dev mode:          ${cyan('pnpm dev')}`);
+  console.log(`  Start the server:  ${cyan('shooter start')}`);
+  console.log(`  Status:            ${cyan('shooter status')}`);
   console.log(`  Health check:      ${cyan('curl http://localhost:3000/api/health')}`);
   console.log('');
   if (!config.wantIos && !config.wantAndroid) {
     console.log(yellow('  Note: No push notification platform was configured.'));
-    console.log(dim('  Run pnpm setup again to add iOS or Android push notifications.'));
+    console.log(dim('  Run shooter setup again to add iOS or Android push notifications.'));
     console.log('');
   }
 
