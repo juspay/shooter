@@ -51,6 +51,34 @@ export function getSessionConversation(
   }
 }
 
+function readCwdFromProjectDir(projectDir: string, sessions: SessionInfo[]): string {
+  for (const session of sessions) {
+    try {
+      const jsonlPath = path.join(projectDir, `${session.id}.jsonl`);
+      if (!fs.existsSync(jsonlPath)) {
+        continue;
+      }
+      const content = fs.readFileSync(jsonlPath, 'utf-8');
+      for (const line of content.split('\n')) {
+        if (!line.trim()) {
+          continue;
+        }
+        try {
+          const entry = JSON.parse(line) as Record<string, unknown>;
+          if (typeof entry.cwd === 'string' && entry.cwd) {
+            return entry.cwd;
+          }
+        } catch {
+          // skip malformed lines
+        }
+      }
+    } catch {
+      // skip unreadable files
+    }
+  }
+  return '';
+}
+
 export function listProjectsWithSessions(): ProjectGroup[] {
   if (!fs.existsSync(CLAUDE_PROJECTS_DIR)) {
     return [];
@@ -74,8 +102,6 @@ export function listProjectsWithSessions(): ProjectGroup[] {
 
   for (const dir of projectDirs) {
     const projectDir = path.join(CLAUDE_PROJECTS_DIR, dir);
-    // Decode project path (fallback, prefer session's projectPath)
-    const decodedPath = dir.startsWith('-') ? dir.replace(/-/g, '/') : `/${dir.replace(/-/g, '/')}`;
 
     // Get sessions for this project
     const sessions = listSessionsForProject(projectDir);
@@ -86,10 +112,12 @@ export function listProjectsWithSessions(): ProjectGroup[] {
     // Sort sessions by modified desc
     sessions.sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime());
 
-    // Get real project path from session data instead of decoding directory name
+    // Prefer projectPath from session index, then cwd from JSONL, then decoded dir name
     const realPath =
       sessions.find((s) => s.projectPath && !s.projectPath.includes('.claude/projects'))
-        ?.projectPath || decodedPath;
+        ?.projectPath ||
+      readCwdFromProjectDir(projectDir, sessions) ||
+      (dir.startsWith('-') ? dir.replace(/-/g, '/') : `/${dir.replace(/-/g, '/')}`);
     const pathSegments = realPath.split('/').filter(Boolean);
     const projectName = pathSegments.slice(-2).join('/');
 

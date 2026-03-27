@@ -41,7 +41,7 @@
 
   // DOM references
   let termContainer = $state<HTMLDivElement | null>(null);
-  const inputRef = $state<HTMLInputElement | null>(null);
+  let inputRef = $state<{ focus: () => void } | null>(null);
 
   // WebSocket and terminal instance refs (not reactive)
   let termInstance: null | {
@@ -546,7 +546,7 @@
   }
 
   function handleInputKeydown(e: KeyboardEvent): void {
-    if (e.key === 'Enter') {
+    if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleRawInput();
     }
@@ -741,8 +741,10 @@
         <div class="term-input-bar">
           <Input
             bind:value={inputText}
+            bind:this={inputRef}
             dataType="text"
-            placeholder="Type command..."
+            useTextArea={true}
+            placeholder="Type command... (Shift+Enter for new line)"
             classes="input-mono term-input-field"
             onKeyDown={handleInputKeydown}
           />
