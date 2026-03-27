@@ -217,7 +217,7 @@
         JSON.stringify({
           apiKey: apiKey.trim(),
           deviceToken: deviceToken.trim(),
-          lastUpdated: Date.now(),
+          lastUpdated: new Date().toISOString(),
           serverUrl: trimmedUrl || getDefaultServerUrl(),
         } satisfies ShooterConfig)
       );

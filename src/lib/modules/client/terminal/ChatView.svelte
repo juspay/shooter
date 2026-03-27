@@ -295,7 +295,8 @@
       <Input
         bind:value={inputText}
         dataType="text"
-        placeholder={sessionEnded ? 'Session ended' : 'Send a message...'}
+        useTextArea={true}
+        placeholder={sessionEnded ? 'Session ended' : 'Send a message... (Shift+Enter for new line)'}
         disable={sessionEnded || connectionState !== 'connected'}
         onKeyDown={handleKeydown}
         classes="chat-input-field"
