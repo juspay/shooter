@@ -41,7 +41,8 @@
     [
       "@semantic-release/npm",
       {
-        "npmPublish": true
+        "npmPublish": true,
+        "provenance": true
       }
     ],
     "@semantic-release/github",
