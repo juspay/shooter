@@ -65,7 +65,7 @@
     "@semantic-release/commit-analyzer": "13.0.1",
     "@semantic-release/git": "10.0.1",
     "@semantic-release/github": "11.0.6",
-    "@semantic-release/npm": "12.0.1",
+    "@semantic-release/npm": "13.1.5",
     "@semantic-release/release-notes-generator": "14.1.0",
     "@sveltejs/adapter-node": "^5.2.0",
     "@sveltejs/kit": "^2.50.2",
