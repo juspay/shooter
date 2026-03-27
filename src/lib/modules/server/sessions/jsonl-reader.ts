@@ -51,34 +51,6 @@ export function getSessionConversation(
   }
 }
 
-function readCwdFromProjectDir(projectDir: string, sessions: SessionInfo[]): string {
-  for (const session of sessions) {
-    try {
-      const jsonlPath = path.join(projectDir, `${session.id}.jsonl`);
-      if (!fs.existsSync(jsonlPath)) {
-        continue;
-      }
-      const content = fs.readFileSync(jsonlPath, 'utf-8');
-      for (const line of content.split('\n')) {
-        if (!line.trim()) {
-          continue;
-        }
-        try {
-          const entry = JSON.parse(line) as Record<string, unknown>;
-          if (typeof entry.cwd === 'string' && entry.cwd) {
-            return entry.cwd;
-          }
-        } catch {
-          // skip malformed lines
-        }
-      }
-    } catch {
-      // skip unreadable files
-    }
-  }
-  return '';
-}
-
 export function listProjectsWithSessions(): ProjectGroup[] {
   if (!fs.existsSync(CLAUDE_PROJECTS_DIR)) {
     return [];
@@ -343,4 +315,32 @@ function listSessionsForProject(projectDir: string): SessionInfo[] {
     console.error('[sessions] Failed to read sessions index:', error);
     return [];
   }
+}
+
+function readCwdFromProjectDir(projectDir: string, sessions: SessionInfo[]): string {
+  for (const session of sessions) {
+    try {
+      const jsonlPath = path.join(projectDir, `${session.id}.jsonl`);
+      if (!fs.existsSync(jsonlPath)) {
+        continue;
+      }
+      const content = fs.readFileSync(jsonlPath, 'utf-8');
+      for (const line of content.split('\n')) {
+        if (!line.trim()) {
+          continue;
+        }
+        try {
+          const entry = JSON.parse(line) as Record<string, unknown>;
+          if (typeof entry.cwd === 'string' && entry.cwd) {
+            return entry.cwd;
+          }
+        } catch {
+          // skip malformed lines
+        }
+      }
+    } catch {
+      // skip unreadable files
+    }
+  }
+  return '';
 }

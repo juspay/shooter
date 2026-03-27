@@ -41,7 +41,7 @@
 
   // DOM references
   let termContainer = $state<HTMLDivElement | null>(null);
-  let inputRef = $state<{ focus: () => void } | null>(null);
+  let inputRef = $state<null | { focus: () => void }>(null);
 
   // WebSocket and terminal instance refs (not reactive)
   let termInstance: null | {
