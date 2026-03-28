@@ -1,3 +1,9 @@
+## [1.1.0](https://github.com/juspay/shooter/compare/v1.0.0...v1.1.0) (2026-03-28)
+
+### Features
+
+*  overhaul fresh-user experience — one-command install, full CLI lifecycle ([570de58](https://github.com/juspay/shooter/commit/570de58e209e2a26f08e63b3b8b3f1dff4445c80))
+
 ## 1.0.0 (2026-03-27)
 
 ### ⚠ BREAKING CHANGES
