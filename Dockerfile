@@ -68,9 +68,9 @@ COPY src/lib/modules/server ./src/lib/modules/server
 # Create data directory for SQLite persistence
 RUN mkdir -p /root/.shooter
 
-EXPOSE 3000
+EXPOSE 54007
 
 ENV NODE_ENV=production
-ENV PORT=3000
+ENV PORT=54007
 
 CMD ["node", "--import", "tsx", "server.ts"]

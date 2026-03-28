@@ -65,7 +65,7 @@ server.on('upgrade', (request, socket, head) => {
   socket.destroy();
 });
 
-const port = parseInt(process.env.PORT || '3000');
+const port = parseInt(process.env.PORT || '54007');
 server.listen(port, () => {
   console.log(`Shooter running on http://localhost:${port}`);
 });

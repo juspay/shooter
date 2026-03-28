@@ -33,7 +33,7 @@ const RUNTIME = IS_OPENCODE ? 'opencode' : 'claude-code';
 
 // Environment configuration
 const USE_LOCAL = process.env.SHOOTER_USE_LOCAL === 'true';
-const LOCAL_PORT = process.env.SHOOTER_LOCAL_PORT || '3000';
+const LOCAL_PORT = process.env.SHOOTER_LOCAL_PORT || '54007';
 const REMOTE_BASE_URL = process.env.SHOOTER_API_URL?.trim() || '';
 const LOCAL_BASE_URL = `http://localhost:${LOCAL_PORT}`;
 const BASE_URL = USE_LOCAL ? LOCAL_BASE_URL : REMOTE_BASE_URL;

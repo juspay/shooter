@@ -17,7 +17,7 @@ These variables are read by the production server (`server.ts`) and the SvelteKi
 | `APNS_BUNDLE_ID`  | Yes      | --      | The bundle identifier of the iOS app. Must match the value in the Xcode project and Apple Developer portal.                                                                                                                               | `com.example.shooter`                                                        |
 | `APNS_PRODUCTION` | No       | `false` | When `true`, the server sends push notifications through the production APNs gateway (`api.push.apple.com`). When `false`, it uses the sandbox gateway (`api.sandbox.push.apple.com`). Set to `true` for TestFlight and App Store builds. | `true`                                                                       |
 | `DEVICE_TOKEN`    | Yes      | --      | The 64-character hexadecimal push token for the target iOS device. Obtained from the iOS app after registering for remote notifications. Tokens can change; always use the latest value from the device.                                  | `a1b2c3d4e5f6...64chars`                                                     |
-| `PORT`            | No       | `3000`  | The port the production server listens on. Also the port Cloudflare Tunnel should be configured to reach.                                                                                                                                 | `3000`                                                                       |
+| `PORT`            | No       | `54007` | The port the production server listens on. Also the port Cloudflare Tunnel should be configured to reach.                                                                                                                                 | `54007`                                                                      |
 
 ---
 
@@ -29,7 +29,7 @@ These variables are used by the Claude Code hook notifier (`.claude/hooks/notifi
 | ---------------------------- | ----------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------- |
 | `API_KEY`                    | Yes         | --      | Bearer token the hooks use to authenticate with the Shooter server. Must match the `API_KEY` set on the server. The notifier (`notifier.cjs`) accepts `SHOOTER_API_KEY` as a fallback, but the server itself only reads `API_KEY`.     | `sk-a1b2c3d4e5f6`                |
 | `SHOOTER_USE_LOCAL`          | No          | `false` | When `true`, hooks send requests to `http://localhost:<SHOOTER_LOCAL_PORT>` instead of the remote `SHOOTER_API_URL`. Use this during local development.                                                                                | `true`                           |
-| `SHOOTER_LOCAL_PORT`         | No          | `3000`  | The local port to send hook requests to when `SHOOTER_USE_LOCAL=true`. Set to `3000` for the production server or `5173` for the Vite dev server.                                                                                      | `3000`                           |
+| `SHOOTER_LOCAL_PORT`         | No          | `54007` | The local port to send hook requests to when `SHOOTER_USE_LOCAL=true`. Set to `54007` for the production server or `5173` for the Vite dev server.                                                                                     | `54007`                          |
 | `SHOOTER_API_URL`            | Conditional | --      | The remote base URL for the Shooter server. Required when `SHOOTER_USE_LOCAL` is not `true`. This is the public URL provided by Cloudflare Tunnel.                                                                                     | `https://shooter.yourdomain.com` |
 | `SHOOTER_PERMISSION_TIMEOUT` | No          | `120`   | How long (in seconds) the `PermissionRequest` hook polls the server for a response before timing out. The Claude Code hook timeout in `.claude/settings.json` should be set higher (e.g., 180s) to give the notifier time to clean up. | `120`                            |
 | `SHOOTER_DEVICE_TOKEN`       | No          | --      | Override the device token for hook notifications. When set, the notifier sends this token in the request body. If not set, the server uses the `DEVICE_TOKEN` from its own environment.                                                | `a1b2c3d4e5f6...64chars`         |
@@ -53,7 +53,7 @@ server.ts
 Each hook command in `.claude/settings.json` sets its variables inline:
 
 ```
-SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=3000 API_KEY=$API_KEY node notifier.cjs PreToolUse
+SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=${SHOOTER_LOCAL_PORT:-54007} API_KEY=$API_KEY node .claude/hooks/notifier.cjs PreToolUse
 ```
 
 The `$API_KEY` reference expands from your shell environment. Export it in your shell profile:

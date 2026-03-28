@@ -32,7 +32,7 @@ Comprehensive guide for manually testing and verifying every feature of the Shoo
 ### 1.1 Public health check (no auth required)
 
 ```bash
-curl -s http://localhost:3000/api/health | jq .
+curl -s http://localhost:54007/api/health | jq .
 ```
 
 **Expected response:**
@@ -50,7 +50,7 @@ The `status` field will be `"healthy"` when all critical checks pass (APNs confi
 
 ```bash
 curl -s -H "Authorization: Bearer YOUR_API_KEY" \
-  "http://localhost:3000/api/health?details=true" | jq .
+  "http://localhost:54007/api/health?details=true" | jq .
 ```
 
 **Expected response:**
@@ -96,7 +96,7 @@ curl -s -H "Authorization: Bearer YOUR_API_KEY" \
 ### 1.3 Detailed health without auth must fail
 
 ```bash
-curl -s "http://localhost:3000/api/health?details=true" | jq .
+curl -s "http://localhost:54007/api/health?details=true" | jq .
 ```
 
 **Expected:** `401` with `{"error": "Missing authorization"}`.
@@ -132,7 +132,7 @@ All endpoints except `GET /api/health` (without `?details=true`) require `Author
 ### 2.2 Test without auth (expect 401)
 
 ```bash
-curl -s http://localhost:3000/api/terminals | jq .
+curl -s http://localhost:54007/api/terminals | jq .
 ```
 
 **Expected:**
@@ -149,7 +149,7 @@ HTTP status: `401`.
 
 ```bash
 curl -s -H "Authorization: Bearer WRONG_KEY_12345" \
-  http://localhost:3000/api/terminals | jq .
+  http://localhost:54007/api/terminals | jq .
 ```
 
 **Expected:**
@@ -166,7 +166,7 @@ HTTP status: `401`. The server uses timing-safe comparison (`crypto.timingSafeEq
 
 ```bash
 curl -s -H "Authorization: Bearer YOUR_API_KEY" \
-  http://localhost:3000/api/terminals | jq .
+  http://localhost:54007/api/terminals | jq .
 ```
 
 **Expected:** `200` with JSON containing `terminals` array and `count`.
@@ -177,7 +177,7 @@ Run this to test all protected endpoints in one pass:
 
 ```bash
 API_KEY="YOUR_API_KEY"
-BASE="http://localhost:3000"
+BASE="http://localhost:54007"
 
 echo "=== No auth (expect 401) ==="
 for ep in "/api/terminals" "/api/sessions" "/api/ws-status" "/api/qr-config" "/api/notify?limit=1"; do
@@ -209,7 +209,7 @@ done
 ### 3.1 Create a bash terminal
 
 ```bash
-curl -s -X POST http://localhost:3000/api/terminals \
+curl -s -X POST http://localhost:54007/api/terminals \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -237,7 +237,7 @@ curl -s -X POST http://localhost:3000/api/terminals \
 **Save the terminal ID for subsequent tests:**
 
 ```bash
-TERM_ID=$(curl -s -X POST http://localhost:3000/api/terminals \
+TERM_ID=$(curl -s -X POST http://localhost:54007/api/terminals \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"command":"bash","cwd":"'$HOME'","cols":120,"rows":40}' | jq -r '.id')
@@ -247,7 +247,7 @@ echo "Created terminal: $TERM_ID"
 ### 3.2 Create a Claude Code terminal
 
 ```bash
-curl -s -X POST http://localhost:3000/api/terminals \
+curl -s -X POST http://localhost:54007/api/terminals \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -263,7 +263,7 @@ curl -s -X POST http://localhost:3000/api/terminals \
 **Allowed commands:** `zsh`, `bash`, `sh`, `fish`, `claude`, `opencode`. Any other command returns `400`:
 
 ```bash
-curl -s -X POST http://localhost:3000/api/terminals \
+curl -s -X POST http://localhost:54007/api/terminals \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"command":"rm","cwd":"'$HOME'"}' | jq .
@@ -276,7 +276,7 @@ curl -s -X POST http://localhost:3000/api/terminals \
 **Missing command:**
 
 ```bash
-curl -s -X POST http://localhost:3000/api/terminals \
+curl -s -X POST http://localhost:54007/api/terminals \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"cwd":"'$HOME'"}' | jq .
@@ -287,7 +287,7 @@ curl -s -X POST http://localhost:3000/api/terminals \
 **Missing cwd:**
 
 ```bash
-curl -s -X POST http://localhost:3000/api/terminals \
+curl -s -X POST http://localhost:54007/api/terminals \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"command":"bash"}' | jq .
@@ -298,7 +298,7 @@ curl -s -X POST http://localhost:3000/api/terminals \
 **cwd outside home directory:**
 
 ```bash
-curl -s -X POST http://localhost:3000/api/terminals \
+curl -s -X POST http://localhost:54007/api/terminals \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"command":"bash","cwd":"/etc"}' | jq .
@@ -310,7 +310,7 @@ curl -s -X POST http://localhost:3000/api/terminals \
 
 ```bash
 curl -s -H "Authorization: Bearer YOUR_API_KEY" \
-  http://localhost:3000/api/terminals | jq .
+  http://localhost:54007/api/terminals | jq .
 ```
 
 **Expected response:**
@@ -346,7 +346,7 @@ curl -s -H "Authorization: Bearer YOUR_API_KEY" \
 
 ```bash
 curl -s -H "Authorization: Bearer YOUR_API_KEY" \
-  "http://localhost:3000/api/terminals/$TERM_ID" | jq .
+  "http://localhost:54007/api/terminals/$TERM_ID" | jq .
 ```
 
 **Expected:** Terminal details including `lastOutput` (last scrollback line), `ws` and `sessionWs` paths.
@@ -355,7 +355,7 @@ curl -s -H "Authorization: Bearer YOUR_API_KEY" \
 
 ```bash
 curl -s -H "Authorization: Bearer YOUR_API_KEY" \
-  http://localhost:3000/api/terminals/nonexistent123 | jq .
+  http://localhost:54007/api/terminals/nonexistent123 | jq .
 ```
 
 **Expected:** `404` with `{"error": "Terminal not found"}`.
@@ -363,7 +363,7 @@ curl -s -H "Authorization: Bearer YOUR_API_KEY" \
 ### 3.6 Resize a terminal
 
 ```bash
-curl -s -X POST "http://localhost:3000/api/terminals/$TERM_ID/resize" \
+curl -s -X POST "http://localhost:54007/api/terminals/$TERM_ID/resize" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"cols": 200, "rows": 50}' | jq .
@@ -374,7 +374,7 @@ curl -s -X POST "http://localhost:3000/api/terminals/$TERM_ID/resize" \
 **Validation -- values too large:**
 
 ```bash
-curl -s -X POST "http://localhost:3000/api/terminals/$TERM_ID/resize" \
+curl -s -X POST "http://localhost:54007/api/terminals/$TERM_ID/resize" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"cols": 600, "rows": 50}' | jq .
@@ -385,7 +385,7 @@ curl -s -X POST "http://localhost:3000/api/terminals/$TERM_ID/resize" \
 ### 3.7 Kill a terminal
 
 ```bash
-curl -s -X DELETE "http://localhost:3000/api/terminals/$TERM_ID" \
+curl -s -X DELETE "http://localhost:54007/api/terminals/$TERM_ID" \
   -H "Authorization: Bearer YOUR_API_KEY" | jq .
 ```
 
@@ -396,7 +396,7 @@ After killing, list terminals again -- the terminal should show `"status": "exit
 **Delete an already-exited terminal to remove it immediately:**
 
 ```bash
-curl -s -X DELETE "http://localhost:3000/api/terminals/$TERM_ID" \
+curl -s -X DELETE "http://localhost:54007/api/terminals/$TERM_ID" \
   -H "Authorization: Bearer YOUR_API_KEY" | jq .
 ```
 
@@ -446,7 +446,7 @@ This tests that the holder process (forked, detached) survives server restarts a
 **Step 1 -- Create a terminal and note the ID:**
 
 ```bash
-TERM_ID=$(curl -s -X POST http://localhost:3000/api/terminals \
+TERM_ID=$(curl -s -X POST http://localhost:54007/api/terminals \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"command":"bash","cwd":"'$HOME'"}' | jq -r '.id')
@@ -493,7 +493,7 @@ Watch the startup logs. You should see messages like:
 
 ```bash
 curl -s -H "Authorization: Bearer YOUR_API_KEY" \
-  "http://localhost:3000/api/terminals/$TERM_ID" | jq '.status'
+  "http://localhost:54007/api/terminals/$TERM_ID" | jq '.status'
 ```
 
 **Expected:** `"running"`.
@@ -506,7 +506,7 @@ curl -s -H "Authorization: Bearer YOUR_API_KEY" \
 
 ```bash
 curl -s -H "Authorization: Bearer YOUR_API_KEY" \
-  http://localhost:3000/api/sessions | jq .
+  http://localhost:54007/api/sessions | jq .
 ```
 
 **Expected response:**
@@ -547,7 +547,7 @@ curl -s -H "Authorization: Bearer YOUR_API_KEY" \
 
 ```bash
 curl -s -H "Authorization: Bearer YOUR_API_KEY" \
-  "http://localhost:3000/api/sessions?limit=2&offset=0" | jq '.projects | length'
+  "http://localhost:54007/api/sessions?limit=2&offset=0" | jq '.projects | length'
 ```
 
 **Expected:** `2` (or fewer if you have fewer than 2 projects).
@@ -559,7 +559,7 @@ First, grab a session ID and its project ID from the project listing:
 ```bash
 # Get the first session from the first project
 SESSION_INFO=$(curl -s -H "Authorization: Bearer YOUR_API_KEY" \
-  http://localhost:3000/api/sessions | jq -r '.projects[0] | "\(.id) \(.sessions[0].id)"')
+  http://localhost:54007/api/sessions | jq -r '.projects[0] | "\(.id) \(.sessions[0].id)"')
 PROJECT_ID=$(echo $SESSION_INFO | cut -d' ' -f1)
 SESSION_ID=$(echo $SESSION_INFO | cut -d' ' -f2)
 echo "Project: $PROJECT_ID, Session: $SESSION_ID"
@@ -569,7 +569,7 @@ Then fetch the session messages:
 
 ```bash
 curl -s -H "Authorization: Bearer YOUR_API_KEY" \
-  "http://localhost:3000/api/sessions?id=$SESSION_ID&project=$PROJECT_ID" | jq .
+  "http://localhost:54007/api/sessions?id=$SESSION_ID&project=$PROJECT_ID" | jq .
 ```
 
 **Expected response:**
@@ -609,7 +609,7 @@ curl -s -H "Authorization: Bearer YOUR_API_KEY" \
 
 ```bash
 curl -s -H "Authorization: Bearer YOUR_API_KEY" \
-  "http://localhost:3000/api/sessions?id=$SESSION_ID&project=$PROJECT_ID&offset=0&limit=5" \
+  "http://localhost:54007/api/sessions?id=$SESSION_ID&project=$PROJECT_ID&offset=0&limit=5" \
   | jq '.messages | length'
 ```
 
@@ -619,7 +619,7 @@ curl -s -H "Authorization: Bearer YOUR_API_KEY" \
 
 ```bash
 curl -s -H "Authorization: Bearer YOUR_API_KEY" \
-  "http://localhost:3000/api/sessions?id=nonexistent-session-id" | jq .
+  "http://localhost:54007/api/sessions?id=nonexistent-session-id" | jq .
 ```
 
 **Expected:** `404` with `{"error": "Session not found"}`.
@@ -628,11 +628,11 @@ curl -s -H "Authorization: Bearer YOUR_API_KEY" \
 
 ## 5. Web UI Pages
 
-Open each page in a browser at `http://localhost:3000`. The layout provides a header (logo + status badge + gear icon) and a bottom tab bar with "Projects" and "Terminals" tabs.
+Open each page in a browser at `http://localhost:54007`. The layout provides a header (logo + status badge + gear icon) and a bottom tab bar with "Projects" and "Terminals" tabs.
 
 ### 5.1 Home page (`/`)
 
-Open: `http://localhost:3000/`
+Open: `http://localhost:54007/`
 
 **Check:**
 
@@ -669,7 +669,7 @@ Open: navigate from a project by clicking a session.
 
 ### 5.4 Terminals page (`/terminals`)
 
-Open: `http://localhost:3000/terminals` or tap the "Terminals" tab.
+Open: `http://localhost:54007/terminals` or tap the "Terminals" tab.
 
 **Check:**
 
@@ -697,7 +697,7 @@ Open: click a terminal card on the `/terminals` page.
 
 ### 5.6 Settings page (`/config`)
 
-Open: `http://localhost:3000/config` or click the gear icon in the header.
+Open: `http://localhost:54007/config` or click the gear icon in the header.
 
 **Check:**
 
@@ -714,7 +714,7 @@ Open: `http://localhost:3000/config` or click the gear icon in the header.
 ### 6.1 Send a test notification (iOS/APNs)
 
 ```bash
-curl -s -X POST http://localhost:3000/api/notify \
+curl -s -X POST http://localhost:54007/api/notify \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -751,7 +751,7 @@ curl -s -X POST http://localhost:3000/api/notify \
 **Missing title:**
 
 ```bash
-curl -s -X POST http://localhost:3000/api/notify \
+curl -s -X POST http://localhost:54007/api/notify \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"message": "no title"}' | jq .
@@ -762,7 +762,7 @@ curl -s -X POST http://localhost:3000/api/notify \
 **Missing message:**
 
 ```bash
-curl -s -X POST http://localhost:3000/api/notify \
+curl -s -X POST http://localhost:54007/api/notify \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"title": "no message"}' | jq .
@@ -775,13 +775,13 @@ curl -s -X POST http://localhost:3000/api/notify \
 Send the same notification twice within 10 seconds:
 
 ```bash
-curl -s -X POST http://localhost:3000/api/notify \
+curl -s -X POST http://localhost:54007/api/notify \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"title":"Dedup Test","message":"Same message","data":{"category":"test"}}' | jq .success
 
 # Immediately send the same one again
-curl -s -X POST http://localhost:3000/api/notify \
+curl -s -X POST http://localhost:54007/api/notify \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"title":"Dedup Test","message":"Same message","data":{"category":"test"}}' | jq .
@@ -794,7 +794,7 @@ curl -s -X POST http://localhost:3000/api/notify \
 The server filters notifications matching spam patterns. These should be filtered:
 
 ```bash
-curl -s -X POST http://localhost:3000/api/notify \
+curl -s -X POST http://localhost:54007/api/notify \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"title":"PreToolUse","message":"Read Starting | shooter"}' | jq .message
@@ -806,7 +806,7 @@ curl -s -X POST http://localhost:3000/api/notify \
 
 ```bash
 curl -s -H "Authorization: Bearer YOUR_API_KEY" \
-  "http://localhost:3000/api/notify?limit=10" | jq .
+  "http://localhost:54007/api/notify?limit=10" | jq .
 ```
 
 **Expected response:**
@@ -842,7 +842,7 @@ curl -s -H "Authorization: Bearer YOUR_API_KEY" \
 This requires `DEVICE_PLATFORM=android` in the server environment and FCM credentials configured.
 
 ```bash
-curl -s -X POST http://localhost:3000/api/notify \
+curl -s -X POST http://localhost:54007/api/notify \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -863,7 +863,7 @@ curl -s -X POST http://localhost:3000/api/notify \
 ```bash
 REQUEST_ID="test-perm-$(date +%s)"
 
-curl -s -X POST http://localhost:3000/api/notify \
+curl -s -X POST http://localhost:54007/api/notify \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -890,7 +890,7 @@ curl -s -X POST http://localhost:3000/api/notify \
 
 ```bash
 curl -s -H "Authorization: Bearer YOUR_API_KEY" \
-  "http://localhost:3000/api/response?requestId=$REQUEST_ID" | jq .
+  "http://localhost:54007/api/response?requestId=$REQUEST_ID" | jq .
 ```
 
 **Expected:** `200` with `{"status": "pending", "decision": null, "timestamp": "..."}`.
@@ -898,7 +898,7 @@ curl -s -H "Authorization: Bearer YOUR_API_KEY" \
 ### 7.3 Submit a decision (allow)
 
 ```bash
-curl -s -X POST http://localhost:3000/api/response \
+curl -s -X POST http://localhost:54007/api/response \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -913,7 +913,7 @@ curl -s -X POST http://localhost:3000/api/response \
 
 ```bash
 curl -s -H "Authorization: Bearer YOUR_API_KEY" \
-  "http://localhost:3000/api/response?requestId=$REQUEST_ID" | jq .
+  "http://localhost:54007/api/response?requestId=$REQUEST_ID" | jq .
 ```
 
 **Expected:** `200` with `{"status": "decided", "decision": "allow", "timestamp": "..."}`.
@@ -924,7 +924,7 @@ curl -s -H "Authorization: Bearer YOUR_API_KEY" \
 REQUEST_ID2="test-deny-$(date +%s)"
 
 # First create the pending request
-curl -s -X POST http://localhost:3000/api/notify \
+curl -s -X POST http://localhost:54007/api/notify \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -935,7 +935,7 @@ curl -s -X POST http://localhost:3000/api/notify \
   }' | jq .requestId
 
 # Submit deny
-curl -s -X POST http://localhost:3000/api/response \
+curl -s -X POST http://localhost:54007/api/response \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"requestId": "'$REQUEST_ID2'", "decision": "deny"}' | jq .
@@ -948,7 +948,7 @@ curl -s -X POST http://localhost:3000/api/response \
 **Missing requestId:**
 
 ```bash
-curl -s -X POST http://localhost:3000/api/response \
+curl -s -X POST http://localhost:54007/api/response \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"decision": "allow"}' | jq .
@@ -959,7 +959,7 @@ curl -s -X POST http://localhost:3000/api/response \
 **Invalid decision value:**
 
 ```bash
-curl -s -X POST http://localhost:3000/api/response \
+curl -s -X POST http://localhost:54007/api/response \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"requestId": "test", "decision": "maybe"}' | jq .
@@ -970,7 +970,7 @@ curl -s -X POST http://localhost:3000/api/response \
 **Non-existent/expired request:**
 
 ```bash
-curl -s -X POST http://localhost:3000/api/response \
+curl -s -X POST http://localhost:54007/api/response \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"requestId": "expired-request-xyz", "decision": "allow"}' | jq .
@@ -998,7 +998,7 @@ curl -s -X POST http://localhost:3000/api/response \
 
 ```bash
 curl -s -H "Authorization: Bearer YOUR_API_KEY" \
-  http://localhost:3000/api/qr-config | jq .
+  http://localhost:54007/api/qr-config | jq .
 ```
 
 **Expected response:**
@@ -1006,7 +1006,7 @@ curl -s -H "Authorization: Bearer YOUR_API_KEY" \
 ```json
 {
   "dataUrl": "data:image/png;base64,iVBOR...",
-  "serverUrl": "http://localhost:3000"
+  "serverUrl": "http://localhost:54007"
 }
 ```
 
@@ -1022,13 +1022,13 @@ curl -s -H "Authorization: Bearer YOUR_API_KEY" \
 
 ```bash
 QR_DATA=$(curl -s -H "Authorization: Bearer YOUR_API_KEY" \
-  http://localhost:3000/api/qr-config | jq -r '.dataUrl')
+  http://localhost:54007/api/qr-config | jq -r '.dataUrl')
 echo "$QR_DATA" | head -c 50
 ```
 
 **Expected:** Starts with `data:image/png;base64,`.
 
-**In browser:** Navigate to `http://localhost:3000/config`. The QR code should be visually displayed on the settings page.
+**In browser:** Navigate to `http://localhost:54007/config`. The QR code should be visually displayed on the settings page.
 
 ### 8.3 Scan with phone app
 
@@ -1036,7 +1036,7 @@ echo "$QR_DATA" | head -c 50
 
 **Step 2:** Navigate to the pairing/settings screen.
 
-**Step 3:** Scan the QR code displayed on `http://localhost:3000/config`.
+**Step 3:** Scan the QR code displayed on `http://localhost:54007/config`.
 
 **Step 4:** Verify the app connects to the server and registers its device token.
 
@@ -1047,7 +1047,7 @@ echo "$QR_DATA" | head -c 50
 ### 9.1 Register an iOS device token
 
 ```bash
-curl -s -X POST http://localhost:3000/api/device-token \
+curl -s -X POST http://localhost:54007/api/device-token \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -1069,7 +1069,7 @@ curl -s -X POST http://localhost:3000/api/device-token \
 ### 9.2 Register an Android device token
 
 ```bash
-curl -s -X POST http://localhost:3000/api/device-token \
+curl -s -X POST http://localhost:54007/api/device-token \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -1102,7 +1102,7 @@ cat ~/.shooter/device-tokens.json | jq .
 **Missing platform:**
 
 ```bash
-curl -s -X POST http://localhost:3000/api/device-token \
+curl -s -X POST http://localhost:54007/api/device-token \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"deviceToken": "abc123"}' | jq .
@@ -1113,7 +1113,7 @@ curl -s -X POST http://localhost:3000/api/device-token \
 **Invalid platform:**
 
 ```bash
-curl -s -X POST http://localhost:3000/api/device-token \
+curl -s -X POST http://localhost:54007/api/device-token \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"platform": "windows", "token": "abc123"}' | jq .
@@ -1124,7 +1124,7 @@ curl -s -X POST http://localhost:3000/api/device-token \
 **Missing token:**
 
 ```bash
-curl -s -X POST http://localhost:3000/api/device-token \
+curl -s -X POST http://localhost:54007/api/device-token \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"platform": "ios"}' | jq .
@@ -1141,7 +1141,7 @@ curl -s -X POST http://localhost:3000/api/device-token \
 WebSocket connections are authenticated via short-lived tickets (32-byte hex, valid 30 seconds) to avoid exposing the API key in URL query strings.
 
 ```bash
-curl -s -X POST http://localhost:3000/api/ws-ticket \
+curl -s -X POST http://localhost:54007/api/ws-ticket \
   -H "Authorization: Bearer YOUR_API_KEY" | jq .
 ```
 
@@ -1166,7 +1166,7 @@ The ticket endpoint is rate-limited to 10 requests per minute per API key.
 ```bash
 for i in $(seq 1 12); do
   STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
-    http://localhost:3000/api/ws-ticket \
+    http://localhost:54007/api/ws-ticket \
     -H "Authorization: Bearer YOUR_API_KEY")
   echo "Request $i: $STATUS"
 done
@@ -1178,7 +1178,7 @@ done
 
 ```bash
 curl -s -H "Authorization: Bearer YOUR_API_KEY" \
-  http://localhost:3000/api/ws-status | jq .
+  http://localhost:54007/api/ws-status | jq .
 ```
 
 **Expected response:**
@@ -1199,11 +1199,11 @@ WebSocket connections require a valid ticket and connect to paths like `/ws/term
 
 ```bash
 # Get a ticket
-TICKET=$(curl -s -X POST http://localhost:3000/api/ws-ticket \
+TICKET=$(curl -s -X POST http://localhost:54007/api/ws-ticket \
   -H "Authorization: Bearer YOUR_API_KEY" | jq -r '.ticket')
 
 # Connect to a terminal WebSocket
-websocat "ws://localhost:3000/ws/terminal/$TERM_ID?ticket=$TICKET"
+websocat "ws://localhost:54007/ws/terminal/$TERM_ID?ticket=$TICKET"
 ```
 
 **Expected:** Connection opens, you see terminal output (scrollback), and can type commands.
@@ -1211,19 +1211,19 @@ websocat "ws://localhost:3000/ws/terminal/$TERM_ID?ticket=$TICKET"
 **Using wscat (install: `npm install -g wscat`):**
 
 ```bash
-TICKET=$(curl -s -X POST http://localhost:3000/api/ws-ticket \
+TICKET=$(curl -s -X POST http://localhost:54007/api/ws-ticket \
   -H "Authorization: Bearer YOUR_API_KEY" | jq -r '.ticket')
 
-wscat -c "ws://localhost:3000/ws/terminal/$TERM_ID?ticket=$TICKET"
+wscat -c "ws://localhost:54007/ws/terminal/$TERM_ID?ticket=$TICKET"
 ```
 
 ### 10.5 Connect to the events WebSocket
 
 ```bash
-TICKET=$(curl -s -X POST http://localhost:3000/api/ws-ticket \
+TICKET=$(curl -s -X POST http://localhost:54007/api/ws-ticket \
   -H "Authorization: Bearer YOUR_API_KEY" | jq -r '.ticket')
 
-websocat "ws://localhost:3000/ws/events?ticket=$TICKET"
+websocat "ws://localhost:54007/ws/events?ticket=$TICKET"
 ```
 
 **Expected:** Connection opens. Server-sent events (terminal creation/exit, session updates) will appear as JSON messages.
@@ -1231,7 +1231,7 @@ websocat "ws://localhost:3000/ws/events?ticket=$TICKET"
 ### 10.6 Invalid ticket
 
 ```bash
-websocat "ws://localhost:3000/ws/events?ticket=invalidticket123"
+websocat "ws://localhost:54007/ws/events?ticket=invalidticket123"
 ```
 
 **Expected:** Connection refused with 401 Unauthorized.
@@ -1247,12 +1247,12 @@ cd <repo-root>
 docker compose up --build -d
 ```
 
-**Expected:** Container starts, exposes port 3000. Logs show `Shooter server running on http://localhost:3000`.
+**Expected:** Container starts, exposes port 54007. Logs show `Shooter server running on http://localhost:54007`.
 
 ### 11.2 Verify health endpoint in Docker
 
 ```bash
-curl -s http://localhost:3000/api/health | jq .
+curl -s http://localhost:54007/api/health | jq .
 ```
 
 **Expected:** `{"status": "healthy", "timestamp": "..."}` (or `"degraded"` if env vars are missing in the container).
@@ -1260,7 +1260,7 @@ curl -s http://localhost:3000/api/health | jq .
 ### 11.3 Verify terminal creation in Docker
 
 ```bash
-curl -s -X POST http://localhost:3000/api/terminals \
+curl -s -X POST http://localhost:54007/api/terminals \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"command":"bash","cwd":"/root"}' | jq .
@@ -1279,7 +1279,7 @@ docker compose up -d
 
 # Verify terminal records survived
 curl -s -H "Authorization: Bearer YOUR_API_KEY" \
-  http://localhost:3000/api/terminals | jq .count
+  http://localhost:54007/api/terminals | jq .count
 ```
 
 ### 11.5 View container logs
@@ -1337,13 +1337,13 @@ cat .claude/settings.json \
 **Expected:** Each hook command follows the pattern:
 
 ```
-SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=3000 API_KEY=$API_KEY node .claude/hooks/notifier.cjs <EventName>
+SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=54007 API_KEY=$API_KEY node .claude/hooks/notifier.cjs <EventName>
 ```
 
 **Verify:**
 
 - All commands use relative path `.claude/hooks/notifier.cjs` (not absolute)
-- All commands pass `SHOOTER_USE_LOCAL=true` and `SHOOTER_LOCAL_PORT=3000`
+- All commands pass `SHOOTER_USE_LOCAL=true` and `SHOOTER_LOCAL_PORT=54007`
 - All commands reference `API_KEY=$API_KEY` (uses shell env variable)
 - `PermissionRequest` hook has `"timeout": 180` (3 minutes)
 
@@ -1373,7 +1373,7 @@ Simulate what Claude Code does when it invokes a hook -- pipe JSON to stdin and 
 
 ```bash
 echo '{"tool_name":"Read","tool_input":{"file_path":"/tmp/test.txt"}}' | \
-  SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=3000 API_KEY=$API_KEY \
+  SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=54007 API_KEY=$API_KEY \
   node .claude/hooks/notifier.cjs PreToolUse
 ```
 
@@ -1387,7 +1387,7 @@ echo '{"tool_name":"Read","tool_input":{"file_path":"/tmp/test.txt"}}' | \
 
 ```bash
 echo '{"session_id":"test-123","stop_hook_active":true}' | \
-  SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=3000 API_KEY=$API_KEY \
+  SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=54007 API_KEY=$API_KEY \
   node .claude/hooks/notifier.cjs Stop
 ```
 
@@ -1397,7 +1397,7 @@ echo '{"session_id":"test-123","stop_hook_active":true}' | \
 
 ```bash
 echo '{"title":"Task Complete","message":"Finished refactoring auth module","notification_type":"completion"}' | \
-  SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=3000 API_KEY=$API_KEY \
+  SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=54007 API_KEY=$API_KEY \
   node .claude/hooks/notifier.cjs Notification
 ```
 

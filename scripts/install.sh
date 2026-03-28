@@ -16,7 +16,7 @@ SHOOTER_REPO="$SHOOTER_HOME/repo"
 REPO_URL="https://github.com/juspay/shooter.git"
 REPO_BRANCH="release"
 REQUIRED_NODE_MAJOR=20
-DEFAULT_PORT=3000
+DEFAULT_PORT=54007
 
 # ── Color helpers (degrade gracefully if tput is unavailable) ─────────
 
@@ -154,6 +154,45 @@ check_xcode_clt() {
         fi
     fi
     success "Xcode Command Line Tools installed"
+}
+
+check_linux_build_tools() {
+    missing=""
+    for tool in make g++ python3; do
+        if ! command -v "$tool" >/dev/null 2>&1; then
+            missing="$missing $tool"
+        fi
+    done
+
+    if [ -n "$missing" ]; then
+        warn "Build tools required for native modules:$missing"
+
+        # Detect package manager and suggest install command
+        if command -v apt-get >/dev/null 2>&1; then
+            install_cmd="sudo apt-get install -y python3 make g++"
+        elif command -v dnf >/dev/null 2>&1; then
+            install_cmd="sudo dnf install -y python3 make gcc-c++"
+        elif command -v yum >/dev/null 2>&1; then
+            install_cmd="sudo yum install -y python3 make gcc-c++"
+        elif command -v pacman >/dev/null 2>&1; then
+            install_cmd="sudo pacman -S python make gcc"
+        elif command -v apk >/dev/null 2>&1; then
+            install_cmd="sudo apk add python3 make g++"
+        else
+            install_cmd="(install python3, make, and g++ using your package manager)"
+        fi
+
+        if ask_yes_no "  Install build tools now? ($install_cmd)" "y"; then
+            info "Installing build tools..."
+            eval "$install_cmd"
+            success "Build tools installed."
+        else
+            warn "Continuing without build tools. Terminal features (node-pty) and"
+            warn "database (better-sqlite3) may not work."
+        fi
+    else
+        success "Build tools available (make, g++, python3)"
+    fi
 }
 
 # ── Node detection chain ────────────────────────────────────────────
@@ -345,7 +384,7 @@ run_setup_wizard() {
 
     if [ -f "$SHOOTER_REPO/scripts/setup.cjs" ]; then
         cd "$SHOOTER_REPO"
-        node scripts/setup.cjs
+        node scripts/setup.cjs --auto
     else
         warn "Setup wizard (scripts/setup.cjs) not found. Skipping."
         info "Creating .env from template..."
@@ -397,28 +436,153 @@ offer_global_command() {
     fi
 }
 
+# ── Cloudflare Tunnel ─────────────────────────────────────────────────
+
+install_cloudflared() {
+    step "Remote access (Cloudflare Tunnel)"
+
+    if command -v cloudflared >/dev/null 2>&1; then
+        success "cloudflared $(cloudflared --version 2>&1 | head -1 | sed 's/.*version //' | sed 's/ .*//')"
+        return 0
+    fi
+
+    info "cloudflared enables remote access from your phone."
+
+    if [ "$OS" = "macos" ] && command -v brew >/dev/null 2>&1; then
+        if ask_yes_no "  Install cloudflared via Homebrew?" "y"; then
+            info "Installing cloudflared..."
+            brew install cloudflared 2>/dev/null
+            if command -v cloudflared >/dev/null 2>&1; then
+                success "cloudflared installed via Homebrew"
+                return 0
+            fi
+        fi
+    elif [ "$OS" = "linux" ]; then
+        if ask_yes_no "  Install cloudflared?" "y"; then
+            info "Downloading cloudflared..."
+            arch="$(uname -m)"
+            case "$arch" in
+                x86_64)  cf_arch="amd64" ;;
+                aarch64) cf_arch="arm64" ;;
+                armv7l)  cf_arch="arm" ;;
+                *)       cf_arch="$arch" ;;
+            esac
+            cf_url="https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${cf_arch}"
+            cf_bin="$HOME/.local/bin/cloudflared"
+            mkdir -p "$(dirname "$cf_bin")"
+            if curl -fsSL -o "$cf_bin" "$cf_url" && chmod +x "$cf_bin"; then
+                # Ensure ~/.local/bin is in PATH for subsequent commands
+                case ":$PATH:" in
+                    *":$HOME/.local/bin:"*) ;;
+                    *) export PATH="$HOME/.local/bin:$PATH" ;;
+                esac
+                success "cloudflared installed to $cf_bin"
+                return 0
+            else
+                warn "Failed to download cloudflared."
+            fi
+        fi
+    fi
+
+    warn "Skipping cloudflared. Shooter will only be accessible on your local network."
+    info "Install later: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/"
+    return 1
+}
+
+# ── Enable autostart ─────────────────────────────────────────────────
+
+enable_autostart() {
+    step "Enabling autostart"
+
+    SHOOTER_BIN="$HOME/.local/bin/shooter"
+    if [ ! -x "$SHOOTER_BIN" ]; then
+        SHOOTER_BIN="$SHOOTER_REPO/bin/shooter.cjs"
+    fi
+
+    if [ "$OS" = "macos" ] || [ "$OS" = "linux" ]; then
+        "$NODE_BIN" "$SHOOTER_BIN" autostart on 2>/dev/null && return 0
+        # Fallback: run node directly
+        "$NODE_BIN" "$SHOOTER_REPO/bin/shooter.cjs" autostart on 2>/dev/null && return 0
+        warn "Could not enable autostart. Run 'shooter autostart on' manually."
+    fi
+}
+
+# ── Start server + tunnel ────────────────────────────────────────────
+
+TUNNEL_URL=""
+
+start_server_and_tunnel() {
+    step "Starting Shooter"
+
+    cd "$SHOOTER_REPO"
+
+    # Start the server
+    SHOOTER_HOME="$SHOOTER_HOME" "$NODE_BIN" bin/shooter.cjs start &
+    SERVER_BG_PID=$!
+    sleep 3
+
+    # Verify server is up
+    port="$DEFAULT_PORT"
+    if curl -sf "http://localhost:${port}/api/health" >/dev/null 2>&1; then
+        success "Server running on http://localhost:${port}"
+    else
+        warn "Server may still be starting. Check with: shooter status"
+    fi
+
+    # Start cloudflare quick tunnel if available
+    if command -v cloudflared >/dev/null 2>&1; then
+        info "Starting Cloudflare Tunnel..."
+
+        # Quick tunnel — run in background, capture URL from log file
+        tunnel_log="$SHOOTER_HOME/logs/tunnel.log"
+        mkdir -p "$(dirname "$tunnel_log")"
+        cloudflared tunnel --url "http://localhost:${port}" > "$tunnel_log" 2>&1 &
+        TUNNEL_PID=$!
+
+        # Wait up to 10s for the tunnel URL to appear in logs
+        waited=0
+        while [ "$waited" -lt 10 ]; do
+            if grep -qo 'https://[^ ]*trycloudflare\.com' "$tunnel_log" 2>/dev/null; then
+                grep -o 'https://[^ ]*trycloudflare\.com' "$tunnel_log" | head -1 > "$SHOOTER_HOME/.tunnel_url"
+                break
+            fi
+            sleep 1
+            waited=$((waited + 1))
+        done
+
+        if [ -f "$SHOOTER_HOME/.tunnel_url" ]; then
+            TUNNEL_URL="$(cat "$SHOOTER_HOME/.tunnel_url")"
+            success "Tunnel active: $TUNNEL_URL"
+        else
+            warn "Tunnel is starting in the background. Check 'shooter status' shortly."
+        fi
+    else
+        info "No cloudflared found — server accessible on local network only."
+    fi
+}
+
 # ── Success message ───────────────────────────────────────────────────
 
 print_success() {
     printf '\n'
     printf '%s' "$GREEN$BOLD"
     printf '  ================================================\n'
-    printf '      Shooter installed successfully!\n'
+    printf '      Shooter is ready!\n'
     printf '  ================================================\n'
     printf '%s' "$RESET"
     printf '\n'
-    printf '  %sInstall directory:%s  %s\n' "$BOLD" "$RESET" "$SHOOTER_REPO"
-    printf '  %sData directory:%s     %s\n' "$BOLD" "$RESET" "$SHOOTER_HOME"
-    printf '  %sServer URL:%s         http://localhost:%s\n' "$BOLD" "$RESET" "$DEFAULT_PORT"
+    printf '  %sLocal:%s   http://localhost:%s\n' "$BOLD" "$RESET" "$DEFAULT_PORT"
+    if [ -n "$TUNNEL_URL" ]; then
+        printf '  %sRemote:%s  %s\n' "$BOLD" "$RESET" "$TUNNEL_URL"
+    fi
+    printf '  %sStatus:%s  shooter status\n' "$BOLD" "$RESET"
+    printf '  %sLogs:%s    shooter logs\n' "$BOLD" "$RESET"
     printf '\n'
-    printf '  %sGet started:%s\n' "$BOLD" "$RESET"
-    printf '    shooter start           %s# start the server%s\n' "$DIM" "$RESET"
+    printf '  %sCommands:%s\n' "$BOLD" "$RESET"
+    printf '    shooter stop            %s# stop the server%s\n' "$DIM" "$RESET"
     printf '    shooter status          %s# check status%s\n' "$DIM" "$RESET"
-    printf '    shooter setup           %s# reconfigure%s\n' "$DIM" "$RESET"
-    printf '\n'
-    printf '  %sConfigure:%s\n' "$BOLD" "$RESET"
-    printf '    Edit %s/.env with your credentials\n' "$SHOOTER_HOME"
-    printf '    See  %s/.env.example for reference\n' "$SHOOTER_REPO"
+    printf '    shooter logs            %s# follow server logs%s\n' "$DIM" "$RESET"
+    printf '    shooter setup           %s# reconfigure (push notifications, etc.)%s\n' "$DIM" "$RESET"
     printf '\n'
     printf '  %sDocs:%s https://github.com/juspay/shooter\n' "$BOLD" "$RESET"
     printf '\n'
@@ -435,6 +599,8 @@ main() {
     check_git
     if [ "$OS" = "macos" ]; then
         check_xcode_clt
+    elif [ "$OS" = "linux" ]; then
+        check_linux_build_tools
     fi
     check_node
     bootstrap_pnpm
@@ -459,12 +625,12 @@ main() {
     # Optional extras
     offer_global_command
 
-    # Suggest autostart
-    if [ "$OS" = "macos" ]; then
-        step "Auto-start"
-        info "To start Shooter automatically on login, run:"
-        printf '  shooter autostart on\n\n'
-    fi
+    # Cloudflare Tunnel
+    install_cloudflared
+
+    # Autostart + launch
+    enable_autostart
+    start_server_and_tunnel
 
     # Done
     print_success

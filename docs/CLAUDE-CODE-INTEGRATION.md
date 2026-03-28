@@ -49,7 +49,7 @@ Environment variables are read by `notifier.cjs` from the shell environment or `
 
 - `SHOOTER_API_URL` — Base URL of the SHOOTER server (local or tunnel)
 - `SHOOTER_USE_LOCAL` — Set to `true` to target local server
-- `SHOOTER_LOCAL_PORT` — Local server port (default: 3000)
+- `SHOOTER_LOCAL_PORT` — Local server port (default: 54007)
 - `API_KEY` — Bearer token for authentication
 - `DEVICE_TOKEN` — Target iOS device token
 
@@ -169,11 +169,11 @@ Each notification includes contextual data:
 
 ### Local Development Mode
 
-Set `SHOOTER_USE_LOCAL=true` and `SHOOTER_LOCAL_PORT=3000` to target the local server:
+Set `SHOOTER_USE_LOCAL=true` and `SHOOTER_LOCAL_PORT=54007` to target the local server:
 
 ```bash
 export SHOOTER_USE_LOCAL=true
-export SHOOTER_LOCAL_PORT=3000
+export SHOOTER_LOCAL_PORT=54007
 ```
 
 ### Debug Logging
@@ -223,7 +223,7 @@ node .claude/hooks/notifier.cjs
 1. **Test API directly**:
 
    ```bash
-   curl -X POST http://localhost:3000/api/notify \
+   curl -X POST http://localhost:54007/api/notify \
      -H "Authorization: Bearer YOUR_API_KEY" \
      -H "Content-Type: application/json" \
      -d '{"title":"Test","body":"Direct API test","deviceToken":"YOUR_TOKEN"}'

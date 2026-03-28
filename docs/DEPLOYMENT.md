@@ -85,14 +85,14 @@ This executes `tsx server.ts`, which:
 2. Creates an HTTP server wrapping the SvelteKit handler
 3. Attaches a WebSocket server for terminal I/O, session streaming, and events
 4. Starts keepalive pings (30-second interval for Cloudflare Tunnel)
-5. Listens on the configured port (default **3000**)
+5. Listens on the configured port (default **54007**)
 
 The production server runs as a single long-lived Node.js process. Terminal sessions, WebSocket connections, and pending requests are held in memory.
 
 ### Verify
 
 ```bash
-curl http://localhost:3000/api/health
+curl http://localhost:54007/api/health
 ```
 
 ---
@@ -126,7 +126,7 @@ The Claude Code hooks (`notifier.cjs`) use their own set of environment variable
 | ---------------------------- | ---------------------------------------- |
 | `API_KEY`                    | Auth token for hook-to-server calls      |
 | `SHOOTER_USE_LOCAL`          | Route hooks to local server (`true`)     |
-| `SHOOTER_LOCAL_PORT`         | Local server port (default `3000`)       |
+| `SHOOTER_LOCAL_PORT`         | Local server port (default `54007`)      |
 | `SHOOTER_API_URL`            | Remote server URL (when not using local) |
 | `SHOOTER_PERMISSION_TIMEOUT` | Permission poll timeout in seconds       |
 
@@ -176,7 +176,7 @@ credentials-file: /Users/<you>/.cloudflared/<TUNNEL_UUID>.json
 
 ingress:
   - hostname: shooter.yourdomain.com
-    service: http://localhost:3000
+    service: http://localhost:54007
     originRequest:
       # WebSocket support is enabled by default in cloudflared.
       # These settings tune connection behavior:
@@ -187,7 +187,7 @@ ingress:
 
 Key points:
 
-- The `service` URL must point to the port your production server listens on (default **3000**)
+- The `service` URL must point to the port your production server listens on (default **54007**)
 - WebSocket connections (`/ws/*`) are proxied automatically
 - The catch-all `http_status:404` rule is required by cloudflared
 
@@ -334,10 +334,10 @@ xcode-select --install
 
 ### Port Already in Use
 
-If port 3000 is occupied when starting the production server:
+If port 54007 is occupied when starting the production server:
 
 ```bash
-lsof -ti:3000 | xargs kill
+lsof -ti:54007 | xargs kill
 ```
 
 Then start the server again:
@@ -381,16 +381,16 @@ If the tunnel is running but requests fail or time out:
 1. **Verify the server is running on the correct port:**
 
    ```bash
-   curl http://localhost:3000/api/health
+   curl http://localhost:54007/api/health
    ```
 
-2. **Check the tunnel config points to port 3000** (or your configured `PORT`):
+2. **Check the tunnel config points to port 54007** (or your configured `PORT`):
 
    ```bash
    cat ~/.cloudflared/config.yml
    ```
 
-   The `service` field under your hostname must be `http://localhost:3000`.
+   The `service` field under your hostname must be `http://localhost:54007`.
 
 3. **Check tunnel status:**
 
@@ -444,7 +444,7 @@ If the tunnel is running but requests fail or time out:
    ```bash
    echo '{"tool_name":"test"}' | \
      SHOOTER_USE_LOCAL=true \
-     SHOOTER_LOCAL_PORT=3000 \
+     SHOOTER_LOCAL_PORT=54007 \
      API_KEY=your-key \
      node .claude/hooks/notifier.cjs PreToolUse
    ```

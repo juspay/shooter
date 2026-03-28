@@ -26,7 +26,7 @@
     { args: [], command: 'bash', label: 'Bash' },
   ];
 
-  let selectedPreset = $state<number>(0);
+  let selectedPreset = $state(0);
   let projectPaths = $state<string[]>([]);
   let selectedCwd = $state('');
   let customCwd = $state('');

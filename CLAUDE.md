@@ -42,10 +42,11 @@ This repository contains a **WORKING** bidirectional communication system betwee
   - `client/common/` - Reusable UI components (Button, Card, Alert, EmptyState, StatusBadge, Tag, Icon, Input) and shared utilities (markdown, cache, time, tool-title, config-guard)
   - `client/terminal/` - ChatView (shared rendering component), LaunchSheet, QuickKeys, ConnectionStatus, xterm-wrapper
 - `server.ts` - Custom server entry point (Node.js with WebSocket upgrade handling)
-- `scripts/setup.cjs` - Interactive first-run setup wizard (`pnpm setup`)
-- `scripts/install.sh` - One-line install script
-- `bin/shooter.cjs` - CLI entry point for npm package distribution
+- `scripts/setup.cjs` - Interactive first-run setup wizard (`pnpm setup`); supports `--auto` flag for non-interactive mode
+- `scripts/install.sh` - One-command install script (auto-generates API key, builds, installs cloudflared, enables autostart, starts server)
+- `bin/shooter.cjs` - CLI entry point with commands: start, stop, status, autostart on/off, logs, setup, version, help
 - `Dockerfile` + `docker-compose.yml` - Docker deployment
+- `Dockerfile.test` - Test image for verifying fresh-user install experience
 - `src/lib/types/` - Auto-generated TypeScript types (DO NOT EDIT)
 - `specs/types/` - Type-crafter YAML specifications (EDIT HERE for types)
   - `index.yaml` - Main spec file (top file with references)
@@ -137,6 +138,24 @@ Terminals survive server restarts via a holder-process architecture:
 - **Hook Paths**: Relative paths (`.claude/hooks/notifier.cjs`) in `.claude/settings.json`, not absolute
 - **Environment Variables**: `SHOOTER_USE_LOCAL`, `SHOOTER_LOCAL_PORT`, `API_KEY`, `SHOOTER_PERMISSION_TIMEOUT`
 
+## CLI Commands
+
+The `shooter` CLI (via `bin/shooter.cjs`) supports the following commands:
+
+| Command           | Description                                        |
+| ----------------- | -------------------------------------------------- |
+| `start`           | Start the server (default if no command given)     |
+| `stop`            | Stop the running server (via PID file)             |
+| `status`          | Show server status, PID, port, autostart state     |
+| `autostart on`    | Enable autostart on login (LaunchAgent / systemd)  |
+| `autostart off`   | Disable autostart                                  |
+| `logs`            | Tail server logs (LaunchAgent log file or journalctl) |
+| `setup`           | Run the interactive setup wizard (`--auto` for non-interactive) |
+| `version`         | Show version number                                |
+| `help`            | Show help message                                  |
+
+PID file: `~/.shooter/shooter.pid`. Logs: `~/.shooter/logs/shooter.log`.
+
 ## Security Requirements
 
 - Bearer token authentication for Shooter → SvelteKit communication
@@ -159,7 +178,7 @@ Terminals survive server restarts via a holder-process architecture:
 See `.env.example` for the full template. Required environment variables (set in `.env` for local dev):
 
 - `API_KEY` - Shared auth key used by the server AND hooks (unified; not `SHOOTER_API_KEY`)
-- `PORT` - Server port (default: 3000)
+- `PORT` - Server port (default: 54007)
 
 Optional (iOS push notifications):
 
@@ -178,12 +197,14 @@ Optional (Android push notifications):
 - `ANDROID_DEVICE_TOKEN` - Target Android device token
 - `DEVICE_PLATFORM` - Which platform to send to: `ios` or `android` (default: `ios`)
 
+The env module (`env.ts`) checks `~/.shooter/.env` automatically as a fallback even without `SHOOTER_HOME` set.
+
 You'll also need:
 
 - Apple Developer account with Push Notifications capability (for iOS)
 - Firebase project (for Android)
-- Local machine running the server (`pnpm setup` for first run, then `pnpm build && pnpm start`)
-- Cloudflare Tunnel for public HTTPS access
+- Local machine running the server (`pnpm setup` for first run, then `pnpm build && pnpm start`; or use the one-command installer)
+- Cloudflare Tunnel for public HTTPS access (install.sh offers to install cloudflared automatically)
 
 ## Testing Strategy
 
@@ -197,15 +218,19 @@ The plans include comprehensive testing approaches:
 
 ## Deployment
 
-- **First-time setup**: `pnpm setup` runs interactive wizard (generates `.env`, configures hooks)
-- **Build and run**: `pnpm build && pnpm start` (adapter-node, runs custom `server.ts` on port 3000)
-- **Docker**: `docker-compose up` using `Dockerfile` and `docker-compose.yml`
+- **One-command install**: `curl -fsSL https://raw.githubusercontent.com/juspay/shooter/release/scripts/install.sh | sh` -- clones to `~/.shooter/repo`, auto-generates API key, installs deps, builds, offers cloudflared install, enables autostart, and starts the server
+- **First-time setup**: `pnpm setup` runs interactive wizard (generates `.env`, configures hooks); pass `--auto` for non-interactive mode
+- **Build and run**: `pnpm build && pnpm start` (adapter-node, runs custom `server.ts` on port 54007)
+- **Build guard**: `server.ts` checks for `build/handler.js` before starting and exits with a clear error if missing
+- **Autostart**: `shooter autostart on` installs a LaunchAgent (macOS) or systemd user unit (Linux) so the server starts on login
+- **Process management**: `shooter stop` / `shooter status` / `shooter logs` use PID file at `~/.shooter/shooter.pid`
+- **Docker**: `docker compose up` using `Dockerfile` and `docker-compose.yml`; `Dockerfile.test` for testing the fresh-user install experience
 - **npm package**: Published as `@juspay/shooter` with `bin/shooter.cjs` entry point
-- **Install script**: `scripts/install.sh` for one-line setup
+- **Install script**: `scripts/install.sh` checks for build tools (python3, make, g++ on Linux; Xcode CLT on macOS) and offers to install cloudflared
 - iOS app requires Xcode and device/simulator
 - Android app requires Android Studio
-- Cloudflare Tunnel provides public HTTPS + WSS access to the local server
-- Environment variables managed via `.env` file
+- Cloudflare Tunnel provides public HTTPS + WSS access to the local server (install.sh can set up a quick tunnel automatically)
+- Environment variables managed via `.env` file (falls back to `~/.shooter/.env`)
 
 ## Known Limitations
 
@@ -220,6 +245,10 @@ The 45-second completion timer in `notifier.cjs` only works for OpenCode (persis
 ### Hook Timeout Mismatch
 
 The `PermissionRequest` hook has a 180-second timeout in `.claude/settings.json`, but the notifier's internal `PERMISSION_TIMEOUT` defaults to 120 seconds. The 60-second buffer ensures the notifier resolves before Claude Code kills the process.
+
+### Health Endpoint
+
+The `/api/health` endpoint returns `"healthy"` with a `warnings` array (e.g., when APNs is not configured) instead of reporting `"degraded"`. This means a server without push notification credentials is still considered healthy -- warnings are informational only.
 
 ### APNs Environment
 
