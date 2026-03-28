@@ -33,27 +33,37 @@ Shooter turns your phone into a remote control for AI coding sessions running on
 
 ## Quick Start
 
+**One-command install** (recommended):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/juspay/shooter/release/scripts/install.sh | sh
+```
+
+This clones to `~/.shooter/repo`, auto-generates an API key, installs dependencies, builds, offers to install cloudflared for remote access, enables autostart on login, and starts the server.
+
+**Or clone and set up manually:**
+
 ```bash
 git clone https://github.com/juspay/shooter.git
 cd shooter
 pnpm install
 pnpm setup        # interactive wizard: generates .env, builds, runs health check
-pnpm start        # start the server on http://localhost:3000
+pnpm start        # start the server on http://localhost:54007
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser. Visit `/config` to enter your API key for the web UI.
+Open [http://localhost:54007](http://localhost:54007) in your browser. Visit `/config` to enter your API key for the web UI.
 
 ---
 
 ## All Setup Methods
 
-| Method              | Command                                                                                        | Notes                                                        |
-| ------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| Interactive wizard  | `pnpm setup`                                                                                   | Recommended. Walks through env config, builds, and verifies. |
-| CLI (npx)           | `npx @juspay/shooter setup`                                                                    | No clone needed -- runs the setup wizard directly from npm   |
-| One-command install | `curl -fsSL https://raw.githubusercontent.com/juspay/shooter/release/scripts/install.sh \| sh` | Clones to `~/.shooter`, installs deps, runs wizard           |
-| Docker              | `docker compose up -d`                                                                         | See [Docker](#docker)                                        |
-| Manual              | See [Manual Setup](#manual-setup)                                                              | For advanced users                                           |
+| Method              | Command                                                                                        | Notes                                                                                                |
+| ------------------- | ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| One-command install | `curl -fsSL https://raw.githubusercontent.com/juspay/shooter/release/scripts/install.sh \| sh` | Recommended. Clones to `~/.shooter/repo`, auto-generates API key, builds, installs cloudflared, starts server |
+| Interactive wizard  | `pnpm setup`                                                                                   | Walks through env config, builds, and verifies. Pass `--auto` for non-interactive mode.              |
+| CLI (npx)           | `npx @juspay/shooter setup`                                                                    | No clone needed -- runs the setup wizard directly from npm                                           |
+| Docker              | `docker compose up -d`                                                                         | See [Docker](#docker)                                                                                |
+| Manual              | See [Manual Setup](#manual-setup)                                                              | For advanced users                                                                                   |
 
 ### Manual Setup
 
@@ -82,7 +92,7 @@ source ~/.zshrc
 +----------------------------------------------------------+
 |  Dev Machine                                             |
 |                                                          |
-|  SvelteKit Server (adapter-node, port 3000)              |
+|  SvelteKit Server (adapter-node, port 54007)             |
 |    +-- REST API (/api/terminals, /api/notify, ...)       |
 |    +-- WebSocket Server (ws, noServer mode)              |
 |    +-- PTY Manager (node-pty + holder processes)         |
@@ -126,7 +136,7 @@ Copy `.env.example` to `.env` and fill in your values. The `pnpm setup` wizard h
 | Variable               | Required | Default | Description                                                      |
 | ---------------------- | -------- | ------- | ---------------------------------------------------------------- |
 | `API_KEY`              | **Yes**  | --      | Bearer token for authenticating all API and hook requests        |
-| `PORT`                 | No       | `3000`  | HTTP server port                                                 |
+| `PORT`                 | No       | `54007` | HTTP server port                                                 |
 | `DEVICE_PLATFORM`      | No       | `ios`   | Push notification target: `ios` or `android`                     |
 | `APNS_KEY`             | No       | --      | APNs private key (`.p8` file contents, newlines escaped as `\n`) |
 | `APNS_KEY_ID`          | No       | --      | 10-character APNs key identifier from Apple Developer portal     |
@@ -257,7 +267,7 @@ The `PermissionRequest` hook has a 180-second timeout in `.claude/settings.json`
 | Variable                     | Default | Description                                                 |
 | ---------------------------- | ------- | ----------------------------------------------------------- |
 | `SHOOTER_USE_LOCAL`          | --      | Set `true` to connect to local server instead of remote URL |
-| `SHOOTER_LOCAL_PORT`         | `3000`  | Local server port when using `SHOOTER_USE_LOCAL`            |
+| `SHOOTER_LOCAL_PORT`         | `54007` | Local server port when using `SHOOTER_USE_LOCAL`            |
 | `SHOOTER_API_URL`            | --      | Remote server URL (when not using local)                    |
 | `SHOOTER_PERMISSION_TIMEOUT` | `120`   | Seconds to wait for a permission response                   |
 | `API_KEY`                    | --      | Bearer token (must match the server's `API_KEY`)            |
@@ -282,13 +292,15 @@ docker build -t shooter .
 docker run -d \
   --name shooter \
   --env-file .env \
-  -p 3000:3000 \
+  -p 54007:54007 \
   -v shooter-data:/root/.shooter \
   --restart unless-stopped \
   shooter
 ```
 
 The multi-stage Dockerfile uses `node:20-slim` and includes build tools for `node-pty` and `better-sqlite3` native addons. SQLite data is persisted in the `shooter-data` volume. The `.env` file is injected at runtime and never baked into the image.
+
+A separate `Dockerfile.test` is provided for verifying the fresh-user install experience in an isolated container.
 
 ### docker-compose.yml
 
@@ -297,7 +309,7 @@ services:
   shooter:
     build: .
     ports:
-      - '3000:3000'
+      - '54007:54007'
     env_file:
       - .env
     volumes:
@@ -341,7 +353,7 @@ WebSocket connections use ticket-based auth. First call `POST /api/ws-ticket` wi
 ### Example: Create Terminal
 
 ```bash
-curl -X POST http://localhost:3000/api/terminals \
+curl -X POST http://localhost:54007/api/terminals \
   -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"command": "claude", "cwd": "/Users/me/project", "cols": 80, "rows": 24}'
@@ -380,6 +392,24 @@ pnpm format:check  # Check formatting without writing
 
 **Note:** `pnpm dev` runs the Vite dev server, which does not include the WebSocket server or PTY manager. For full functionality (terminal sessions, live streaming), use `pnpm build && pnpm start`.
 
+### CLI Commands
+
+The `shooter` command (via `bin/shooter.cjs` or the global `shooter` symlink) supports:
+
+| Command              | Description                                                        |
+| -------------------- | ------------------------------------------------------------------ |
+| `shooter start`      | Start the server (default if no command given)                     |
+| `shooter stop`       | Stop the running server gracefully (SIGTERM, then SIGKILL after 5s)|
+| `shooter status`     | Show PID, URL, autostart state, log path                          |
+| `shooter autostart on`  | Enable autostart on login (LaunchAgent on macOS, systemd on Linux) |
+| `shooter autostart off` | Disable autostart and remove the service definition              |
+| `shooter logs`       | Tail server logs (log file on macOS, journalctl on Linux)          |
+| `shooter setup`      | Run the interactive setup wizard; pass `--auto` for non-interactive|
+| `shooter version`    | Print version number                                               |
+| `shooter help`       | Show all available commands                                        |
+
+Process state is tracked via a PID file at `~/.shooter/shooter.pid`. Logs are written to `~/.shooter/logs/shooter.log` when running via autostart.
+
 ### Type System
 
 Types are auto-generated from YAML specifications in `specs/types/` using [type-crafter](https://github.com/nicktaf/type-crafter). Never edit files in `src/generated/types/` directly -- edit the YAML specs and run `pnpm run gen:types`.
@@ -390,18 +420,19 @@ Types are auto-generated from YAML specifications in `specs/types/` using [type-
 
 ```
 shooter/
-  server.ts                        # HTTP + WebSocket server entry point
+  server.ts                        # HTTP + WebSocket server entry point (build guard check)
   package.json                     # Dependencies and scripts (pnpm only)
   Dockerfile                       # Multi-stage Docker build
+  Dockerfile.test                  # Test image for fresh-user install verification
   docker-compose.yml               # Docker Compose config
   .env.example                     # Environment variable template
   svelte.config.js                 # SvelteKit config (adapter-node)
   vite.config.ts                   # Vite config (node-pty external)
   bin/
-    shooter.cjs                    # CLI entry point (shooter start|setup|help)
+    shooter.cjs                    # CLI entry point (start|stop|status|autostart|logs|setup|help)
   scripts/
-    setup.cjs                      # Interactive setup wizard
-    install.sh                     # One-command curl installer
+    setup.cjs                      # Interactive setup wizard (--auto for non-interactive)
+    install.sh                     # One-command installer (full auto setup + cloudflared)
   .claude/
     hooks/notifier.cjs             # Unified hook notifier (Node.js)
     settings.json                  # Hook configuration (13 event types)
@@ -458,8 +489,9 @@ shooter/
 
 - Verify Node.js 20+ is installed: `node --version`
 - Ensure pnpm is used (npm and yarn are blocked): `pnpm --version`
-- Check that `pnpm build` completed without errors before running `pnpm start`
-- Confirm `.env` exists and `API_KEY` is set
+- Check that `pnpm build` completed without errors before running `pnpm start` -- `server.ts` has a build guard that exits with a clear error if `build/handler.js` is missing
+- Confirm `.env` exists and `API_KEY` is set (the server also checks `~/.shooter/.env` as a fallback)
+- On Linux, ensure build tools are installed: `python3`, `make`, `g++` (needed for native modules)
 
 ### WebSocket connections fail
 
@@ -479,7 +511,7 @@ shooter/
 
 - `API_KEY` must be exported in your shell environment, not just in `.env`: `export API_KEY="..."`
 - Verify the hooks are configured in `.claude/settings.json`
-- Test connectivity: `curl -H "Authorization: Bearer $API_KEY" http://localhost:3000/api/health`
+- Test connectivity: `curl -H "Authorization: Bearer $API_KEY" http://localhost:54007/api/health`
 
 ### Terminal sessions lost after restart
 
@@ -494,8 +526,8 @@ shooter/
 
 ### Port already in use
 
-- Default port is 3000. Set `PORT=<number>` in `.env` to use a different port.
-- Check what is using the port: `lsof -i :3000`
+- Default port is 54007. Set `PORT=<number>` in `.env` to use a different port.
+- Check what is using the port: `lsof -i :54007`
 
 ---
 

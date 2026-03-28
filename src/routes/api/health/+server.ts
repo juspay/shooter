@@ -49,6 +49,21 @@ export const GET: RequestHandler = ({ request, url }) => {
     production: env.APNS_PRODUCTION === 'true',
   };
 
+  // Collect warnings for optional features that are not configured.
+  // These are informational — the server is still fully functional for
+  // terminals and sessions without push notification support.
+  const warnings: string[] = [];
+
+  if (!checks.hasAPNsConfig || !checks.hasBundleId) {
+    warnings.push('APNs not configured — iOS push notifications disabled');
+  }
+  if (!checks.hasDeviceToken) {
+    warnings.push('No device token set — push notifications have no target');
+  }
+  if (!checks.hasFCMConfig) {
+    warnings.push('FCM not configured — Android push notifications disabled');
+  }
+
   const health: {
     checks: HealthChecks;
     configuration: HealthConfiguration;
@@ -56,6 +71,7 @@ export const GET: RequestHandler = ({ request, url }) => {
     status: HealthStatus;
     timestamp: string;
     version: string;
+    warnings: string[];
   } = {
     checks,
     configuration,
@@ -63,23 +79,17 @@ export const GET: RequestHandler = ({ request, url }) => {
     status: 'healthy',
     timestamp: new Date().toISOString(),
     version: '1.1.0',
+    warnings,
   };
 
-  // Determine overall health status
-  // FCM is not a critical check - only APNs is required for core functionality
-  const criticalChecks = [
-    health.checks.hasDeviceToken,
-    health.checks.hasAPNsConfig,
-    health.checks.hasBundleId,
-  ];
+  // Only mark as degraded for actual system-level problems
+  // (e.g., DB unreachable, critical services down).
+  // Missing push-notification config is NOT a degraded state — it just
+  // means notifications are disabled, which is fine for terminal/session use.
 
-  if (criticalChecks.some((check) => !check)) {
-    health.status = 'degraded';
-  }
-
-  // Public response: status only. Authenticated: full details.
+  // Public response: status + warnings. Authenticated: full details.
   if (!wantsDetails) {
-    return json({ status: health.status, timestamp: health.timestamp });
+    return json({ status: health.status, timestamp: health.timestamp, warnings: health.warnings });
   }
 
   return json(health);

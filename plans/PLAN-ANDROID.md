@@ -213,7 +213,7 @@ class MainActivity : Activity() {
 
 Simple form with:
 
-- Server URL text field (default: `http://10.0.2.2:3000` for emulator)
+- Server URL text field (default: `http://10.0.2.2:54007` for emulator)
 - API key text field (password input)
 - FCM token display (with copy button)
 - "Connect" button → validates via `GET /api/health` → saves → launches MainActivity

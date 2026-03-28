@@ -35,15 +35,18 @@
   ],
   "pnpm": {
     "onlyBuiltDependencies": [
+      "@firebase/util",
       "better-sqlite3",
-      "node-pty"
+      "esbuild",
+      "node-pty",
+      "protobufjs"
     ]
   },
   "engines": {
     "node": ">=20"
   },
   "scripts": {
-    "postinstall": "node-gyp rebuild --directory=node_modules/node-pty || true",
+    "postinstall": "node-gyp rebuild --directory=node_modules/node-pty --loglevel=silent > /dev/null 2>&1 || echo '⚠ node-pty build failed — terminal features will not work. Install build tools: macOS: xcode-select --install | Linux: apt install python3 make g++'",
     "build": "vite build",
     "postbuild": "cp src/lib/modules/server/terminal/pty-holder.cjs build/pty-holder.cjs",
     "dev": "vite dev --open",
@@ -57,7 +60,8 @@
     "lint:fix:generated": "eslint './src/generated/**/*.{js,ts}' --fix",
     "format:generated": "prettier --write ./src/generated/*",
     "gen:types": "npx type-crafter generate typescript-with-decoders ./specs/types/index.yaml ./src/generated/types SingleFile SingleFile && bash scripts/fix-generated-types.sh && pnpm run format:generated",
-    "setup": "node scripts/setup.cjs"
+    "setup": "node scripts/setup.cjs",
+    "prepublishOnly": "pnpm build"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",
@@ -65,13 +69,12 @@
     "@semantic-release/commit-analyzer": "13.0.1",
     "@semantic-release/git": "10.0.1",
     "@semantic-release/github": "11.0.6",
-    "@semantic-release/npm": "13.1.5",
+    "@semantic-release/npm": "12.0.2",
     "@semantic-release/release-notes-generator": "14.1.0",
     "@sveltejs/adapter-node": "^5.2.0",
     "@sveltejs/kit": "^2.50.2",
     "@sveltejs/vite-plugin-svelte": "^6.2.4",
     "@types/better-sqlite3": "^7.6.13",
-    "@types/dompurify": "^3.2.0",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^25.2.0",
     "@types/qrcode": "^1.5.6",

@@ -5,12 +5,24 @@
 // Load .env before any other imports so all modules see populated process.env.
 import './src/lib/env.js';
 
+import { existsSync } from 'fs';
 import { createServer, type Server } from 'http';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
 import { type WebSocket, WebSocketServer } from 'ws';
 
 import type { ConversationMessage } from './src/lib/modules/server/sessions/types.js';
 
-import { handler } from './build/handler.js';
+// ── Build guard ─────────────────────────────────────────────────────────
+// Fail fast with a clear message instead of a cryptic ERR_MODULE_NOT_FOUND.
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const handlerPath = join(__dirname, 'build', 'handler.js');
+if (!existsSync(handlerPath)) {
+  console.error("Build not found. Run 'pnpm build' first.");
+  process.exit(1);
+}
+
+const { handler } = await import('./build/handler.js');
 import { openCodeWatcher } from './src/lib/modules/server/terminal/opencode-watcher.js';
 import { ptyManager } from './src/lib/modules/server/terminal/pty-manager.js';
 import { sessionWatcher } from './src/lib/modules/server/terminal/session-watcher.js';
@@ -68,6 +80,14 @@ const sessionWatcherAdapter = {
   },
 };
 
+// ── Startup warnings ────────────────────────────────────────────────
+
+if (!process.env.API_KEY) {
+  console.warn(
+    `\n⚠ WARNING: API_KEY is not set. Authenticated API routes will return 401.\n  Run 'shooter setup' to configure, or set API_KEY in your environment.\n`,
+  );
+}
+
 // ── Wire singletons into WebSocket handlers ──────────────────────────
 
 // The adapters bridge the gap between the real singletons' public APIs and
@@ -119,7 +139,7 @@ startKeepalive();
 
 // ── Listen ───────────────────────────────────────────────────────────
 
-const port = parseInt(process.env.PORT || '3000', 10);
+const port = parseInt(process.env.PORT || '54007', 10);
 
 server.listen(port, () => {
   console.log(`Shooter server running on http://localhost:${port}`);

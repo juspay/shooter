@@ -1,0 +1,58 @@
+# Dockerfile.test — Simulates a FRESH Linux user
+# docker build -f Dockerfile.test -t shooter-test . && docker run -it shooter-test
+
+FROM ubuntu:22.04
+
+# Minimal base + build tools (what install.sh would prompt user to install)
+RUN apt-get update -qq && apt-get install -y -qq \
+    git curl ca-certificates python3 make g++ > /dev/null 2>&1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Non-root user
+RUN useradd -m -s /bin/bash testuser
+USER testuser
+WORKDIR /home/testuser
+
+# Node.js via nvm
+RUN curl -so- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash \
+    && export NVM_DIR="$HOME/.nvm" \
+    && . "$NVM_DIR/nvm.sh" \
+    && nvm install 20 \
+    && node --version
+
+ENV NVM_DIR=/home/testuser/.nvm
+
+# Copy repo (node_modules excluded by .dockerignore)
+USER root
+COPY --chown=testuser:testuser . /home/testuser/shooter-repo
+USER testuser
+WORKDIR /home/testuser/shooter-repo
+
+# pnpm
+RUN bash -c '. "$NVM_DIR/nvm.sh" && corepack enable && corepack prepare pnpm@10.28.2 --activate'
+
+# TEST 1: Install
+RUN bash -o pipefail -c '. "$NVM_DIR/nvm.sh" && pnpm install 2>&1 | tail -5 && echo "TEST 1 PASS: install"'
+
+# TEST 2: Build
+RUN bash -o pipefail -c '. "$NVM_DIR/nvm.sh" && pnpm build 2>&1 | tail -3 && echo "TEST 2 PASS: build"'
+
+# TEST 3: CLI commands
+RUN bash -c '. "$NVM_DIR/nvm.sh" && node bin/shooter.cjs version && node bin/shooter.cjs status && echo "TEST 3 PASS: cli"'
+
+# TEST 4: Server lifecycle (start → health → stop)
+RUN bash -c 'export PATH="$NVM_DIR/versions/node/$(ls $NVM_DIR/versions/node)/bin:$PATH" && \
+    mkdir -p /home/testuser/.shooter && \
+    echo "API_KEY=test123" > /home/testuser/.shooter/.env && \
+    node bin/shooter.cjs start & \
+    SERVER_PID=$! && \
+    sleep 5 && \
+    echo "=== Health ===" && \
+    curl -sf -H "Authorization: Bearer test123" http://localhost:54007/api/health && echo "" && \
+    echo "=== Stop ===" && \
+    kill $SERVER_PID && sleep 2 && \
+    echo "TEST 4 PASS: server lifecycle"'
+
+RUN echo "" && echo "========================================" && echo "  ALL TESTS PASSED" && echo "========================================"
+
+CMD ["bash", "-l"]

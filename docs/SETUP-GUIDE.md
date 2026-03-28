@@ -44,7 +44,7 @@ pnpm setup
 pnpm start
 
 # 5. Verify it works
-curl http://localhost:3000/api/health
+curl http://localhost:54007/api/health
 ```
 
 The wizard generates your `.env` file, offers to export `API_KEY` into your shell profile, builds the project, and runs a health check against the server. When it finishes, you are ready to go.
@@ -86,7 +86,7 @@ node scripts/setup.cjs
 | **5. Write `.env`**               | Generates a `.env` file from your answers. If `.env` already exists, asks before overwriting. Commented-out stubs are written for any platform you did not configure.                                       |
 | **6. Shell environment**          | Detects your shell profile (`~/.zshrc`, `~/.bash_profile`, etc.) and offers to append `export API_KEY="..."`. This is required for Claude Code hooks to authenticate with the server.                       |
 | **7. Build**                      | Runs `pnpm build` (SvelteKit with adapter-node).                                                                                                                                                            |
-| **8. Health check**               | Starts the server temporarily, polls `http://localhost:3000/api/health` for up to 15 seconds, reports the result, then stops the server.                                                                    |
+| **8. Health check**               | Starts the server temporarily, polls `http://localhost:54007/api/health` for up to 15 seconds, reports the result, then stops the server.                                                                    |
 
 After all steps complete, the wizard prints the commands to start the server (`pnpm start`) and run in dev mode (`pnpm dev`).
 
@@ -144,7 +144,7 @@ cp .env.example .env
 docker compose up -d
 
 # 3. Verify
-curl http://localhost:3000/api/health
+curl http://localhost:54007/api/health
 ```
 
 ### What the Dockerfile does
@@ -154,7 +154,7 @@ The Docker build uses a two-stage approach:
 | Stage                           | Purpose                                                                                                                                                                      |
 | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **builder** (`node:20-slim`)    | Installs build tools (`python3`, `make`, `g++`) for native addons (`node-pty`, `better-sqlite3`), runs `pnpm install`, `pnpm build`, then prunes to production dependencies. |
-| **production** (`node:20-slim`) | Copies built output, production `node_modules`, `server.ts`, and server-side source modules. Exposes port 3000 and runs `node --import tsx server.ts`.                       |
+| **production** (`node:20-slim`) | Copies built output, production `node_modules`, `server.ts`, and server-side source modules. Exposes port 54007 and runs `node --import tsx server.ts`.                      |
 
 ### docker-compose.yml details
 
@@ -163,7 +163,7 @@ services:
   shooter:
     build: .
     ports:
-      - '3000:3000'
+      - '54007:54007'
     env_file:
       - .env
     volumes:
@@ -308,7 +308,7 @@ pnpm dev
 ### 6. Verify
 
 ```bash
-curl http://localhost:3000/api/health
+curl http://localhost:54007/api/health
 # Expected: {"status":"healthy","timestamp":"..."}
 ```
 
@@ -321,7 +321,7 @@ curl http://localhost:3000/api/health
 | Variable               | Required    | Default | Description                                                                                                                                                 | Example                                                             |
 | ---------------------- | ----------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
 | `API_KEY`              | **Yes**     | --      | Bearer token for authenticating all API requests. Used by hooks, the iOS app, and the web UI.                                                               | `a1b2c3d4e5f6...` (64 hex chars)                                    |
-| `PORT`                 | No          | `3000`  | Port the server listens on.                                                                                                                                 | `3000`                                                              |
+| `PORT`                 | No          | `54007` | Port the server listens on.                                                                                                                                 | `54007`                                                             |
 | `APNS_KEY`             | For iOS     | --      | Full contents of the APNs `.p8` private key file, including `BEGIN`/`END` markers. Newlines escaped as `\n` when stored in `.env`.                          | `"-----BEGIN PRIVATE KEY-----\nMIGT...\n-----END PRIVATE KEY-----"` |
 | `APNS_KEY_ID`          | For iOS     | --      | 10-character Key ID from the Apple Developer portal (Certificates, Identifiers & Profiles > Keys).                                                          | `ABC123DEF4`                                                        |
 | `APNS_TEAM_ID`         | For iOS     | --      | 10-character Apple Developer Team ID (Membership page).                                                                                                     | `9ABCDEF012`                                                        |
@@ -340,7 +340,7 @@ curl http://localhost:3000/api/health
 | ---------------------------- | ----------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------- |
 | `API_KEY`                    | **Yes**     | --      | Same value as the server's `API_KEY`. Hooks expand `$API_KEY` from the shell environment.                                                                    | `a1b2c3d4e5f6...`                |
 | `SHOOTER_USE_LOCAL`          | No          | `false` | When `true`, hooks send requests to `localhost` instead of a remote URL.                                                                                     | `true`                           |
-| `SHOOTER_LOCAL_PORT`         | No          | `3000`  | Port to use when `SHOOTER_USE_LOCAL=true`.                                                                                                                   | `3000`                           |
+| `SHOOTER_LOCAL_PORT`         | No          | `54007` | Port to use when `SHOOTER_USE_LOCAL=true`.                                                                                                                   | `54007`                          |
 | `SHOOTER_API_URL`            | Conditional | --      | Remote server URL. Required when `SHOOTER_USE_LOCAL` is not `true`. Typically the Cloudflare Tunnel URL.                                                     | `https://shooter.yourdomain.com` |
 | `SHOOTER_PERMISSION_TIMEOUT` | No          | `120`   | Seconds the PermissionRequest hook polls the server before timing out. The hook timeout in `.claude/settings.json` (180s) should be higher to allow cleanup. | `120`                            |
 | `SHOOTER_DEVICE_TOKEN`       | No          | --      | Override the device token for this hook invocation. If unset, the server uses `DEVICE_TOKEN` from its own `.env`.                                            | `a1b2c3d4...`                    |
@@ -353,7 +353,7 @@ curl http://localhost:3000/api/health
 **Hooks:** Each hook command in `.claude/settings.json` sets variables inline:
 
 ```
-SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=3000 API_KEY=$API_KEY node .claude/hooks/notifier.cjs PreToolUse
+SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=54007 API_KEY=$API_KEY node .claude/hooks/notifier.cjs PreToolUse
 ```
 
 The `$API_KEY` reference expands from your shell environment, which is why the setup wizard offers to add `export API_KEY="..."` to your shell profile.
@@ -386,7 +386,7 @@ The hooks are configured in `.claude/settings.json`. Every hook follows the same
         "hooks": [
           {
             "type": "command",
-            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=3000 API_KEY=$API_KEY node .claude/hooks/notifier.cjs PreToolUse"
+            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=54007 API_KEY=$API_KEY node .claude/hooks/notifier.cjs PreToolUse"
           }
         ]
       }
@@ -499,7 +499,7 @@ credentials-file: /Users/<you>/.cloudflared/<tunnel-id>.json
 
 ingress:
   - hostname: shooter.yourdomain.com
-    service: http://localhost:3000
+    service: http://localhost:54007
   - service: http_status:404
 ```
 
@@ -609,7 +609,7 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.shooter.server.plist
 
 # Verify it is running
 launchctl print gui/$(id -u)/com.shooter.server
-curl http://localhost:3000/api/health
+curl http://localhost:54007/api/health
 ```
 
 ### Manage the agent
@@ -666,7 +666,7 @@ The production entry point:
 3. Creates a WebSocket server in `noServer` mode and handles HTTP upgrade requests with ticket-based authentication.
 4. Wires up the PTY manager (terminal sessions), session watcher (JSONL file monitoring), and OpenCode watcher.
 5. Starts keepalive pings (30-second interval, keeps Cloudflare Tunnel connections alive).
-6. Listens on the configured `PORT` (default 3000).
+6. Listens on the configured `PORT` (default 54007).
 7. Handles graceful shutdown on `SIGTERM`/`SIGINT`: stops keepalive, disconnects terminals, stops watchers, closes WebSocket and HTTP servers.
 
 ### Environment for production
@@ -675,7 +675,7 @@ Set these in your `.env` or system environment:
 
 ```bash
 NODE_ENV=production
-PORT=3000
+PORT=54007
 API_KEY=<your-key>
 # Plus APNs/FCM variables as needed
 ```
@@ -762,7 +762,7 @@ After setup, walk through each check to confirm everything is working end to end
 ### Server health
 
 ```bash
-curl http://localhost:3000/api/health
+curl http://localhost:54007/api/health
 ```
 
 **Expected:** `{"status":"healthy","timestamp":"..."}` if push notifications are configured, or `{"status":"degraded","timestamp":"..."}` if APNs/FCM credentials are missing. Both mean the server is running.
@@ -771,7 +771,7 @@ For detailed diagnostics (requires authentication):
 
 ```bash
 curl -H "Authorization: Bearer YOUR_API_KEY" \
-  "http://localhost:3000/api/health?details=true"
+  "http://localhost:54007/api/health?details=true"
 ```
 
 This returns which checks pass (`hasApiKey`, `hasAPNsConfig`, `hasBundleId`, `hasDeviceToken`, `hasFCMConfig`) and the current configuration summary.
@@ -781,7 +781,7 @@ This returns which checks pass (`hasApiKey`, `hasAPNsConfig`, `hasBundleId`, `ha
 Open your browser to:
 
 ```
-http://localhost:3000
+http://localhost:54007
 ```
 
 You should see the Shooter dashboard. Navigate to `/config` to review the server's current configuration state.
@@ -805,7 +805,7 @@ If nothing happens, verify:
 Send a test notification directly:
 
 ```bash
-curl -X POST http://localhost:3000/api/notify \
+curl -X POST http://localhost:54007/api/notify \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -819,13 +819,13 @@ curl -X POST http://localhost:3000/api/notify \
 
 If the notification does not arrive:
 
-- Check `curl http://localhost:3000/api/health?details=true` (with auth) to verify APNs/FCM configuration.
+- Check `curl http://localhost:54007/api/health?details=true` (with auth) to verify APNs/FCM configuration.
 - Confirm `APNS_PRODUCTION` matches your iOS build (sandbox for Xcode, `true` for TestFlight/App Store).
 - Verify `DEVICE_TOKEN` is current (tokens can rotate).
 
 ### Terminal (remote shell)
 
-1. Open the web UI at `http://localhost:3000/terminals`.
+1. Open the web UI at `http://localhost:54007/terminals`.
 2. Create a new terminal session.
 3. You should see a live terminal emulator in the browser.
 4. Type a command (e.g., `ls`) and confirm output appears.
@@ -833,7 +833,7 @@ If the notification does not arrive:
 ### Session viewer
 
 1. Ensure you have at least one Claude Code or OpenCode session in progress or completed.
-2. Open `http://localhost:3000` and navigate to a session.
+2. Open `http://localhost:54007` and navigate to a session.
 3. The session viewer should display the conversation history with messages rendered.
 4. For live sessions, new messages should appear in real time via WebSocket streaming.
 

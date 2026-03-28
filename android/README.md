@@ -345,7 +345,7 @@ Checklist:
 Checklist:
 
 1. Confirm the server URL is correct. Check encrypted preferences by inspecting `ShooterBridge.getConfig()` output in Chrome DevTools remote debugging.
-2. Verify the Shooter server is running and reachable from the device. If the server is on localhost, use `adb reverse tcp:3000 tcp:3000` (adjust the port) to make it accessible to the emulator.
+2. Verify the Shooter server is running and reachable from the device. If the server is on localhost, use `adb reverse tcp:54007 tcp:54007` (adjust the port) to make it accessible to the emulator.
 3. Enable WebView debugging (automatic in debug builds) and connect Chrome DevTools at `chrome://inspect`.
 
 ### Permission Response Not Reaching Server

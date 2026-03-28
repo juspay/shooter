@@ -114,9 +114,9 @@ if (envPath && existsSync(envPath)) {
 - [ ] **Step 2: Verify server still starts in dev mode**
 
 Run: `pnpm build && pnpm start`
-Expected: Server starts normally on port 3000, loads `.env` from CWD (no `SHOOTER_HOME` set).
+Expected: Server starts normally on port 54007, loads `.env` from CWD (no `SHOOTER_HOME` set).
 
-Run: `curl http://localhost:3000/api/health`
+Run: `curl http://localhost:54007/api/health`
 Expected: `{"status":"healthy",...}`
 
 Stop the server with Ctrl+C.
@@ -336,7 +336,7 @@ function cmdStart() {
   }
 
   // Read PORT from .env if not already in environment
-  const port = process.env.PORT || readEnvPort() || '3000';
+  const port = process.env.PORT || readEnvPort() || '54007';
 
   // Check if port is already in use
   try {
@@ -493,7 +493,7 @@ function cmdStatus() {
   }
 
   // Health check
-  const port = process.env.PORT || '3000';
+  const port = process.env.PORT || '54007';
   const req = http.get(`http://localhost:${port}/api/health`, (res) => {
     let body = '';
     res.on('data', (chunk) => {
@@ -1462,7 +1462,7 @@ sleep 3
 node bin/shooter.cjs status
 
 # Test health
-curl -s http://localhost:3000/api/health | head -1
+curl -s http://localhost:54007/api/health | head -1
 
 # Test stop
 node bin/shooter.cjs stop

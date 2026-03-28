@@ -56,6 +56,7 @@ function escapeForDoubleQuotedShell(s) {
 const ROOT = process.env.SHOOTER_PKG_ROOT || path.resolve(__dirname, '..');
 const SHOOTER_HOME = process.env.SHOOTER_HOME || path.join(require('os').homedir(), '.shooter');
 const DOT_ENV_PATH = path.join(SHOOTER_HOME, '.env');
+const AUTO_MODE = process.argv.includes('--auto');
 
 let rl; // readline interface — created in main()
 
@@ -217,6 +218,32 @@ async function collectConfig() {
     androidDeviceToken: '',
   };
 
+  // ── Auto mode: reuse existing key or generate new, skip push config ──
+  if (AUTO_MODE) {
+    console.log(bold('2. Auto-configuring...\n'));
+
+    // Preserve existing API_KEY if .env already exists
+    if (fs.existsSync(DOT_ENV_PATH)) {
+      const existing = fs.readFileSync(DOT_ENV_PATH, 'utf-8');
+      const match = existing.match(/^API_KEY=(.+)$/m);
+      if (match && match[1]) {
+        config.apiKey = match[1];
+        const masked = mask(config.apiKey);
+        console.log(green(`  Existing API key preserved: ${masked}`));
+        console.log(dim('  Push notifications skipped (run "shooter setup" to configure later)'));
+        console.log('');
+        return config;
+      }
+    }
+
+    config.apiKey = crypto.randomBytes(32).toString('hex');
+    const maskedKey = mask(config.apiKey);
+    console.log(green(`  API key generated: ${maskedKey}`));
+    console.log(dim('  Push notifications skipped (run "shooter setup" to configure later)'));
+    console.log('');
+    return config;
+  }
+
   // ── API Key ──────────────────────────────────────────────────────
   console.log(bold('2. Server authentication\n'));
   const apiKeyAnswer = await ask(`  API_KEY ${dim('(press Enter to auto-generate)')}: `);
@@ -224,7 +251,8 @@ async function collectConfig() {
     config.apiKey = apiKeyAnswer;
   } else {
     config.apiKey = crypto.randomBytes(32).toString('hex');
-    console.log(green(`  Generated: ${mask(config.apiKey)} (saved to .env)`));
+    const maskedGenerated = mask(config.apiKey);
+    console.log(green(`  Generated: ${maskedGenerated} (saved to .env)`));
   }
   console.log('');
 
@@ -365,7 +393,7 @@ function buildEnvContent(config) {
 
   // Server
   lines.push('# Server');
-  lines.push('# PORT=3000');
+  lines.push('# PORT=54007');
   lines.push('');
 
   return lines.join('\n') + '\n';
@@ -374,7 +402,7 @@ function buildEnvContent(config) {
 async function writeEnv(config) {
   console.log(bold('5. Writing .env file\n'));
 
-  if (fs.existsSync(DOT_ENV_PATH)) {
+  if (fs.existsSync(DOT_ENV_PATH) && !AUTO_MODE) {
     const overwrite = await confirm('  .env already exists. Overwrite it?');
     if (!overwrite) {
       console.log(yellow('  Skipped .env — keeping existing file.'));
@@ -433,7 +461,7 @@ async function offerShellExport(apiKey) {
   }
 
   console.log(dim('  The Claude Code hooks need API_KEY in your shell environment.'));
-  const shouldAdd = await confirm(`  Add 'export API_KEY=...' to ~/${profileName}?`);
+  const shouldAdd = AUTO_MODE || await confirm(`  Add 'export API_KEY=...' to ~/${profileName}?`);
 
   if (shouldAdd) {
     const exportLine = `\nexport API_KEY="${escapeForDoubleQuotedShell(apiKey)}"\n`;
@@ -474,9 +502,9 @@ function runBuild() {
 
 function testHealth() {
   return new Promise((resolve) => {
-    console.log(bold('8. Testing server health...\n'));
+    console.log(bold('9. Testing server health...\n'));
 
-    const port = process.env.PORT || 3000;
+    const port = process.env.PORT || 54007;
     let serverProcess;
     let resolved = false;
 
@@ -599,6 +627,15 @@ async function main() {
 
   const buildOk = runBuild();
 
+  // ── Remote access info ───────────────────────────────────────────────
+  console.log(bold('8. Remote access (optional)\n'));
+  console.log(dim('  To access Shooter from your phone outside your local network,'));
+  console.log(dim('  you\'ll need a Cloudflare Tunnel (or similar):\n'));
+  console.log(cyan('    cloudflared tunnel --url http://localhost:54007\n'));
+  console.log(dim('  Install: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/\n'));
+  console.log(dim('  Without a tunnel, Shooter is only accessible on your local network.'));
+  console.log('');
+
   if (buildOk) {
     await testHealth();
   }
@@ -606,10 +643,12 @@ async function main() {
   // ── Done ───────────────────────────────────────────────────────────
   console.log(dim('  ─────────────────────────────────────────'));
   console.log('');
+  const port = process.env.PORT || 54007;
   console.log(green(bold('  Setup complete!')));
   console.log('');
   console.log(`  Start the server:  ${cyan('shooter start')}`);
-  console.log(`  Health check:      ${cyan('curl http://localhost:3000/api/health')}`);
+  console.log(`  Open in browser:   ${cyan(`http://localhost:${port}`)}`);
+  console.log(`  Health check:      ${cyan(`curl http://localhost:${port}/api/health`)}`);
   console.log('');
   if (!config.wantIos && !config.wantAndroid) {
     console.log(yellow('  Note: No push notification platform was configured.'));
