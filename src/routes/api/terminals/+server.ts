@@ -1,9 +1,9 @@
 import { validateAuth } from '$lib/modules/server/auth';
-import { ptyManager } from '$lib/modules/server/terminal/pty-manager.js';
+import { ptyManager } from '$lib/modules/server/terminal/pty-manager';
 import { toErrorMessage } from '$lib/modules/server/utils/error';
 import { json } from '@sveltejs/kit';
 import { realpathSync, statSync } from 'fs';
-import { basename } from 'path';
+import { basename, isAbsolute, relative } from 'path';
 
 import type { RequestHandler } from './$types';
 
@@ -87,15 +87,18 @@ export const POST: RequestHandler = async ({ request }) => {
     let realCwd: string;
     try {
       realCwd = realpathSync(cwd);
+      if (!statSync(realCwd).isDirectory()) {
+        return json({ error: 'cwd must be a directory' }, { status: 400 });
+      }
     } catch {
-      return json({ error: 'Invalid working directory' }, { status: 400 });
-    }
-    if (!statSync(realCwd).isDirectory()) {
-      return json({ error: 'Invalid working directory' }, { status: 400 });
+      return json({ error: 'cwd must be a directory' }, { status: 400 });
     }
     const home = process.env.HOME || '';
-    if (home && !realCwd.startsWith(home)) {
-      return json({ error: 'Working directory must be under home directory' }, { status: 400 });
+    if (home) {
+      const rel = relative(home, realCwd);
+      if (rel.startsWith('..') || isAbsolute(rel)) {
+        return json({ error: 'Working directory must be under home directory' }, { status: 400 });
+      }
     }
 
     if (args !== undefined && !Array.isArray(args)) {
@@ -124,7 +127,7 @@ export const POST: RequestHandler = async ({ request }) => {
     return json(
       {
         command: terminal.command,
-        createdAt: terminal.createdAt,
+        createdAt: terminal.createdAt instanceof Date ? terminal.createdAt.toISOString() : terminal.createdAt,
         cwd: terminal.cwd,
         id: terminal.id,
         pid: terminal.pid,

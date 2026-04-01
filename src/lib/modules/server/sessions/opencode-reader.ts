@@ -1,7 +1,6 @@
 import Database from 'better-sqlite3';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
-import * as path from 'path';
 
 function shortHash(input: string): string {
   return crypto.createHash('sha256').update(input).digest('hex').slice(0, 8);
@@ -9,18 +8,14 @@ function shortHash(input: string): string {
 
 import type { ConversationMessage, MessagePart, ProjectGroup, SessionInfo } from './types';
 
-const OPENCODE_DB_PATH = path.join(
-  process.env.HOME || '',
-  '.local',
-  'share',
-  'opencode',
-  'opencode.db'
-);
+import { resolveOpenCodeDbPath } from './opencode-db-path';
+
+const OPENCODE_DB_PATH = resolveOpenCodeDbPath();
 
 export function getOpenCodeConversation(
   sessionId: string,
   offset = 0,
-  limit = 100
+  limit = 200
 ): ConversationMessage[] {
   const db = getDb();
   if (!db) {
@@ -28,15 +23,18 @@ export function getOpenCodeConversation(
   }
 
   try {
-    // Get messages for this session
+    // Get the LAST `limit` messages (most recent conversation)
+    // by using a subquery to reverse the order
     const messages = db
       .prepare(
         `
-      SELECT id, session_id, time_created, data
-      FROM message
-      WHERE session_id = ?
-      ORDER BY time_created ASC
-      LIMIT ? OFFSET ?
+      SELECT id, session_id, time_created, data FROM (
+        SELECT id, session_id, time_created, data
+        FROM message
+        WHERE session_id = ?
+        ORDER BY time_created DESC
+        LIMIT ? OFFSET ?
+      ) ORDER BY time_created ASC
     `
       )
       .all(sessionId, limit, offset) as {

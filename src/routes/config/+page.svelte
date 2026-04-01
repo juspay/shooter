@@ -217,7 +217,7 @@
         JSON.stringify({
           apiKey: apiKey.trim(),
           deviceToken: deviceToken.trim(),
-          lastUpdated: new Date().toISOString(),
+          lastUpdated: Date.now(),
           serverUrl: trimmedUrl || getDefaultServerUrl(),
         } satisfies ShooterConfig)
       );
@@ -326,6 +326,9 @@
 
 <main class="main">
   <div class="settings-container">
+    <div style="margin-bottom: var(--space-4);">
+      <a href="/" class="back-link">← Back to Projects</a>
+    </div>
     <div class="page-header">
       <h1 class="page-title">Settings</h1>
       <p class="page-description">Configure your API credentials and notification preferences</p>
@@ -354,6 +357,9 @@
             placeholder="Enter your API key"
             infoMessage="Required for sending notifications"
           />
+          <p class="input-help">
+            Find this in your <code>~/.shooter/.env</code> file. Run <code>shooter setup</code> to generate one.
+          </p>
 
           <Input
             name="deviceToken"
@@ -366,6 +372,7 @@
               : 'Device token from app registration'}
             classes="input-mono"
           />
+          <p class="input-help">Optional — only needed for iOS/Android push notifications.</p>
         </Card>
 
         {#if result}
@@ -634,6 +641,20 @@
     line-height: var(--leading-relaxed);
     padding-left: var(--space-3);
     border-left: 3px solid rgba(217, 48, 54, 0.5);
+  }
+
+  .input-help {
+    font-size: var(--text-xs);
+    color: var(--color-text-tertiary, #888);
+    margin-top: var(--space-1);
+    margin-bottom: 0;
+  }
+  .input-help code {
+    background: var(--ds-gray-200, #1a1a1a);
+    padding: 1px 4px;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
   }
 
   @media (max-width: 768px) {

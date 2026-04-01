@@ -52,6 +52,12 @@ function escapeForDoubleQuotedShell(s) {
   return s.replace(/[\\"$`]/g, '\\$&');
 }
 
+// ── Secure key generator ─────────────────────────────────────────────
+// Produces a 256-bit random hex key (64 characters).
+function generateSecureKey() {
+  return crypto.randomBytes(32).toString('hex');
+}
+
 // ── Globals ──────────────────────────────────────────────────────────
 const ROOT = process.env.SHOOTER_PKG_ROOT || path.resolve(__dirname, '..');
 const SHOOTER_HOME = process.env.SHOOTER_HOME || path.join(require('os').homedir(), '.shooter');
@@ -228,15 +234,15 @@ async function collectConfig() {
       const match = existing.match(/^API_KEY=(.+)$/m);
       if (match && match[1]) {
         config.apiKey = match[1];
-        const masked = mask(config.apiKey);
-        console.log(green(`  Existing API key preserved: ${masked}`));
+        const maskedKey = mask(config.apiKey);
+        console.log(green(`  Existing API key preserved: ${maskedKey}`));
         console.log(dim('  Push notifications skipped (run "shooter setup" to configure later)'));
         console.log('');
         return config;
       }
     }
 
-    config.apiKey = crypto.randomBytes(32).toString('hex');
+    config.apiKey = generateSecureKey();
     const maskedKey = mask(config.apiKey);
     console.log(green(`  API key generated: ${maskedKey}`));
     console.log(dim('  Push notifications skipped (run "shooter setup" to configure later)'));
@@ -250,9 +256,10 @@ async function collectConfig() {
   if (apiKeyAnswer) {
     config.apiKey = apiKeyAnswer;
   } else {
-    config.apiKey = crypto.randomBytes(32).toString('hex');
-    const maskedGenerated = mask(config.apiKey);
-    console.log(green(`  Generated: ${maskedGenerated} (saved to .env)`));
+    config.apiKey = generateSecureKey();
+    const maskedKey = mask(config.apiKey);
+    console.log(green(`  Generated API key: ${maskedKey}`));
+    console.log(dim('  (Saved to ~/.shooter/.env)'));
   }
   console.log('');
 
@@ -629,12 +636,78 @@ async function main() {
 
   // ── Remote access info ───────────────────────────────────────────────
   console.log(bold('8. Remote access (optional)\n'));
-  console.log(dim('  To access Shooter from your phone outside your local network,'));
-  console.log(dim('  you\'ll need a Cloudflare Tunnel (or similar):\n'));
-  console.log(cyan('    cloudflared tunnel --url http://localhost:54007\n'));
-  console.log(dim('  Install: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/\n'));
-  console.log(dim('  Without a tunnel, Shooter is only accessible on your local network.'));
-  console.log('');
+
+  let cloudflaredAvailable = false;
+  try {
+    execSync('which cloudflared', { stdio: 'ignore' });
+    cloudflaredAvailable = true;
+  } catch {
+    // not installed
+  }
+
+  if (!cloudflaredAvailable) {
+    console.log(yellow('  cloudflared not found.'));
+    console.log(dim('  Install it to get a public URL for your phone:'));
+    console.log(dim('  https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/'));
+    console.log('');
+    console.log(dim('  Once installed, run:'));
+    console.log(cyan('    cloudflared tunnel --url http://localhost:54007'));
+    console.log('');
+  } else {
+    const port = process.env.PORT || 54007;
+    const startTunnel = AUTO_MODE || await confirm('  Start a Cloudflare Tunnel now to get your public URL?');
+    if (startTunnel) {
+      console.log(dim('\n  Starting tunnel... (this may take a few seconds)\n'));
+      await new Promise((resolve) => {
+        const cf = spawn('cloudflared', ['tunnel', '--url', `http://localhost:${port}`], {
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
+
+        let urlFound = false;
+        const onData = (data) => {
+          const text = data.toString();
+          const match = text.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/);
+          if (match && !urlFound) {
+            urlFound = true;
+            console.log(green('  Tunnel URL (use this on your phone):'));
+            console.log(`\n  ${C.bold}${C.cyan}${match[0]}${C.reset}\n`);
+            console.log(dim('  Keep this terminal session open to maintain the tunnel.'));
+            console.log(dim('  For a persistent tunnel, see: https://developers.cloudflare.com/cloudflare-one/'));
+            console.log('');
+            resolve();
+          }
+        };
+
+        cf.stdout.on('data', onData);
+        cf.stderr.on('data', onData);
+
+        cf.on('error', (err) => {
+          console.log(yellow(`  Could not start tunnel: ${err.message}`));
+          console.log('');
+          resolve();
+        });
+
+        // Timeout after 20 seconds
+        setTimeout(() => {
+          if (!urlFound) {
+            console.log(yellow('  Tunnel URL not received within 20 seconds.'));
+            console.log(dim(`  Run manually: cloudflared tunnel --url http://localhost:${port}`));
+            console.log('');
+            resolve();
+          }
+        }, 20000);
+      });
+    } else {
+      console.log(dim('  Run this when you need remote access:'));
+      console.log(cyan(`    cloudflared tunnel --url http://localhost:${port}`));
+      console.log('');
+    }
+  }
+
+  // Close readline after all interactive prompts are done — otherwise stdin EOF
+  // (in auto/non-interactive mode) triggers the "Setup cancelled" exit handler.
+  rl.removeAllListeners('close');
+  rl.close();
 
   if (buildOk) {
     await testHealth();
@@ -650,13 +723,14 @@ async function main() {
   console.log(`  Open in browser:   ${cyan(`http://localhost:${port}`)}`);
   console.log(`  Health check:      ${cyan(`curl http://localhost:${port}/api/health`)}`);
   console.log('');
+  console.log(bold('  Your API key (enter this in the app on your phone):'));
+  console.log(`\n  ${C.bold}${C.cyan}${mask(config.apiKey)}${C.reset}\n`);
   if (!config.wantIos && !config.wantAndroid) {
     console.log(yellow('  Note: No push notification platform was configured.'));
     console.log(dim('  Run shooter setup again to add iOS or Android push notifications.'));
     console.log('');
   }
 
-  rl.close();
   process.exit(0);
 }
 

@@ -681,6 +681,11 @@
           </Tooltip>
         {/if}
         <ConnectionStatus status={connectionStatus} onretry={handleRetry} />
+        {#if isAI && (terminal as TerminalDetailView & { sessionFile?: string })?.sessionFile}
+          <a href="/session/{(terminal as TerminalDetailView & { sessionFile?: string }).sessionFile!.split(/[\\/]/).pop()?.replace('.jsonl', '') || ''}" class="term-session-link" title="View session history">
+            Session
+          </a>
+        {/if}
       </div>
 
       <div class="term-topbar-right">
@@ -921,6 +926,26 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     max-width: 200px;
+  }
+
+  /* Session cross-link */
+  .term-session-link {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--ds-blue-900);
+    text-decoration: none;
+    white-space: nowrap;
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--ds-blue-400);
+    transition:
+      background var(--transition-fast),
+      color var(--transition-fast);
+  }
+
+  .term-session-link:hover {
+    background: var(--ds-blue-100);
+    color: var(--ds-blue-1000);
   }
 
   /* Activity indicator */

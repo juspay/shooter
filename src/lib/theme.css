@@ -276,10 +276,35 @@
   --button-hover-text-color: var(--ds-background-100);
 }
 
+.btn-connect {
+  --button-color: #0d9488;
+  --button-text-color: #fff;
+  --button-hover-color: #14b8a6;
+  --button-hover-text-color: #fff;
+  --button-border: 1px solid #0d9488;
+  --button-hover-border: 1px solid #14b8a6;
+}
+
+.btn-resume {
+  --button-color: transparent;
+  --button-text-color: var(--ds-gray-900);
+  --button-border: 1px solid var(--ds-gray-400);
+  --button-hover-color: var(--ds-gray-100);
+  --button-hover-text-color: var(--ds-gray-1000);
+  --button-hover-border: 1px solid var(--ds-gray-600);
+}
+
 .btn-sm {
   --button-height: 32px;
   --button-padding: 0 10px;
   --button-font-size: var(--text-base);
+}
+
+.btn-xs {
+  --button-height: 28px;
+  --button-padding: 0 8px;
+  --button-font-size: var(--text-xs);
+  --button-border-radius: var(--radius-sm);
 }
 
 .btn-lg {
@@ -525,5 +550,10 @@
 @media (max-width: 768px) {
   .shimmer-card {
     --shimmer-height: 90px;
+  }
+
+  .btn-xs {
+    min-height: 36px;
+    padding: 6px 12px;
   }
 }

@@ -22,6 +22,7 @@
   class:reconnecting={status === 'reconnecting'}
   class:disconnected={status === 'disconnected'}
   class:connected={status === 'connected'}
+  aria-label="Connection: {status}"
 >
   <span class="status-dot {status}"></span>
   <span class="status-label">{label}</span>

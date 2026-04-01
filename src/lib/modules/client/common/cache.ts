@@ -1,10 +1,18 @@
 /**
  * Shared sessionStorage cache helpers.
  *
- * Default TTL is 30 seconds. Callers may override per-call.
+ * Default TTL is 5 seconds. Callers may override per-call.
  */
 
-const DEFAULT_TTL_MS = 30_000;
+const DEFAULT_TTL_MS = 5_000;
+
+export function clearCache(key: string): void {
+  try {
+    sessionStorage.removeItem(key);
+  } catch {
+    // ignore
+  }
+}
 
 export function getCached(key: string, ttlMs: number = DEFAULT_TTL_MS): unknown {
   try {

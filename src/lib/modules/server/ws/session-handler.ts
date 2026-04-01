@@ -6,6 +6,9 @@
 import type { MessageRole, TextContentBlock } from '$generated/types';
 import type { WebSocket } from 'ws';
 
+import * as fs from 'fs';
+import * as path from 'path';
+
 import type { ConversationMessage, MessagePart } from '../sessions/types';
 
 // ── Types ────────────────────────────────────────────────────────────
@@ -42,6 +45,11 @@ interface ManagedTerminal {
   status: 'exited' | 'running';
 }
 
+/** Extended PTY manager interface with list() for UUID-based terminal search. */
+interface PtyManagerFullLike extends PtyManagerLike {
+  list: () => ManagedTerminal[];
+}
+
 interface PtyManagerLike {
   getTerminal: (id: string) => ManagedTerminal | undefined;
 }
@@ -75,10 +83,13 @@ interface SessionWatcherLike {
 // ── Module-level references ──────────────────────────────────────────
 
 let _ptyManager: null | PtyManagerLike = null;
+let _ptyManagerFull: null | PtyManagerFullLike = null;
 let _sessionWatcher: null | SessionWatcherLike = null;
 
 /** Per-connection state tracked for cleanup. */
 interface ConnectionState {
+  /** True when the session is file-only (no terminal backing it). */
+  isExternalSession: boolean;
   retryInterval: null | ReturnType<typeof setInterval>;
   terminalId: string;
   unsubscribe: (() => void) | null;
@@ -86,120 +97,69 @@ interface ConnectionState {
 
 /**
  * Handle a new WebSocket connection on the `/ws/session/:id` channel.
- * Sends full conversation history on connect, then streams new entries
- * as they appear in the session file.
+ * Accepts BOTH Shooter terminal IDs and external Claude Code session UUIDs.
+ *
+ * Resolution order:
+ * 1. Try `_ptyManager.getTerminal(id)` — works for Shooter terminal IDs.
+ * 2. Search all terminals for one whose `sessionFile` contains the UUID.
+ * 3. If still no terminal, treat as an external session — find the JSONL
+ *    file directly and stream it via the session watcher.
  */
-export function handleSessionConnection(ws: WebSocket, terminalId: string): void {
-  const state: ConnectionState = { retryInterval: null, terminalId, unsubscribe: null };
+export function handleSessionConnection(ws: WebSocket, id: string): void {
+  const state: ConnectionState = {
+    isExternalSession: false,
+    retryInterval: null,
+    terminalId: id,
+    unsubscribe: null,
+  };
 
-  // ── 1. Look up the terminal ──────────────────────────────────────
-  if (!_ptyManager) {
-    safeSend(ws, { message: 'PTY manager not initialised', type: 'error' });
-    ws.close(1011, 'PTY manager not initialised');
+  // ── 1. Try to resolve to a terminal ──────────────────────────────
+  let terminal: ManagedTerminal | undefined;
+
+  if (_ptyManager) {
+    // 1a. Direct terminal ID lookup
+    terminal = _ptyManager.getTerminal(id);
+
+    // 1b. Search by session UUID in sessionFile paths
+    if (!terminal) {
+      terminal = findTerminalBySessionUuid(id);
+    }
+  }
+
+  // ── 2. If we found a terminal, use the normal flow ───────────────
+  if (terminal) {
+    state.terminalId = terminal.id;
+    subscribeToSession(ws, state, terminal);
+    wireClientMessages(ws, state);
+    wireCleanup(ws, state);
     return;
   }
 
-  const terminal = _ptyManager.getTerminal(terminalId);
-  if (!terminal) {
-    safeSend(ws, { message: `Terminal not found: ${terminalId}`, type: 'error' });
-    ws.close(1008, 'Terminal not found');
+  // ── 3. External session — find JSONL file directly ───────────────
+  const jsonlPath = findJsonlFileForSession(id);
+  if (jsonlPath) {
+    state.isExternalSession = true;
+    subscribeToExternalSession(ws, state, jsonlPath);
+    wireClientMessages(ws, state);
+    wireCleanup(ws, state);
     return;
   }
 
-  // ── 2. Subscribe to session file ─────────────────────────────────
-  subscribeToSession(ws, state, terminal);
-
-  // ── 3. Handle messages from the client ───────────────────────────
-  ws.on('message', (raw: Buffer | string) => {
-    const data = typeof raw === 'string' ? raw : raw.toString('utf-8');
-    const msg = parseClientMessage(data);
-    if (!msg) {
-      return;
-    }
-
-    try {
-      switch (msg.type) {
-        case 'cancel': {
-          // Send SIGINT to the terminal process.
-          const currentTerminal = _ptyManager?.getTerminal(state.terminalId);
-          if (!currentTerminal || currentTerminal.status === 'exited') {
-            safeSend(ws, { message: 'Terminal has exited', type: 'error' });
-            return;
-          }
-          currentTerminal.pty.write('\x03');
-          break;
-        }
-
-        case 'send-input': {
-          // Write text + newline to PTY stdin (the Chat view sends complete
-          // messages, not raw keystrokes).
-          const currentTerminal = _ptyManager?.getTerminal(state.terminalId);
-          if (!currentTerminal || currentTerminal.status === 'exited') {
-            safeSend(ws, { message: 'Terminal has exited', type: 'error' });
-            return;
-          }
-          currentTerminal.pty.write(`${msg.text}\n`);
-          break;
-        }
-
-        case 'subscribe': {
-          // (Re)subscribe to a different session. Clean up the old subscription
-          // and attach to the new terminal.
-          const newTerminal = _ptyManager?.getTerminal(msg.sessionId);
-          if (!newTerminal) {
-            safeSend(ws, {
-              message: `Terminal not found: ${msg.sessionId}`,
-              type: 'error',
-            });
-            return;
-          }
-
-          // Tear down old subscription and retry interval.
-          if (state.retryInterval) {
-            clearInterval(state.retryInterval);
-            state.retryInterval = null;
-          }
-          if (state.unsubscribe) {
-            state.unsubscribe();
-            state.unsubscribe = null;
-          }
-
-          state.terminalId = msg.sessionId;
-          subscribeToSession(ws, state, newTerminal);
-          break;
-        }
-      }
-    } catch (err) {
-      const errMsg = err instanceof Error ? err.message : String(err);
-      console.error(`[ws/session] Error handling ${msg.type} for ${state.terminalId}:`, errMsg);
-      safeSend(ws, { message: `Failed to handle ${msg.type}: ${errMsg}`, type: 'error' });
-    }
-  });
-
-  // ── 4. Cleanup on disconnect ─────────────────────────────────────
-  ws.on('close', () => {
-    if (state.retryInterval) {
-      clearInterval(state.retryInterval);
-      state.retryInterval = null;
-    }
-    if (state.unsubscribe) {
-      state.unsubscribe();
-      state.unsubscribe = null;
-    }
-  });
-
-  ws.on('error', () => {
-    // Errors are followed by 'close', which handles cleanup.
-  });
+  // Nothing found at all
+  safeSend(ws, { message: `Session not found: ${id}`, type: 'error' });
+  ws.close(1008, 'Session not found');
 }
-
-// ── Helpers ──────────────────────────────────────────────────────────
 
 /**
  * Register the PTY manager instance. Called once during server bootstrap.
+ * If the manager also exposes a `list()` method, it is stored as the full
+ * reference for UUID-based terminal search.
  */
 export function setPtyManager(manager: PtyManagerLike): void {
   _ptyManager = manager;
+  if ('list' in manager && typeof (manager as PtyManagerFullLike).list === 'function') {
+    _ptyManagerFull = manager as PtyManagerFullLike;
+  }
 }
 
 /**
@@ -208,8 +168,6 @@ export function setPtyManager(manager: PtyManagerLike): void {
 export function setSessionWatcher(watcher: SessionWatcherLike): void {
   _sessionWatcher = watcher;
 }
-
-// ── Conversion: ConversationMessage → wire format ────────────────────
 
 /**
  * Convert ConversationMessage[] into HistoryMessage[] for the initial
@@ -275,6 +233,66 @@ function conversationToLive(msg: ConversationMessage): ServerMessage[] {
   return messages;
 }
 
+/**
+ * Scan ~/.claude/projects/ for a JSONL file matching the given session UUID.
+ * Returns the absolute path if found, or null.
+ */
+function findJsonlFileForSession(sessionId: string): null | string {
+  const claudeProjectsDir = path.join(process.env.HOME || '', '.claude', 'projects');
+
+  if (!fs.existsSync(claudeProjectsDir)) {
+    return null;
+  }
+
+  try {
+    const projectDirs = fs.readdirSync(claudeProjectsDir);
+    for (const dir of projectDirs) {
+      const fullDir = path.join(claudeProjectsDir, dir);
+      try {
+        if (!fs.statSync(fullDir).isDirectory()) {
+          continue;
+        }
+      } catch {
+        continue;
+      }
+
+      const jsonlPath = path.join(fullDir, `${sessionId}.jsonl`);
+      if (fs.existsSync(jsonlPath)) {
+        return jsonlPath;
+      }
+    }
+  } catch {
+    // Ignore filesystem errors
+  }
+
+  return null;
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────
+
+/**
+ * Search all managed terminals for one whose sessionFile contains the
+ * given session UUID. Returns the first match or undefined.
+ */
+function findTerminalBySessionUuid(uuid: string): ManagedTerminal | undefined {
+  if (!_ptyManager) {
+    return undefined;
+  }
+
+  // getTerminal only takes an ID — we need to probe. The PtyManager
+  // exposes a list() method via its adapter, but the handler only has
+  // the PtyManagerLike interface with getTerminal(). We'll use the
+  // module-level _ptyManagerFull reference if available.
+  if (_ptyManagerFull) {
+    for (const t of _ptyManagerFull.list()) {
+      if (t.sessionFile && t.sessionFile.includes(`${uuid}.jsonl`)) {
+        return _ptyManager.getTerminal(t.id);
+      }
+    }
+  }
+  return undefined;
+}
+
 /** Parse and validate an inbound client message. */
 function parseClientMessage(raw: string): ClientMessage | null {
   try {
@@ -308,7 +326,7 @@ function parseClientMessage(raw: string): ClientMessage | null {
   }
 }
 
-// ── Connection state ─────────────────────────────────────────────────
+// ── Conversion: ConversationMessage → wire format ────────────────────
 
 /**
  * Map a single MessagePart to the HistoryPart wire format.
@@ -331,8 +349,6 @@ function partToHistoryPart(part: MessagePart): HistoryPart {
   }
 }
 
-// ── Main handler ─────────────────────────────────────────────────────
-
 /** Safely send a JSON message over a WebSocket. */
 function safeSend(ws: WebSocket, msg: ServerMessage): boolean {
   try {
@@ -345,6 +361,54 @@ function safeSend(ws: WebSocket, msg: ServerMessage): boolean {
     return false;
   }
 }
+
+/**
+ * Subscribe to an external session (one with no Shooter terminal).
+ * Reads history from the JSONL file and streams live updates via
+ * the session watcher.
+ */
+function subscribeToExternalSession(
+  ws: WebSocket,
+  state: ConnectionState,
+  jsonlPath: string
+): void {
+  if (!_sessionWatcher) {
+    safeSend(ws, { message: 'Session watcher not initialised', type: 'error' });
+    safeSend(ws, { messages: [], type: 'history' });
+    return;
+  }
+
+  // Send full history
+  try {
+    const allMessages = _sessionWatcher.getHistory(jsonlPath);
+    const historyMessages = conversationToHistory(allMessages);
+    safeSend(ws, { messages: historyMessages, type: 'history' });
+  } catch (err) {
+    console.error(`[ws/session] Failed to read external history for ${state.terminalId}:`, err);
+    safeSend(ws, { messages: [], type: 'history' });
+  }
+
+  // Stream live updates
+  try {
+    const unsubscribe = _sessionWatcher.subscribe(jsonlPath, (messages: ConversationMessage[]) => {
+      if (ws.readyState !== 1 /* OPEN */) {
+        return;
+      }
+      for (const msg of messages) {
+        const liveMessages = conversationToLive(msg);
+        for (const liveMsg of liveMessages) {
+          safeSend(ws, liveMsg);
+        }
+      }
+    });
+    state.unsubscribe = unsubscribe;
+  } catch (err) {
+    console.error(`[ws/session] Failed to subscribe to external session ${state.terminalId}:`, err);
+    safeSend(ws, { message: 'Failed to subscribe to session updates', type: 'error' });
+  }
+}
+
+// ── Connection state ─────────────────────────────────────────────────
 
 /**
  * Subscribe to a terminal's session file. Sends the full history as a
@@ -413,6 +477,8 @@ function subscribeToSession(
   subscribeWithSessionKey(ws, state, terminal, sessionKey);
 }
 
+// ── Main handler ─────────────────────────────────────────────────────
+
 /**
  * Subscribe to a session using an already-known session key. Sends history
  * and starts streaming new entries. Extracted so both the normal path and
@@ -466,4 +532,116 @@ function subscribeWithSessionKey(
   if (terminal.status === 'exited') {
     safeSend(ws, { type: 'session-end' });
   }
+}
+
+/**
+ * Wire up cleanup handlers for WebSocket close and error events.
+ */
+function wireCleanup(ws: WebSocket, state: ConnectionState): void {
+  ws.on('close', () => {
+    if (state.retryInterval) {
+      clearInterval(state.retryInterval);
+      state.retryInterval = null;
+    }
+    if (state.unsubscribe) {
+      state.unsubscribe();
+      state.unsubscribe = null;
+    }
+  });
+
+  ws.on('error', () => {
+    // Errors are followed by 'close', which handles cleanup.
+  });
+}
+
+/**
+ * Wire up client message handling (send-input, cancel, subscribe).
+ * Extracted so both terminal-backed and external sessions share the same
+ * message loop.
+ */
+function wireClientMessages(ws: WebSocket, state: ConnectionState): void {
+  ws.on('message', (raw: Buffer | string) => {
+    const data = typeof raw === 'string' ? raw : raw.toString('utf-8');
+    const msg = parseClientMessage(data);
+    if (!msg) {
+      return;
+    }
+
+    try {
+      switch (msg.type) {
+        case 'cancel': {
+          if (state.isExternalSession) {
+            safeSend(ws, {
+              message: 'Cannot cancel — this is a read-only session. Connect to a terminal first.',
+              type: 'error',
+            });
+            return;
+          }
+          const currentTerminal = _ptyManager?.getTerminal(state.terminalId);
+          if (!currentTerminal || currentTerminal.status === 'exited') {
+            safeSend(ws, { message: 'Terminal has exited', type: 'error' });
+            return;
+          }
+          currentTerminal.pty.write('\x03');
+          break;
+        }
+
+        case 'send-input': {
+          if (state.isExternalSession) {
+            safeSend(ws, {
+              message: 'Cannot send input — this is a read-only session. Connect to a terminal first.',
+              type: 'error',
+            });
+            return;
+          }
+          const currentTerminal = _ptyManager?.getTerminal(state.terminalId);
+          if (!currentTerminal || currentTerminal.status === 'exited') {
+            safeSend(ws, { message: 'Terminal has exited', type: 'error' });
+            return;
+          }
+          currentTerminal.pty.write(`${msg.text}\n`);
+          break;
+        }
+
+        case 'subscribe': {
+          // (Re)subscribe to a different session. Clean up the old subscription.
+          if (state.retryInterval) {
+            clearInterval(state.retryInterval);
+            state.retryInterval = null;
+          }
+          if (state.unsubscribe) {
+            state.unsubscribe();
+            state.unsubscribe = null;
+          }
+
+          // Try terminal first, then external
+          const newTerminal = _ptyManager?.getTerminal(msg.sessionId)
+            ?? findTerminalBySessionUuid(msg.sessionId);
+
+          if (newTerminal) {
+            state.terminalId = newTerminal.id;
+            state.isExternalSession = false;
+            subscribeToSession(ws, state, newTerminal);
+          } else {
+            const jsonlPath = findJsonlFileForSession(msg.sessionId);
+            if (jsonlPath) {
+              state.terminalId = msg.sessionId;
+              state.isExternalSession = true;
+              subscribeToExternalSession(ws, state, jsonlPath);
+            } else {
+              safeSend(ws, {
+                message: `Session not found: ${msg.sessionId}`,
+                type: 'error',
+              });
+            }
+          }
+          break;
+        }
+      }
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      console.error(`[ws/session] Error handling ${msg.type} for ${state.terminalId}:`, errMsg);
+      safeSend(ws, { message: `Failed to handle ${msg.type}: ${errMsg}`, type: 'error' });
+    }
+  });
 }

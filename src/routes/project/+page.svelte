@@ -1,8 +1,11 @@
 <script lang="ts">
   import type { ProjectGroup, ShooterConfig } from '$generated/types';
+  import type { DetectedProcess } from '$lib/modules/server/sessions/process-detector';
 
+  import { goto } from '$app/navigation';
   import { page } from '$app/state';
   import {
+    clearCache,
     EmptyState,
     formatRelativeTime,
     getCached,
@@ -10,7 +13,7 @@
     isShooterConfig,
     setCache,
   } from '$lib/modules/client/common';
-  import { Button, Pill, Shimmer } from '@juspay/svelte-ui-components';
+  import { Banner, Button, Pill, Shimmer } from '@juspay/svelte-ui-components';
   import { onDestroy, onMount } from 'svelte';
 
   const POLL_INTERVAL_MS = 15_000;
@@ -19,13 +22,21 @@
   let project = $state<null | ProjectGroup>(null);
   let loading = $state(true);
   let config = $state<null | ShooterConfig>(null);
+  let fetchError = $state<null | string>(null);
   let pollTimer: null | ReturnType<typeof setInterval> = null;
   let visibleCount = $state(PAGE_SIZE);
+  let detectedProcesses = $state<DetectedProcess[]>([]);
+  let connectingSessionId = $state<null | string>(null);
 
   const projectId = $derived(page.url.searchParams.get('id') || '');
 
   const visibleSessions = $derived(project ? project.sessions.slice(0, visibleCount) : []);
   const hasMore = $derived(project ? visibleCount < project.sessions.length : false);
+
+  // Build a set of session IDs that have running processes
+  const runningSessionIds = $derived(
+    new Set(detectedProcesses.filter((p) => p.sessionId).map((p) => p.sessionId))
+  );
 
   onMount(() => {
     loadConfiguration();
@@ -40,11 +51,13 @@
     // Delay initial fetch to ensure config and projectId are resolved
     setTimeout(() => {
       void fetchProject();
+      void detectRunningProcesses();
     }, 50);
 
     pollTimer = setInterval(() => {
       if (config?.apiKey && projectId) {
         void fetchProject();
+        void detectRunningProcesses();
       }
     }, POLL_INTERVAL_MS);
   });
@@ -73,7 +86,7 @@
     }
   }
 
-  async function fetchProject(): Promise<void> {
+  async function fetchProject(bustCache = false): Promise<void> {
     if (!config?.apiKey || !projectId) {
       loading = false;
       return;
@@ -85,17 +98,20 @@
     }
 
     try {
-      const response = await fetch('/api/sessions', {
+      const url = bustCache ? '/api/sessions?refresh=true' : '/api/sessions';
+      const response = await fetch(url, {
         headers: {
           Authorization: `Bearer ${config.apiKey}`,
         },
       });
 
       if (!response.ok) {
+        fetchError = `Failed to load project (HTTP ${response.status})`;
         loading = false;
         return;
       }
 
+      fetchError = null;
       const result: { projects: ProjectGroup[] } = await response.json();
       const foundProject = result.projects.find((p) => p.id === projectId) || null;
       project = foundProject;
@@ -109,11 +125,71 @@
     }
   }
 
+  async function detectRunningProcesses(): Promise<void> {
+    if (!config?.apiKey) {
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/sessions/detect', {
+        headers: { Authorization: `Bearer ${config.apiKey}` },
+      });
+      if (response.ok) {
+        const data: { processes: DetectedProcess[] } = await response.json();
+        detectedProcesses = data.processes;
+      }
+    } catch {
+      // Best effort — don't break the page
+    }
+  }
+
+  async function connectToSession(
+    event: MouseEvent,
+    sessionId: string,
+    command: string
+  ): Promise<void> {
+    // Prevent the click from navigating to the session page
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (!config?.apiKey || !project || connectingSessionId) {
+      return;
+    }
+
+    connectingSessionId = sessionId;
+
+    try {
+      const response = await fetch('/api/sessions/connect', {
+        body: JSON.stringify({
+          command,
+          cwd: project.fullPath,
+          sessionId,
+        }),
+        headers: {
+          Authorization: `Bearer ${config.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        method: 'POST',
+      });
+
+      if (response.ok) {
+        const result: { terminalId: string } = await response.json();
+        void goto(`/terminals/${result.terminalId}`);
+      }
+    } catch (error) {
+      console.error('Failed to connect to session:', error);
+    } finally {
+      connectingSessionId = null;
+    }
+  }
+
   async function forceRefresh(): Promise<void> {
     loading = true;
-    sessionStorage.removeItem(`shooter_project_${projectId}`);
+    project = null;
     visibleCount = PAGE_SIZE;
-    await fetchProject();
+    clearCache(`shooter_project_${projectId}`);
+    await fetchProject(true);
+    await detectRunningProcesses();
   }
 
   function loadMore(): void {
@@ -121,7 +197,10 @@
   }
 
   function formatDate(ts: string): string {
-    return new Date(ts).toLocaleDateString('en-US', {
+    if (!ts) {return '';}
+    const d = new Date(ts);
+    if (isNaN(d.getTime())) {return '';}
+    return d.toLocaleDateString('en-US', {
       day: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
@@ -143,6 +222,10 @@
 </svelte:head>
 
 <main class="main">
+  {#if fetchError}
+    <Banner text={fetchError} classes="banner-error" />
+  {/if}
+
   {#if loading && !project}
     <div class="loading-container">
       <Shimmer classes="shimmer-header" />
@@ -195,7 +278,38 @@
                   <div class="session-card-subtitle">{truncate(session.summary, 80)}</div>
                 {/if}
               </div>
-              <Pill text={formatRelativeTime(session.modified)} classes="pill-session-time" />
+              <div class="session-card-actions">
+                <Pill text={formatRelativeTime(session.modified)} classes="pill-session-time" />
+                {#if runningSessionIds.has(session.id)}
+                  <Button
+                    classes="btn-connect btn-xs"
+                    onclick={(e: MouseEvent) =>
+                      connectToSession(
+                        e,
+                        session.id,
+                        session.source === 'opencode' ? 'opencode' : 'claude'
+                      )}
+                    disabled={connectingSessionId === session.id}
+                    showLoader={connectingSessionId === session.id}
+                  >
+                    <span class="connect-dot"></span>
+                    Connect
+                  </Button>
+                {:else}
+                  <Button
+                    classes="btn-resume btn-xs"
+                    onclick={(e: MouseEvent) =>
+                      connectToSession(
+                        e,
+                        session.id,
+                        session.source === 'opencode' ? 'opencode' : 'claude'
+                      )}
+                    disabled={connectingSessionId === session.id}
+                    showLoader={connectingSessionId === session.id}
+                    text="Resume"
+                  />
+                {/if}
+              </div>
             </div>
             <div class="session-stats">
               <span><strong>{session.messageCount}</strong> messages</span>
@@ -208,7 +322,10 @@
                 <Pill text="Claude Code" classes="pill-source-claude" />
               {/if}
             </div>
-            <div class="session-duration">Created {formatDate(session.created)}</div>
+            <div class="session-meta-row">
+              <span class="session-modified">Last updated {formatDate(session.modified)}</span>
+              <span class="session-duration">Created {formatDate(session.created)}</span>
+            </div>
           </a>
         {/each}
       </div>
@@ -243,11 +360,45 @@
     gap: var(--space-3);
   }
 
+  .session-card-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-shrink: 0;
+  }
+
+  .connect-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #4ade80;
+    margin-right: 2px;
+    flex-shrink: 0;
+  }
+
+  .session-meta-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .session-duration,
+  .session-modified {
+    font-size: 0.75rem;
+    color: var(--color-text-tertiary, #888);
+  }
+
   @media (max-width: 480px) {
     .chat-session-header-top {
       flex-direction: column;
       align-items: flex-start;
       gap: var(--space-2);
+    }
+
+    .session-card-actions {
+      flex-wrap: wrap;
     }
   }
 </style>

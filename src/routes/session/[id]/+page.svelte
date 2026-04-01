@@ -9,264 +9,325 @@
 
   import { browser } from '$app/environment';
   import { page } from '$app/state';
-  import { EmptyState, getCached, setCache } from '$lib/modules/client/common';
+  import { getCached, setCache } from '$lib/modules/client/common';
   import ChatView from '$lib/modules/client/terminal/ChatView.svelte';
-  import { Banner, Pill, Shimmer } from '@juspay/svelte-ui-components';
+  import { Shimmer } from '@juspay/svelte-ui-components';
   import { onMount } from 'svelte';
+
+  // --- State ---
 
   let session = $state<null | SessionInfo>(null);
   let messages = $state<ConversationMessage[]>([]);
   let loading = $state(true);
   let error = $state<null | string>(null);
+  let hasMoreMessages = $state(false);
+  let loadingMore = $state(false);
+  let currentLimit = $state(200);
 
-  // Live streaming state
-  let isSessionActive = $state(false);
-  let connectionState = $state<'connected' | 'connecting' | 'disconnected' | 'idle'>('idle');
-  let ws = $state<null | WebSocket>(null);
-  let wsReconnectAttempts = 0;
-  let wsReconnectTimer: null | number = null;
+  // Terminal + WS connection state
+  let connectedTerminalId = $state<null | string>(null);
+  let chatConnectionState = $state<'connected' | 'connecting' | 'disconnected' | 'idle' | 'reconnecting'>('idle');
+  // sendStatus:
+  //   'idle'       = no terminal yet; input ready for first send
+  //   'connecting' = calling /api/sessions/connect
+  //   'resuming'   = waiting for session history (claude loading)
+  //   'ready'      = history received; input goes straight to PTY
+  let sendStatus = $state<'connecting' | 'idle' | 'ready' | 'resuming'>('idle');
+  let pendingMessage: null | string = null;
+
+  // Non-reactive WS refs
+  let terminalWs: null | WebSocket = null;
+  let sessionWs: null | WebSocket = null;
+  let sessionReconnectTimer: null | ReturnType<typeof setTimeout> = null;
   let disposed = false;
 
   const sessionId = $derived(page.params.id);
   const projectId = $derived(page.url.searchParams.get('project') || '');
 
-  // Check if a session was modified within the last 5 minutes
-  function checkSessionActive(sess: SessionInfo): boolean {
-    const modifiedTime = new Date(sess.modified).getTime();
-    const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
-    return modifiedTime > fiveMinutesAgo;
-  }
+  // Disable send button while a message is in-flight
+  const sendDisabled = $derived(sendStatus === 'connecting' || sendStatus === 'resuming');
 
-  // Generate a unique message ID for WebSocket-delivered messages
-  let wsMessageCounter = 0;
-  function nextWsMessageId(): string {
-    wsMessageCounter++;
-    return `ws-msg-${Date.now()}-${wsMessageCounter}`;
-  }
+  // --- Helpers ---
 
-  // Handle incoming WebSocket messages
-  function handleWsMessage(event: MessageEvent): void {
-    let data: {
-      content?: MessagePart[];
-      id?: string;
-      input?: Record<string, unknown>;
-      isError?: boolean;
-      message?: string;
-      name?: string;
-      output?: string;
-      role?: string;
-      status?: string;
-      text?: string;
-      timestamp?: string;
-      type: string;
-    };
+  function getConfig(): null | ShooterConfig {
     try {
-      data = JSON.parse(event.data);
+      const saved = localStorage.getItem('shooter_config');
+      if (!saved) { return null; }
+      return JSON.parse(saved) as ShooterConfig;
     } catch {
-      return;
-    }
-
-    if (data.type === 'message') {
-      // Full message (user or assistant)
-      const newMsg: ConversationMessage = {
-        id: nextWsMessageId(),
-        parts: data.content || [],
-        role: (data.role as 'assistant' | 'system' | 'user') || 'assistant',
-        timestamp: data.timestamp || new Date().toISOString(),
-      };
-      messages = [...messages, newMsg];
-    } else if (data.type === 'tool-use') {
-      // Append tool_use block to the last assistant message
-      const toolPart: ToolUsePart = {
-        id: data.id || nextWsMessageId(),
-        input: data.input || {},
-        toolName: data.name || 'Unknown',
-        type: 'tool_use',
-      };
-      appendToLastAssistant(toolPart);
-    } else if (data.type === 'tool-result') {
-      // Append a system message with the tool result
-      const resultMsg: ConversationMessage = {
-        id: nextWsMessageId(),
-        parts: [
-          {
-            isError: data.isError || false,
-            output: data.output || '',
-            toolUseId: data.id || '',
-            type: 'tool_result',
-          },
-        ],
-        role: 'system',
-        timestamp: new Date().toISOString(),
-      };
-      messages = [...messages, resultMsg];
-    } else if (data.type === 'thinking') {
-      // Append thinking block to the last assistant message
-      const thinkPart: MessagePart = {
-        content: data.text || '',
-        type: 'thinking',
-      };
-      appendToLastAssistant(thinkPart);
-    } else if (data.type === 'error') {
-      // Server-sent error -- display in the UI
-      const errorMsg: ConversationMessage = {
-        id: nextWsMessageId(),
-        parts: [{ content: data.text || data.message || 'Unknown error', type: 'text' }],
-        role: 'system',
-        timestamp: new Date().toISOString(),
-      };
-      messages = [...messages, errorMsg];
-    } else if (data.type === 'permission-requested') {
-      // Permission request -- log for now (full UI integration would go here)
-      console.log('[session] Permission requested:', data);
-    } else if (data.type === 'session-end') {
-      // Session has ended -- mark as inactive
-      isSessionActive = false;
-      connectionState = 'disconnected';
-      if (ws) {
-        ws.close();
-        ws = null;
-      }
+      return null;
     }
   }
 
-  // Append a part to the last assistant message, or create one
-  function appendToLastAssistant(part: MessagePart): void {
-    const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null;
-    if (lastMsg?.role === 'assistant') {
-      // Mutate the parts array and reassign to trigger reactivity
-      const updatedParts = [...lastMsg.parts, part];
-      const updatedMsg = { ...lastMsg, parts: updatedParts };
-      messages = [...messages.slice(0, -1), updatedMsg];
-    } else {
-      // Create a new assistant message to hold this part
-      const newMsg: ConversationMessage = {
-        id: nextWsMessageId(),
-        parts: [part],
-        role: 'assistant',
-        timestamp: new Date().toISOString(),
-      };
-      messages = [...messages, newMsg];
-    }
-  }
-
-  // Connect to the live session WebSocket
-  async function connectWebSocket(): Promise<void> {
-    if (!browser || !isSessionActive || disposed) {
-      return;
-    }
-
-    const saved = localStorage.getItem('shooter_config');
-    if (!saved) {
-      return;
-    }
-    let config: ShooterConfig;
+  async function getWsTicket(): Promise<null | string> {
+    const config = getConfig();
+    if (!config) { return null; }
     try {
-      config = JSON.parse(saved) as ShooterConfig;
-    } catch {
-      return;
-    }
-
-    connectionState = 'connecting';
-
-    try {
-      // Obtain a short-lived ticket
-      const ticketRes = await fetch('/api/ws-ticket', {
+      const res = await fetch('/api/ws-ticket', {
         headers: { Authorization: `Bearer ${config.apiKey}` },
         method: 'POST',
       });
-      if (!ticketRes.ok || disposed) {
-        connectionState = 'disconnected';
-        // Schedule retry with same backoff logic as onclose
-        if (isSessionActive && !disposed && wsReconnectAttempts < 5) {
-          wsReconnectAttempts++;
-          wsReconnectTimer = window.setTimeout(() => {
-            void connectWebSocket();
-          }, 2000);
-        }
-        return;
-      }
-      const { ticket } = await ticketRes.json();
-
-      if (disposed) {
-        connectionState = 'disconnected';
-        return;
-      }
-
-      // Build WebSocket URL
-      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${wsProtocol}//${window.location.host}/ws/session/${sessionId}?ticket=${ticket}`;
-
-      const socket = new WebSocket(wsUrl);
-
-      socket.onopen = () => {
-        if (disposed) {
-          socket.close();
-          return;
-        }
-        connectionState = 'connected';
-        ws = socket;
-        wsReconnectAttempts = 0; // Reset on successful connection
-      };
-
-      socket.onmessage = handleWsMessage;
-
-      socket.onclose = () => {
-        connectionState = 'disconnected';
-        ws = null;
-        // Reconnect with backoff (max 5 retries)
-        if (isSessionActive && !disposed && wsReconnectAttempts < 5) {
-          wsReconnectAttempts++;
-          wsReconnectTimer = window.setTimeout(() => {
-            void connectWebSocket();
-          }, 2000);
-        }
-      };
-
-      socket.onerror = () => {
-        connectionState = 'disconnected';
-        ws = null;
-      };
+      if (!res.ok) { return null; }
+      const data: { ticket: string } = await res.json();
+      return data.ticket;
     } catch {
-      connectionState = 'disconnected';
+      return null;
     }
   }
 
-  function formatDate(ts: string): string {
-    return new Date(ts).toLocaleDateString([], {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-    });
-  }
+  // --- Session WS (receive chat messages) ---
 
-  function shortPath(p: string): string {
-    const parts = p.split('/');
-    return parts.slice(-2).join('/');
-  }
+  async function connectSessionWs(sessionWsPath: string, termId: string): Promise<void> {
+    if (disposed) { return; }
 
-  async function fetchSession(): Promise<void> {
-    if (!browser) {
+    // Avoid stacking connections
+    if (
+      sessionWs &&
+      (sessionWs.readyState === WebSocket.OPEN || sessionWs.readyState === WebSocket.CONNECTING)
+    ) {
       return;
     }
 
-    // Don't show loading spinner if we already have cached data
-    if (messages.length === 0) {
-      loading = true;
+    const ticket = await getWsTicket();
+    if (!ticket || disposed) { return; }
+
+    chatConnectionState = 'connecting';
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const socket = new WebSocket(
+      `${protocol}//${window.location.host}${sessionWsPath}?ticket=${ticket}`
+    );
+
+    socket.onopen = () => {
+      if (disposed) { socket.close(); return; }
+      chatConnectionState = 'connected';
+      socket.send(JSON.stringify({ sessionId: termId, type: 'subscribe' }));
+    };
+
+    socket.onmessage = (event) => {
+      if (disposed) { return; }
+      try { handleSessionMessage(JSON.parse(event.data as string)); } catch { /* ignore */ }
+    };
+
+    socket.onclose = () => {
+      if (disposed) { return; }
+      chatConnectionState = 'disconnected';
+      sessionWs = null;
+      if (connectedTerminalId) {
+        if (sessionReconnectTimer) { clearTimeout(sessionReconnectTimer); }
+        sessionReconnectTimer = setTimeout(() => {
+          sessionReconnectTimer = null;
+          if (!disposed && connectedTerminalId) {
+            void connectSessionWs(`/ws/session/${connectedTerminalId}`, connectedTerminalId);
+          }
+        }, 2000);
+      }
+    };
+
+    socket.onerror = () => {
+      if (!disposed) { chatConnectionState = 'disconnected'; }
+    };
+
+    sessionWs = socket;
+  }
+
+  // --- Terminal WS (send PTY input only) ---
+
+  async function connectTerminalWs(wsPath: string): Promise<void> {
+    if (disposed) { return; }
+
+    const ticket = await getWsTicket();
+    if (!ticket || disposed) { return; }
+
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${protocol}//${window.location.host}${wsPath}?ticket=${ticket}`);
+
+    ws.onopen = () => {
+      if (disposed) { ws.close(); return; }
+      terminalWs = ws;
+      if (sendStatus === 'ready' && pendingMessage) {
+        ws.send(JSON.stringify({ data: `${pendingMessage}\n`, type: 'input' }));
+        pendingMessage = null;
+      }
+    };
+
+    ws.onclose = () => {
+      if (terminalWs === ws) { terminalWs = null; }
+    };
+  }
+
+  // --- Message handler (mirrors terminal page) ---
+
+  function handleSessionMessage(msg: Record<string, unknown>): void {
+    if (msg.type === 'history') {
+      const historyRaw = (msg.messages || []) as {
+        content: MessagePart[];
+        id: string;
+        role: string;
+        timestamp: string;
+      }[];
+      messages = historyRaw.map((m) => ({
+        id: m.id,
+        parts: m.content,
+        role: m.role as ConversationMessage['role'],
+        timestamp: m.timestamp,
+      }));
+      // WS history is always complete
+      hasMoreMessages = false;
+
+      if (sendStatus === 'resuming') {
+        sendStatus = 'ready';
+        if (pendingMessage && terminalWs?.readyState === WebSocket.OPEN) {
+          terminalWs.send(JSON.stringify({ data: `${pendingMessage}\n`, type: 'input' }));
+          pendingMessage = null;
+        }
+      }
+    } else if (msg.type === 'message') {
+      messages = [
+        ...messages,
+        {
+          id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          parts: (msg.content as MessagePart[]) || [],
+          role: (msg.role as ConversationMessage['role']) || 'assistant',
+          timestamp: (msg.timestamp as string) || new Date().toISOString(),
+        },
+      ];
+    } else if (msg.type === 'tool-use') {
+      const toolUsePart: ToolUsePart = {
+        id: (msg.id as string) || `tool-${Date.now()}`,
+        input: (msg.input as Record<string, unknown>) || {},
+        toolName: msg.name as string,
+        type: 'tool_use',
+      };
+      const lastToolMsg = messages.length > 0 ? messages[messages.length - 1] : null;
+      if (lastToolMsg?.role === 'assistant') {
+        messages = [
+          ...messages.slice(0, -1),
+          { ...lastToolMsg, parts: [...lastToolMsg.parts, toolUsePart] },
+        ];
+      } else {
+        messages = [
+          ...messages,
+          {
+            id: `tool-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            parts: [toolUsePart],
+            role: 'assistant',
+            timestamp: new Date().toISOString(),
+          },
+        ];
+      }
+    } else if (msg.type === 'tool-result') {
+      const toolResultPart: MessagePart = {
+        isError: (msg.isError as boolean) || false,
+        output: (msg.output as string) || '',
+        toolUseId: msg.id as string,
+        type: 'tool_result',
+      };
+      const lastResultMsg = messages.length > 0 ? messages[messages.length - 1] : null;
+      if (lastResultMsg?.role === 'system') {
+        messages = [
+          ...messages.slice(0, -1),
+          { ...lastResultMsg, parts: [...lastResultMsg.parts, toolResultPart] },
+        ];
+      } else {
+        messages = [
+          ...messages,
+          {
+            id: `result-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            parts: [toolResultPart],
+            role: 'system',
+            timestamp: new Date().toISOString(),
+          },
+        ];
+      }
+    } else if (msg.type === 'thinking') {
+      const thinkPart: MessagePart = { content: (msg.text as string) || '', type: 'thinking' };
+      const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null;
+      if (lastMsg?.role === 'assistant') {
+        messages = [
+          ...messages.slice(0, -1),
+          { ...lastMsg, parts: [...lastMsg.parts, thinkPart] },
+        ];
+      } else {
+        messages = [
+          ...messages,
+          {
+            id: `think-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            parts: [thinkPart],
+            role: 'assistant',
+            timestamp: new Date().toISOString(),
+          },
+        ];
+      }
+    } else if (msg.type === 'session-end') {
+      sendStatus = 'idle';
     }
+  }
+
+  // --- Connect + send flow ---
+
+  async function connectAndSend(): Promise<void> {
+    if (!session || disposed) { sendStatus = 'idle'; return; }
+
+    const config = getConfig();
+    if (!config) { sendStatus = 'idle'; return; }
+
+    sendStatus = 'connecting';
 
     try {
-      const saved = localStorage.getItem('shooter_config');
-      if (!saved) {
+      const command = session.source === 'opencode' ? 'opencode' : 'claude';
+      const res = await fetch('/api/sessions/connect', {
+        body: JSON.stringify({ command, cwd: session.projectPath, sessionId }),
+        headers: {
+          Authorization: `Bearer ${config.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        method: 'POST',
+      });
+
+      if (!res.ok || disposed) { sendStatus = 'idle'; return; }
+
+      const result: { sessionWs: string; terminalId: string; ws: string } = await res.json();
+      connectedTerminalId = result.terminalId;
+      sendStatus = 'resuming';
+
+      void connectSessionWs(result.sessionWs, result.terminalId);
+      void connectTerminalWs(result.ws);
+    } catch {
+      sendStatus = 'idle';
+    }
+  }
+
+  // --- Called by ChatView on submit ---
+
+  function sendMessage(text: string): void {
+    if (!text.trim()) { return; }
+
+    if (sendStatus === 'ready' && terminalWs?.readyState === WebSocket.OPEN) {
+      terminalWs.send(JSON.stringify({ data: `${text}\n`, type: 'input' }));
+      return;
+    }
+
+    // Already connecting — just update queued message
+    if (sendStatus === 'connecting' || sendStatus === 'resuming') {
+      pendingMessage = text;
+      return;
+    }
+
+    // Not connected yet — queue and connect
+    pendingMessage = text;
+    void connectAndSend();
+  }
+
+  // --- REST fetch (initial messages) ---
+
+  async function fetchSession(): Promise<void> {
+    if (!browser) { return; }
+    if (messages.length === 0) { loading = true; }
+
+    try {
+      const config = getConfig();
+      if (!config) {
         error = 'No configuration found. Please configure settings first.';
-        loading = false;
-        return;
-      }
-      let config: ShooterConfig;
-      try {
-        config = JSON.parse(saved) as ShooterConfig;
-      } catch {
-        error = 'Invalid saved configuration. Please reconfigure in settings.';
         loading = false;
         return;
       }
@@ -274,34 +335,73 @@
       const sid = sessionId || '';
       const pid = projectId || '';
       const queryStr = pid
-        ? `id=${encodeURIComponent(sid)}&project=${encodeURIComponent(pid)}`
-        : `id=${encodeURIComponent(sid)}`;
-      const res = await fetch(`/api/sessions?${queryStr}`, {
+        ? `id=${encodeURIComponent(sid)}&project=${encodeURIComponent(pid)}&limit=${currentLimit}`
+        : `id=${encodeURIComponent(sid)}&limit=${currentLimit}`;
+
+      let res = await fetch(`/api/sessions?${queryStr}`, {
         headers: { Authorization: `Bearer ${config.apiKey}` },
       });
-      if (!res.ok) {
-        error = 'Session not found';
-        loading = false;
-        return;
-      }
-      const data: SessionViewResponse = await res.json();
-      session = data.session as SessionInfo;
-      const rawMessages: unknown[] = Array.isArray(data.messages) ? data.messages : [];
-      messages = [...(rawMessages as ConversationMessage[])].reverse();
-      setCache(`shooter_session_${sid}`, { messages: rawMessages, session: data.session });
 
-      // Check if session is active and connect WebSocket if so
-      if (data.session) {
-        isSessionActive = checkSessionActive(data.session as SessionInfo);
-        if (isSessionActive) {
-          void connectWebSocket();
+      // Fallback: search across all projects if not found
+      if (res.status === 404 && !pid) {
+        const projectsRes = await fetch('/api/sessions', {
+          headers: { Authorization: `Bearer ${config.apiKey}` },
+        });
+        if (projectsRes.ok) {
+          const projectsData: { projects?: { id: string; sessions?: { id: string }[] }[] } =
+            await projectsRes.json();
+          for (const project of projectsData.projects || []) {
+            if ((project.sessions || []).find((s) => s.id === sid)) {
+              res = await fetch(
+                `/api/sessions?id=${encodeURIComponent(sid)}&project=${encodeURIComponent(project.id)}`,
+                { headers: { Authorization: `Bearer ${config.apiKey}` } }
+              );
+              break;
+            }
+          }
         }
       }
+
+      if (!res.ok) { error = 'Session not found'; loading = false; return; }
+
+      const data: SessionViewResponse = await res.json();
+      session = data.session as SessionInfo;
+      const rawMessages = Array.isArray(data.messages) ? (data.messages as unknown as ConversationMessage[]) : [];
+      messages = rawMessages;
+      hasMoreMessages = rawMessages.length >= currentLimit;
+      setCache(`shooter_session_${sid}`, { messages: rawMessages, session: data.session });
     } catch {
       error = 'Failed to load session';
     }
     loading = false;
   }
+
+  async function loadEarlierMessages(): Promise<void> {
+    if (!browser || loadingMore) { return; }
+    const config = getConfig();
+    if (!config) { return; }
+
+    loadingMore = true;
+    try {
+      const newLimit = currentLimit + 200;
+      const sid = sessionId || '';
+      const pid = projectId || '';
+      const queryParts = [`id=${encodeURIComponent(sid)}`, `limit=${newLimit}`];
+      if (pid) { queryParts.push(`project=${encodeURIComponent(pid)}`); }
+      const res = await fetch(`/api/sessions?${queryParts.join('&')}`, {
+        headers: { Authorization: `Bearer ${config.apiKey}` },
+      });
+      if (!res.ok) { return; }
+      const data: SessionViewResponse = await res.json();
+      const rawMessages = Array.isArray(data.messages) ? (data.messages as unknown as ConversationMessage[]) : [];
+      messages = rawMessages;
+      currentLimit = newLimit;
+      hasMoreMessages = rawMessages.length >= newLimit;
+      setCache(`shooter_session_${sid}`, { messages: rawMessages, session: data.session });
+    } catch { /* best effort */ } finally { loadingMore = false; }
+  }
+
+  // --- Lifecycle ---
 
   onMount(() => {
     // Show cached data immediately
@@ -311,23 +411,49 @@
     };
     if (cached) {
       session = cached.session;
-      messages = Array.isArray(cached.messages) ? [...cached.messages].reverse() : [];
+      messages = Array.isArray(cached.messages) ? cached.messages : [];
       loading = false;
     }
 
-    void fetchSession();
+    void fetchSession().then(async () => {
+      if (!session || disposed) { return; }
 
-    // Cleanup WebSocket and reconnect timer on component destroy
+      // Check if there's already a running terminal for this session
+      const config = getConfig();
+      if (!config) { return; }
+
+      try {
+        const command = session.source === 'opencode' ? 'opencode' : 'claude';
+        const res = await fetch('/api/sessions/connect', {
+          body: JSON.stringify({
+            command,
+            cwd: session.projectPath,
+            noCreate: true,
+            sessionId,
+          }),
+          headers: {
+            Authorization: `Bearer ${config.apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          method: 'POST',
+        });
+
+        if (res.ok && !disposed) {
+          const result: { sessionWs: string; terminalId: string; ws: string } = await res.json();
+          connectedTerminalId = result.terminalId;
+          sendStatus = 'resuming';
+          void connectSessionWs(result.sessionWs, result.terminalId);
+          void connectTerminalWs(result.ws);
+        }
+        // 404 = no existing terminal, that's fine
+      } catch { /* ignore */ }
+    });
+
     return () => {
       disposed = true;
-      if (wsReconnectTimer) {
-        clearTimeout(wsReconnectTimer);
-        wsReconnectTimer = null;
-      }
-      if (ws) {
-        ws.close();
-        ws = null;
-      }
+      if (sessionReconnectTimer) { clearTimeout(sessionReconnectTimer); }
+      sessionWs?.close();
+      terminalWs?.close();
     };
   });
 </script>
@@ -346,70 +472,123 @@
         <Shimmer classes="shimmer-bubble shimmer-bubble-assistant" />
         <Shimmer classes="shimmer-bubble shimmer-bubble-user-short" />
         <Shimmer classes="shimmer-bubble shimmer-bubble-assistant-wide" />
-        <Shimmer classes="shimmer-bubble shimmer-bubble-assistant-short" />
       </div>
     </div>
   {:else if error}
     <div class="session-back-row">
-      <a href="/" class="back-link">
-        <span class="back-arrow">&larr;</span>
-        Back
-      </a>
+      <a href={projectId ? `/project?id=${projectId}` : '/'} class="back-link">← Back</a>
     </div>
-    <EmptyState icon="alert-triangle" title="Error" description={error} />
+    <p class="error-text">{error}</p>
   {:else if session}
-    <!-- Session Header -->
-    <div class="chat-session-header">
-      <div class="chat-session-header-top">
-        <a href="/project?id={projectId}" class="back-link">&#8592; Back to Project</a>
-        {#if isSessionActive || connectionState === 'connected' || connectionState === 'connecting'}
-          <div class="live-connection-row">
-            {#if connectionState === 'connected'}
-              <span class="connection-status connected">
-                <span class="connection-status-dot"></span>
-              </span>
-            {:else if connectionState === 'connecting'}
-              <span class="connection-status reconnecting">
-                <span class="connection-status-dot"></span>
-              </span>
-            {:else if connectionState === 'disconnected'}
-              <span class="connection-status disconnected">
-                <span class="connection-status-dot"></span>
-              </span>
-            {/if}
-          </div>
+    <!-- Compact header -->
+    <div class="session-header">
+      <div class="session-header-row">
+        <a href={projectId ? `/project?id=${projectId}` : '/'} class="back-link">← Back</a>
+        {#if sendStatus === 'connecting'}
+          <span class="resume-status">Connecting...</span>
+        {:else if sendStatus === 'resuming'}
+          <span class="resume-status">Resuming session...</span>
+        {:else if chatConnectionState === 'connected'}
+          <span class="connection-dot connected"></span>
+        {:else if chatConnectionState === 'reconnecting'}
+          <span class="connection-dot reconnecting"></span>
         {/if}
       </div>
-      <div class="chat-session-title-row">
-        <h1 class="chat-session-title">{session.title}</h1>
-        {#if isSessionActive}
-          <Pill text="LIVE" classes="pill-live" />
-        {/if}
-      </div>
-      <div class="chat-session-meta">
-        <span class="chat-session-meta-item">&#128193; {shortPath(session.projectPath)}</span>
-        <span class="chat-session-meta-item">&#127807; {session.gitBranch}</span>
-        <span class="chat-session-meta-item">&#128172; {session.messageCount} messages</span>
-        <span class="chat-session-meta-item">&#128197; {formatDate(session.created)}</span>
-      </div>
-      {#if connectionState === 'disconnected' && isSessionActive}
-        <Banner text="Live updates paused" classes="banner-warning" />
-      {/if}
+      <h1 class="session-title">{session.title}</h1>
     </div>
 
-    <!-- Chat Container -->
+    <!-- Chat -->
     <div class="session-chat-container">
-      <ChatView {messages} {connectionState} showInput={false} sessionEnded={!isSessionActive} />
+      {#if hasMoreMessages}
+        <div class="load-earlier-row">
+          <button
+            class="load-earlier-btn"
+            onclick={loadEarlierMessages}
+            disabled={loadingMore}
+          >
+            {loadingMore ? 'Loading...' : 'Load earlier messages'}
+          </button>
+        </div>
+      {/if}
+      <ChatView
+        messages={[...messages].reverse()}
+        newestFirst={true}
+        connectionState={chatConnectionState}
+        showInput={true}
+        {sendDisabled}
+        onSendInput={sendMessage}
+        sessionEnded={false}
+      />
     </div>
   {/if}
 </main>
 
 <style>
-  /* Make the main element a flex column so the chat fills remaining space */
   .session-page-main {
     display: flex;
     flex-direction: column;
     overflow: hidden;
+  }
+
+  .session-back-row {
+    margin-bottom: var(--space-5);
+  }
+
+  .error-text {
+    color: var(--text-secondary);
+    padding: var(--space-4);
+  }
+
+  /* Compact header */
+  .session-header {
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .session-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-1);
+  }
+
+  .session-title {
+    font-size: var(--text-base);
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .resume-status {
+    font-size: 0.75rem;
+    color: var(--text-tertiary, #888);
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .connection-dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .connection-dot.connected {
+    background: #4ade80;
+  }
+
+  .connection-dot.reconnecting {
+    background: #f59e0b;
+    animation: pulse 1s ease-in-out infinite;
   }
 
   /* Chat container fills remaining space */
@@ -420,33 +599,32 @@
     flex-direction: column;
   }
 
-  /* Back link (used in error state) */
-  .session-back-row {
-    margin-bottom: var(--space-5);
-  }
-
-  /* Header top row: back link + connection status */
-  .chat-session-header-top {
+  /* Load earlier row */
+  .load-earlier-row {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
+    justify-content: center;
+    padding: var(--space-2) var(--space-3);
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--border);
   }
 
-  /* Title row: title + LIVE badge */
-  .chat-session-title-row {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
+  .load-earlier-btn {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm, 4px);
+    padding: 4px 12px;
+    cursor: pointer;
   }
 
-  /* Connection status row */
-  .live-connection-row {
-    display: flex;
-    align-items: center;
+  .load-earlier-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 
-  /* Paused banner override */
-  :global(.banner-warning) {
-    margin-top: 0.5rem;
+  .load-earlier-btn:hover:not(:disabled) {
+    color: var(--text-primary);
+    border-color: var(--text-tertiary, #888);
   }
 </style>

@@ -856,6 +856,26 @@ class PtyManager {
         'projects',
         cwd.replace(/\//g, '-')
       );
+
+      // Fast path: `claude --resume <uuid>` resumes an existing session whose
+      // JSONL file was created before this terminal launched. The birthtime
+      // filter used in the polling loop would never find it, so check directly.
+      const resumeIdx = terminal.args.indexOf('--resume');
+      if (resumeIdx !== -1 && resumeIdx + 1 < terminal.args.length) {
+        const resumeId = terminal.args[resumeIdx + 1];
+        // Validate resumeId is a safe identifier (UUID or hex string, no path separators)
+        if (!/^[0-9a-f-]+$/i.test(resumeId)) {
+          console.warn(`[pty-manager] Invalid resume ID: ${resumeId}`);
+        } else {
+          const resumeFile = path.join(projectDir, `${resumeId}.jsonl`);
+          if (existsSync(resumeFile)) {
+            terminal.sessionFile = resumeFile;
+            terminalStore.update(id, { sessionFile: resumeFile });
+            return; // File found immediately — no polling needed
+          }
+        }
+      }
+
       const launchTime = terminal.createdAt.getTime();
 
       terminal.pollTimer = setInterval(() => {
@@ -863,11 +883,6 @@ class PtyManager {
           if (terminal.pollTimer) {
             clearInterval(terminal.pollTimer);
             terminal.pollTimer = null;
-          }
-          if (terminal.sessionFile) {
-            // No-op: session-handler.ts subscribes when a client connects.
-            // Previously called sessionWatcher.watch() with an empty callback,
-            // which blocked real subscribers due to the single-callback guard.
           }
           return;
         }
@@ -898,9 +913,6 @@ class PtyManager {
               clearInterval(terminal.pollTimer);
               terminal.pollTimer = null;
             }
-            // No-op: session-handler.ts subscribes when a client connects.
-            // Previously called sessionWatcher.watch() with an empty callback,
-            // which blocked real subscribers due to the single-callback guard.
             // Persist session file to SQLite
             terminalStore.update(id, { sessionFile: terminal.sessionFile });
           }

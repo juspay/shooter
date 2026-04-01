@@ -44,6 +44,15 @@ export function getSessionConversation(
       }
     }
 
+    // If no explicit offset, return the LAST `limit` messages (most recent conversation)
+    if (offset === 0 && messages.length > limit) {
+      let startIdx = messages.length - limit;
+      // Adjust to start at a 'user' message boundary so we don't clip mid-turn
+      while (startIdx > 0 && startIdx < messages.length && messages[startIdx].role !== 'user') {
+        startIdx--;
+      }
+      return messages.slice(startIdx);
+    }
     return messages.slice(offset, offset + limit);
   } catch (error) {
     console.error('[sessions] Failed to parse session JSONL:', error);
@@ -218,22 +227,20 @@ function listSessionsForProject(projectDir: string): SessionInfo[] {
         let messageCount = 0;
         try {
           const content = fs.readFileSync(filePath, 'utf-8');
-          // Count user + assistant messages for the message count
-          const lines = content.split('\n');
-          for (const line of lines) {
-            if (!line.trim()) {
-              continue;
-            }
-            try {
-              const entry = JSON.parse(line);
-              if (entry.type === 'user' || entry.type === 'assistant') {
-                messageCount++;
-              }
-            } catch {
-              // skip malformed lines
-            }
+          // Count user + assistant messages by searching each line for the type field.
+          // The type field may appear anywhere on the line (after parentUuid, isSidechain, etc.)
+          // so a prefix-only check is not reliable with the current JSONL format.
+          let countPos = 0;
+          while (countPos < content.length) {
+            const nl = content.indexOf('\n', countPos);
+            const lineEnd = nl === -1 ? content.length : nl;
+            const line = content.substring(countPos, lineEnd);
+            if (line.includes('"type":"user"') || line.includes('"type":"assistant"')) {messageCount++;}
+            if (nl === -1) {break;}
+            countPos = nl + 1;
           }
           // Find the first real user message (skip system caveats, commands, tool results)
+          const lines = content.split('\n');
           for (const line of lines) {
             if (!line.trim()) {
               continue;
@@ -320,23 +327,31 @@ function listSessionsForProject(projectDir: string): SessionInfo[] {
 function readCwdFromProjectDir(projectDir: string, sessions: SessionInfo[]): string {
   for (const session of sessions) {
     try {
-      const jsonlPath = path.join(projectDir, `${session.id}.jsonl`);
-      if (!fs.existsSync(jsonlPath)) {
+      const filePath = path.join(projectDir, `${session.id}.jsonl`);
+      if (!fs.existsSync(filePath)) {
         continue;
       }
-      const content = fs.readFileSync(jsonlPath, 'utf-8');
-      for (const line of content.split('\n')) {
-        if (!line.trim()) {
-          continue;
+      // Only read the first 4KB — cwd appears on line 1
+      const fd = fs.openSync(filePath, 'r');
+      let firstChunk: string;
+      try {
+        const buf = Buffer.alloc(4096);
+        const bytesRead = fs.readSync(fd, buf, 0, 4096, 0);
+        firstChunk = buf.toString('utf-8', 0, bytesRead);
+      } finally {
+        fs.closeSync(fd);
+      }
+      const firstLine = firstChunk.split('\n')[0];
+      if (!firstLine.trim()) {
+        continue;
+      }
+      try {
+        const entry = JSON.parse(firstLine) as Record<string, unknown>;
+        if (typeof entry.cwd === 'string' && entry.cwd) {
+          return entry.cwd;
         }
-        try {
-          const entry = JSON.parse(line) as Record<string, unknown>;
-          if (typeof entry.cwd === 'string' && entry.cwd) {
-            return entry.cwd;
-          }
-        } catch {
-          // skip malformed lines
-        }
+      } catch {
+        // skip malformed first line
       }
     } catch {
       // skip unreadable files
