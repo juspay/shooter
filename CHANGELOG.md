@@ -1,3 +1,9 @@
+## [1.2.0](https://github.com/juspay/shooter/compare/v1.1.0...v1.2.0) (2026-04-01)
+
+### Features
+
+*  add session connect/resume, ChatView tool grouping, and UX polish ([b01137b](https://github.com/juspay/shooter/commit/b01137b45a56e9125f88f4d018ea79d27cf5327b))
+
 ## [1.1.0](https://github.com/juspay/shooter/compare/v1.0.0...v1.1.0) (2026-03-28)
 
 ### Features
