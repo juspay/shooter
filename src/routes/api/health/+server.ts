@@ -8,8 +8,20 @@ import type {
 import { env } from '$env/dynamic/private';
 import { validateAuth } from '$lib/modules/server/auth';
 import { json } from '@sveltejs/kit';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 
 import type { RequestHandler } from './$types';
+
+const PKG_VERSION: string = (() => {
+  const root = process.env.SHOOTER_PKG_ROOT || process.cwd();
+  try {
+    const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf-8')) as { version?: string };
+    return pkg.version || 'unknown';
+  } catch {
+    return 'unknown';
+  }
+})();
 
 export const GET: RequestHandler = ({ request, url }) => {
   // Basic status check is public (used by layout status badge).
@@ -78,7 +90,7 @@ export const GET: RequestHandler = ({ request, url }) => {
     environment: env.NODE_ENV || 'development',
     status: 'healthy',
     timestamp: new Date().toISOString(),
-    version: '1.1.0',
+    version: PKG_VERSION,
     warnings,
   };
 
@@ -89,7 +101,7 @@ export const GET: RequestHandler = ({ request, url }) => {
 
   // Public response: status + warnings. Authenticated: full details.
   if (!wantsDetails) {
-    return json({ status: health.status, timestamp: health.timestamp, warnings: health.warnings });
+    return json({ status: health.status, timestamp: health.timestamp, version: health.version, warnings: health.warnings });
   }
 
   return json(health);

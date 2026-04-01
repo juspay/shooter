@@ -3,6 +3,7 @@
 
   import { goto } from '$app/navigation';
   import {
+    clearCache,
     EmptyState,
     formatRelativeTime,
     getCached,
@@ -10,10 +11,10 @@
     isShooterConfig,
     setCache,
   } from '$lib/modules/client/common';
-  import { Button, Pill, Shimmer } from '@juspay/svelte-ui-components';
+  import { Banner, Button, Pill, Shimmer } from '@juspay/svelte-ui-components';
   import { onDestroy, onMount } from 'svelte';
 
-  const POLL_INTERVAL_MS = 30_000; // 30s - avoid heavy reflows
+  const POLL_INTERVAL_MS = 10_000;
   const PAGE_SIZE = 20;
 
   let projects = $state<ProjectGroup[]>([]);
@@ -21,6 +22,7 @@
   let fetching = false; // non-reactive guard to prevent overlapping fetches
   let config = $state<null | ShooterConfig>(null);
   let pollTimer: null | ReturnType<typeof setInterval> = null;
+  let fetchError = $state<null | string>(null);
   let hasMore = $state(false);
   let currentOffset = $state(0);
 
@@ -38,7 +40,7 @@
     void fetchSessions();
 
     pollTimer = setInterval(() => {
-      if (config?.apiKey) {
+      if (config?.apiKey && currentOffset <= PAGE_SIZE) {
         void fetchSessions();
       }
     }, POLL_INTERVAL_MS);
@@ -68,7 +70,7 @@
     }
   }
 
-  async function fetchSessions(append = false): Promise<void> {
+  async function fetchSessions(append = false, bustCache = false): Promise<void> {
     if (!config?.apiKey || fetching) {
       return;
     }
@@ -82,16 +84,19 @@
     const offset = append ? currentOffset : 0;
 
     try {
-      const response = await fetch(`/api/sessions?limit=${PAGE_SIZE}&offset=${offset}`, {
+      const base = bustCache ? '/api/sessions?refresh=true&' : '/api/sessions?';
+      const response = await fetch(`${base}limit=${PAGE_SIZE}&offset=${offset}`, {
         headers: {
           Authorization: `Bearer ${config.apiKey}`,
         },
       });
 
       if (!response.ok) {
+        fetchError = `Failed to load projects (HTTP ${response.status})`;
         return;
       }
 
+      fetchError = null;
       const result: { projects: ProjectGroup[]; total?: number } = await response.json();
       if (append) {
         projects = [...projects, ...result.projects];
@@ -102,6 +107,7 @@
       hasMore = result.total !== undefined ? projects.length < result.total : false;
       setCache('shooter_projects', projects);
     } catch (error) {
+      fetchError = 'Failed to load projects';
       console.error('Failed to fetch sessions:', error);
     } finally {
       loading = false;
@@ -115,8 +121,8 @@
 
   async function forceRefresh(): Promise<void> {
     loading = true;
-    sessionStorage.removeItem('shooter_projects');
-    await fetchSessions();
+    clearCache('shooter_projects');
+    await fetchSessions(false, true);
   }
 
   function navigateToConfig(): void {
@@ -149,6 +155,10 @@
     </div>
   </div>
 
+  {#if fetchError}
+    <Banner text={fetchError} classes="banner-error" />
+  {/if}
+
   {#if loading && projects.length === 0}
     <div class="loading-container">
       {#each Array(5) as _, i (i)}
@@ -178,7 +188,7 @@
               <h3 class="session-card-title">{project.name}</h3>
               <div class="session-card-subtitle">{project.fullPath}</div>
             </div>
-            <Pill text={formatRelativeTime(project.lastModified)} classes="pill-session-time" />
+            <Pill text="Last updated {formatRelativeTime(project.lastModified)}" classes="pill-session-time" />
           </div>
           <div class="session-stats">
             <span

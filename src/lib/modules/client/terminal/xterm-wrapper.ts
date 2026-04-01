@@ -230,8 +230,11 @@ export async function createTerminal(options: TerminalOptions): Promise<Terminal
     }
   });
 
-  // Handle resize
+  // Handle resize — skip when container is hidden (display:none → size 0)
   const resizeObserver = new ResizeObserver(() => {
+    if (!options.container.offsetWidth || !options.container.offsetHeight) {
+      return;
+    }
     fitAddon.fit();
     if (ws?.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ cols: term.cols, rows: term.rows, type: 'resize' }));

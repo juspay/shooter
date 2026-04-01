@@ -3,6 +3,7 @@
 
   import { goto } from '$app/navigation';
   import {
+    clearCache,
     EmptyState,
     formatRelativeTime,
     getCached,
@@ -11,7 +12,7 @@
     setCache,
   } from '$lib/modules/client/common';
   import LaunchSheet from '$lib/modules/client/terminal/LaunchSheet.svelte';
-  import { Button, Pill, Shimmer, Tooltip } from '@juspay/svelte-ui-components';
+  import { Banner, Button, Pill, Shimmer, Tooltip } from '@juspay/svelte-ui-components';
   import { onDestroy, onMount } from 'svelte';
 
   const POLL_INTERVAL_MS = 10_000;
@@ -22,6 +23,7 @@
   let terminals = $state<TerminalListItem[]>([]);
   let loading = $state(false);
   let fetching = false;
+  let fetchError = $state<null | string>(null);
   let config = $state<null | ShooterConfig>(null);
   let pollTimer: null | ReturnType<typeof setInterval> = null;
 
@@ -85,16 +87,20 @@
     }
 
     try {
-      const response = await fetch('/api/terminals', {
+      // Terminals API has no server-side cache; bustCache only clears client sessionStorage
+      const url = '/api/terminals';
+      const response = await fetch(url, {
         headers: {
           Authorization: `Bearer ${config.apiKey}`,
         },
       });
 
       if (!response.ok) {
+        fetchError = `Failed to load terminals (HTTP ${response.status})`;
         return;
       }
 
+      fetchError = null;
       const result = (await response.json()) as { terminals: TerminalListItem[] };
       terminals = result.terminals.map((t) => ({
         ...t,
@@ -102,6 +108,7 @@
       }));
       setCache(CACHE_KEY, terminals);
     } catch (error) {
+      fetchError = 'Failed to load terminals';
       console.error('Failed to fetch terminals:', error);
     } finally {
       loading = false;
@@ -111,7 +118,7 @@
 
   async function forceRefresh(): Promise<void> {
     loading = true;
-    sessionStorage.removeItem(CACHE_KEY);
+    clearCache(CACHE_KEY);
     await fetchTerminals();
   }
 
@@ -248,6 +255,10 @@
       </div>
     </div>
   </div>
+
+  {#if fetchError}
+    <Banner text={fetchError} classes="banner-error" />
+  {/if}
 
   {#if loading && terminals.length === 0}
     <div class="loading-container">

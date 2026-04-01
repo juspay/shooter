@@ -20,25 +20,14 @@ import type {
 
 import Database from 'better-sqlite3';
 import * as fs from 'fs';
-import * as path from 'path';
 
 import type { ConversationMessage, MessagePart } from '../sessions/types';
 
+import { resolveOpenCodeDbPath } from '../sessions/opencode-db-path';
+
 // ── Constants ────────────────────────────────────────────────────────
 
-const OPENCODE_DB_PATH = (() => {
-  if (process.platform === 'darwin') {
-    return path.join(
-      process.env.HOME || '',
-      'Library',
-      'Application Support',
-      'opencode',
-      'opencode.db'
-    );
-  }
-  const xdgData = process.env.XDG_DATA_HOME || path.join(process.env.HOME || '', '.local', 'share');
-  return path.join(xdgData, 'opencode', 'opencode.db');
-})();
+const OPENCODE_DB_PATH = resolveOpenCodeDbPath();
 
 /** Poll interval in milliseconds. */
 const POLL_INTERVAL_MS = 2000;

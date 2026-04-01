@@ -13,10 +13,10 @@ import { json } from '@sveltejs/kit';
 
 import type { RequestHandler } from './$types';
 
-// Server-side cache for merged projects (30s TTL)
+// Server-side cache for merged projects (5s TTL)
 let cachedProjects: null | ProjectGroup[] = null;
 let cacheTimestamp = 0;
-const CACHE_TTL_MS = 30_000;
+const CACHE_TTL_MS = 5_000;
 
 function getMergedProjects(): ProjectGroup[] {
   const now = Date.now();
@@ -61,12 +61,20 @@ export const GET: RequestHandler = ({ request, url }) => {
     return authError;
   }
 
+  // Force cache invalidation when ?refresh=true is passed
+  if (url.searchParams.get('refresh') === 'true') {
+    cachedProjects = null;
+    cacheTimestamp = 0;
+  }
+
   const sessionId = url.searchParams.get('id');
 
   if (sessionId) {
     const projectId = url.searchParams.get('project') || '';
-    const offset = parseInt(url.searchParams.get('offset') || '0');
-    const limit = parseInt(url.searchParams.get('limit') || '100');
+    const rawOffset = parseInt(url.searchParams.get('offset') || '0');
+    const rawLimit = parseInt(url.searchParams.get('limit') || '200');
+    const offset = Number.isFinite(rawOffset) && rawOffset >= 0 ? rawOffset : 0;
+    const limit = Number.isFinite(rawLimit) && rawLimit >= 1 ? Math.min(rawLimit, 500) : 200;
 
     // Resolve short project ID to full path for the readers
     const allProjects = getMergedProjects();

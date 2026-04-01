@@ -14,10 +14,31 @@ marked.setOptions({
   gfm: true,
 });
 
+// Memoize rendered markdown to avoid re-parsing identical strings
+const markdownCache = new Map<string, string>();
+const MAX_CACHE_SIZE = 500;
+
 export function renderMarkdown(text: string): string {
   if (!text) {
     return '';
   }
+
+  const cached = markdownCache.get(text);
+  if (cached !== undefined) {
+    return cached;
+  }
+
   const html = marked.parse(text) as string;
-  return DOMPurify.sanitize(html);
+  const result = DOMPurify.sanitize(html);
+
+  // Evict oldest entry when cache is full
+  if (markdownCache.size >= MAX_CACHE_SIZE) {
+    const firstKey = markdownCache.keys().next().value;
+    if (firstKey !== undefined) {
+      markdownCache.delete(firstKey);
+    }
+  }
+  markdownCache.set(text, result);
+
+  return result;
 }

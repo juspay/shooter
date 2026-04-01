@@ -51,6 +51,9 @@ const ptyManagerAdapter = {
   getTerminal(id: string) {
     return ptyManager.get(id) ?? undefined;
   },
+  list() {
+    return ptyManager.list();
+  },
 };
 
 /**
