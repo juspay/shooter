@@ -103,6 +103,69 @@ switch (command) {
 
 // ── start ───────────────────────────────────────────────────────────
 
+function hasFlag(flag) {
+  return args.includes(flag);
+}
+
+function isCloudflaredAvailable() {
+  try {
+    execSync('which cloudflared', { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function startTunnel(port) {
+  const tunnelLog = path.join(LOG_DIR, 'tunnel.log');
+  fs.mkdirSync(LOG_DIR, { recursive: true });
+
+  const cf = spawn('cloudflared', ['tunnel', '--url', `http://localhost:${port}`], {
+    cwd: PKG_ROOT,
+    detached: true,
+    stdio: ['ignore', fs.openSync(tunnelLog, 'w'), fs.openSync(tunnelLog, 'w')],
+  });
+
+  const tunnelPidFile = path.join(SHOOTER_HOME, 'tunnel.pid');
+  fs.writeFileSync(tunnelPidFile, String(cf.pid));
+  cf.unref();
+
+  // Poll for the tunnel URL (up to 15s)
+  const tunnelUrlFile = path.join(SHOOTER_HOME, '.tunnel_url');
+  let waited = 0;
+  const poll = setInterval(() => {
+    try {
+      const log = fs.readFileSync(tunnelLog, 'utf8');
+      const match = log.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/);
+      if (match) {
+        clearInterval(poll);
+        fs.writeFileSync(tunnelUrlFile, match[0]);
+        console.log(`Tunnel active: ${match[0]}`);
+      }
+    } catch {}
+    waited += 1;
+    if (waited > 15) {
+      clearInterval(poll);
+      console.log('Tunnel is starting in the background. Check logs: ' + tunnelLog);
+    }
+  }, 1000);
+
+  return cf.pid;
+}
+
+function stopTunnel() {
+  const tunnelPidFile = path.join(SHOOTER_HOME, 'tunnel.pid');
+  const tunnelUrlFile = path.join(SHOOTER_HOME, '.tunnel_url');
+  try {
+    const pid = parseInt(fs.readFileSync(tunnelPidFile, 'utf8').trim(), 10);
+    if (!isNaN(pid)) {
+      try { process.kill(pid, 'SIGTERM'); } catch {}
+    }
+    try { fs.unlinkSync(tunnelPidFile); } catch {}
+    try { fs.unlinkSync(tunnelUrlFile); } catch {}
+  } catch {}
+}
+
 function startServer() {
   const serverEntry = path.join(PKG_ROOT, 'server.ts');
 
@@ -120,36 +183,109 @@ function startServer() {
     process.exit(0);
   }
 
-  const child = spawn(process.execPath, ['--import', 'tsx', serverEntry, ...args.slice(1)], {
-    cwd: PKG_ROOT,
-    stdio: 'inherit',
-    env: {
-      ...process.env,
-      SHOOTER_PKG_ROOT: PKG_ROOT,
-      SHOOTER_HOME,
-    },
-  });
+  const daemon = hasFlag('--daemon') || hasFlag('-d');
+  const noTunnel = hasFlag('--no-tunnel');
+  const port = resolvePort();
 
-  // Write PID file for status/stop commands
-  writePid(child.pid);
+  if (daemon) {
+    // ── Daemon mode: detach, redirect to log file ──
+    fs.mkdirSync(LOG_DIR, { recursive: true });
+    const logFd = fs.openSync(LOG_FILE, 'a');
 
-  child.on('error', (err) => {
-    removePid();
-    console.error('Failed to start Shooter server:', err.message);
-    process.exit(1);
-  });
-
-  child.on('exit', (code, signal) => {
-    removePid();
-    if (signal) {
-      process.exit(128 + (signalCode(signal) || 1));
+    // Use tsx's register hook via --import so the child is the actual server process
+    // (not a wrapper that spawns another child)
+    const tsxLoader = path.join(PKG_ROOT, 'node_modules', 'tsx', 'dist', 'loader.mjs');
+    const tsxPreflight = path.join(PKG_ROOT, 'node_modules', 'tsx', 'dist', 'preflight.cjs');
+    const nodeArgs = [];
+    if (fs.existsSync(tsxPreflight)) {
+      nodeArgs.push('--require', tsxPreflight);
     }
-    process.exit(code ?? 1);
-  });
+    if (fs.existsSync(tsxLoader)) {
+      nodeArgs.push('--import', `file://${tsxLoader}`);
+    } else {
+      nodeArgs.push('--import', 'tsx');
+    }
+    nodeArgs.push(serverEntry);
 
-  // Forward signals to the child so graceful shutdown works
-  for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP']) {
-    process.on(sig, () => child.kill(sig));
+    const child = spawn(process.execPath, nodeArgs, {
+      cwd: PKG_ROOT,
+      detached: true,
+      stdio: ['ignore', logFd, logFd],
+      env: {
+        ...process.env,
+        SHOOTER_PKG_ROOT: PKG_ROOT,
+        SHOOTER_HOME,
+      },
+    });
+
+    writePid(child.pid);
+    child.unref();
+    fs.closeSync(logFd);
+
+    console.log(`Shooter started in background (PID ${child.pid}).`);
+    console.log(`  URL:   http://localhost:${port}`);
+    console.log(`  Logs:  ${LOG_FILE}`);
+
+    // Wait briefly for server to be ready before starting tunnel
+    if (!noTunnel && isCloudflaredAvailable()) {
+      setTimeout(() => {
+        startTunnel(port);
+      }, 3000);
+      // Keep process alive long enough for tunnel URL to appear
+      setTimeout(() => process.exit(0), 20000);
+    } else {
+      if (!noTunnel && !isCloudflaredAvailable()) {
+        console.log('  (cloudflared not found — no tunnel. Install: brew install cloudflared)');
+      }
+      process.exit(0);
+    }
+  } else {
+    // ── Foreground mode: inherit stdio ──
+    const child = spawn(process.execPath, ['--import', 'tsx', serverEntry], {
+      cwd: PKG_ROOT,
+      stdio: 'inherit',
+      env: {
+        ...process.env,
+        SHOOTER_PKG_ROOT: PKG_ROOT,
+        SHOOTER_HOME,
+      },
+    });
+
+    writePid(child.pid);
+
+    // Start tunnel in foreground mode too (unless --no-tunnel)
+    let tunnelStarted = false;
+    if (!noTunnel && isCloudflaredAvailable()) {
+      // Give server 3s to start before launching tunnel
+      setTimeout(() => {
+        startTunnel(port);
+        tunnelStarted = true;
+      }, 3000);
+    }
+
+    child.on('error', (err) => {
+      removePid();
+      if (tunnelStarted) stopTunnel();
+      console.error('Failed to start Shooter server:', err.message);
+      process.exit(1);
+    });
+
+    child.on('exit', (code, signal) => {
+      removePid();
+      stopTunnel();
+      if (signal) {
+        process.exit(128 + (signalCode(signal) || 1));
+      }
+      process.exit(code ?? 1);
+    });
+
+    // Forward signals to the child so graceful shutdown works
+    for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP']) {
+      process.on(sig, () => {
+        child.kill(sig);
+        stopTunnel();
+      });
+    }
   }
 }
 
@@ -158,11 +294,14 @@ function startServer() {
 function stopServer() {
   const pid = readPid();
   if (!pid) {
+    // Still try to stop tunnel even if server isn't running
+    stopTunnel();
     console.log('Shooter is not running.');
     process.exit(0);
   }
 
   console.log(`Stopping Shooter (PID ${pid})...`);
+  stopTunnel();
   try {
     process.kill(pid, 'SIGTERM');
     // Wait briefly for clean shutdown
@@ -208,11 +347,17 @@ function showStatus() {
   const pid = readPid();
   const port = resolvePort();
   const autostartEnabled = isAutostartInstalled();
+  const tunnelUrlFile = path.join(SHOOTER_HOME, '.tunnel_url');
+  let tunnelUrl = null;
+  try { tunnelUrl = fs.readFileSync(tunnelUrlFile, 'utf8').trim(); } catch {}
 
   if (pid) {
     console.log(`Shooter is running`);
     console.log(`  PID:        ${pid}`);
     console.log(`  URL:        http://localhost:${port}`);
+    if (tunnelUrl) {
+      console.log(`  Tunnel:     ${tunnelUrl}`);
+    }
     console.log(`  Autostart:  ${autostartEnabled ? 'enabled' : 'disabled'}`);
     console.log(`  Logs:       ${LOG_FILE}`);
     console.log(`  Home:       ${SHOOTER_HOME}`);
@@ -476,12 +621,12 @@ function showHelp() {
     `
 Shooter v${pkg.version}
 
-Usage: shooter [command]
+Usage: shooter [command] [options]
 
 Commands:
-  start            Start the server (default)
-  stop             Stop the running server
-  status           Show server status
+  start            Start the server (default, foreground)
+  stop             Stop the running server and tunnel
+  status           Show server status and tunnel URL
   autostart on     Start automatically on login (macOS/Linux)
   autostart off    Disable autostart
   logs             Tail server logs
@@ -489,9 +634,15 @@ Commands:
   version          Show version number
   help             Show this help message
 
+Start options:
+  -d, --daemon     Run in background (detach from terminal)
+  --no-tunnel      Don't start a Cloudflare Tunnel
+
 Examples:
-  shooter                  Start the server
-  shooter status           Check if server is running
+  shooter                  Start the server + tunnel (foreground)
+  shooter start -d         Start in background (daemon mode)
+  shooter start --no-tunnel  Start without Cloudflare Tunnel
+  shooter status           Check status and tunnel URL
   shooter autostart on     Enable autostart on login
   shooter logs             Follow server logs
   shooter setup            Configure credentials
