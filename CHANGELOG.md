@@ -1,3 +1,9 @@
+## [1.4.0](https://github.com/juspay/shooter/compare/v1.3.0...v1.4.0) (2026-04-02)
+
+### Features
+
+* **(ci):**  add smoke-test job that starts server and tests endpoints ([3692545](https://github.com/juspay/shooter/commit/369254553c75ceefd151c05f37417fec34f26217))
+
 ## [1.3.0](https://github.com/juspay/shooter/compare/v1.2.0...v1.3.0) (2026-04-02)
 
 ### Features
