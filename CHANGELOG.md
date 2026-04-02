@@ -1,3 +1,14 @@
+## [1.3.0](https://github.com/juspay/shooter/compare/v1.2.0...v1.3.0) (2026-04-02)
+
+### Features
+
+* **(cli):**  add daemon mode, auto-tunnel, and tunnel lifecycle management ([62d8193](https://github.com/juspay/shooter/commit/62d819342b79fcea7ce6b2193104abdf3cbbb350))
+
+### Bug Fixes
+
+*  enable precompress to prevent .gz ENOENT crash ([a888420](https://github.com/juspay/shooter/commit/a888420ad85bcac814064e1d59de8797c0868e20))
+* **(ci):**  remove npm self-upgrade that breaks release build ([a0b0c79](https://github.com/juspay/shooter/commit/a0b0c791978e1acf679e7443a588eb02340d29b1))
+
 ## [1.2.0](https://github.com/juspay/shooter/compare/v1.1.0...v1.2.0) (2026-04-01)
 
 ### Features
