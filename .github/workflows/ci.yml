@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [release]
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -60,3 +63,134 @@ jobs:
 
       - name: Verify package contents
         run: pnpm pack --dry-run
+
+  smoke-test:
+    runs-on: ubuntu-latest
+    env:
+      SMOKE_API_KEY: ci-test-key
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PNPM
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build
+        run: pnpm run build
+
+      - name: Start server
+        run: |
+          API_KEY="$SMOKE_API_KEY" node --import tsx server.ts &
+          echo $! > /tmp/shooter.pid
+
+      - name: Wait for server
+        run: |
+          for i in $(seq 1 30); do
+            if curl --connect-timeout 2 --max-time 5 -sf http://localhost:54007/api/health > /dev/null 2>&1; then
+              echo "Server ready after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Server failed to start within 30s"
+          cat ~/.shooter/logs/shooter.log 2>/dev/null || true
+          exit 1
+
+      - name: 'Test: health endpoint'
+        run: |
+          HEALTH=$(curl --connect-timeout 5 --max-time 10 -sf http://localhost:54007/api/health)
+          echo "$HEALTH" | jq .
+          echo "$HEALTH" | jq -e '.status == "healthy"'
+
+      - name: 'Test: home page loads (static assets served)'
+        run: |
+          CODE=$(curl --connect-timeout 5 --max-time 10 -s -o /dev/null -w "%{http_code}" http://localhost:54007/)
+          echo "Home page: HTTP $CODE"
+          test "$CODE" = "200"
+
+      - name: 'Test: gzip request does not crash server'
+        run: |
+          CODE=$(curl --connect-timeout 5 --max-time 10 -s -o /dev/null -w "%{http_code}" -H "Accept-Encoding: gzip" http://localhost:54007/)
+          echo "Gzip request: HTTP $CODE"
+          test "$CODE" = "200"
+          # Verify server is still alive after gzip request
+          curl --connect-timeout 5 --max-time 10 -sf http://localhost:54007/api/health | jq -e '.status == "healthy"'
+
+      - name: 'Test: auth enforcement (401 without key)'
+        run: |
+          CODE=$(curl --connect-timeout 5 --max-time 10 -s -o /dev/null -w "%{http_code}" http://localhost:54007/api/sessions)
+          echo "No auth: HTTP $CODE"
+          test "$CODE" = "401"
+
+      - name: 'Test: auth enforcement (401 with wrong key)'
+        run: |
+          CODE=$(curl --connect-timeout 5 --max-time 10 -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer wrong" http://localhost:54007/api/sessions)
+          echo "Wrong key: HTTP $CODE"
+          test "$CODE" = "401"
+
+      - name: 'Test: sessions endpoint with auth'
+        run: |
+          RESP=$(curl --connect-timeout 5 --max-time 10 -sf -H "Authorization: Bearer $SMOKE_API_KEY" http://localhost:54007/api/sessions)
+          echo "$RESP" | jq .
+          echo "$RESP" | jq -e '.projects | type == "array"'
+
+      - name: 'Test: terminals endpoint with auth'
+        run: |
+          RESP=$(curl --connect-timeout 5 --max-time 10 -sf -H "Authorization: Bearer $SMOKE_API_KEY" http://localhost:54007/api/terminals)
+          echo "$RESP" | jq -e '.terminals | type == "array"'
+
+      - name: 'Test: connect endpoint validates input (400 + error message)'
+        run: |
+          RESP=$(curl --connect-timeout 5 --max-time 10 -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $SMOKE_API_KEY" -H "Content-Type: application/json" -d '{}' http://localhost:54007/api/sessions/connect)
+          BODY=$(echo "$RESP" | sed '$d')
+          CODE=$(echo "$RESP" | tail -n1)
+          echo "Connect validation: HTTP $CODE"
+          test "$CODE" = "400"
+          echo "$BODY" | jq -e '.error | contains("sessionId")'
+
+      - name: 'Test: terminals endpoint validates input (400 + error message)'
+        run: |
+          RESP=$(curl --connect-timeout 5 --max-time 10 -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $SMOKE_API_KEY" -H "Content-Type: application/json" -d '{}' http://localhost:54007/api/terminals)
+          BODY=$(echo "$RESP" | sed '$d')
+          CODE=$(echo "$RESP" | tail -n1)
+          echo "Terminals validation: HTTP $CODE"
+          test "$CODE" = "400"
+          echo "$BODY" | jq -e '.error | contains("command")'
+
+      - name: 'Test: limit/offset clamping (NaN does not crash)'
+        run: |
+          RESP=$(curl --connect-timeout 5 --max-time 10 -sf -H "Authorization: Bearer $SMOKE_API_KEY" "http://localhost:54007/api/sessions?limit=abc&offset=-5")
+          echo "$RESP" | jq -e '.projects | type == "array"'
+
+      - name: 'Test: UI pages load'
+        run: |
+          for PAGE in / /terminals /config; do
+            CODE=$(curl --connect-timeout 5 --max-time 10 -s -o /dev/null -w "%{http_code}" "http://localhost:54007${PAGE}")
+            echo "Page $PAGE: HTTP $CODE"
+            test "$CODE" = "200"
+          done
+
+      - name: 'Test: error page renders for unknown routes'
+        run: |
+          CODE=$(curl --connect-timeout 5 --max-time 10 -s -o /dev/null -w "%{http_code}" http://localhost:54007/nonexistent)
+          echo "Unknown route: HTTP $CODE"
+          test "$CODE" = "404"
+          # Verify response body contains error content
+          BODY=$(curl --connect-timeout 5 --max-time 10 -s http://localhost:54007/nonexistent)
+          echo "$BODY" | grep -qi "not found\|error\|404"
+
+      - name: Stop server
+        if: always()
+        run: |
+          if [ -f /tmp/shooter.pid ]; then
+            kill "$(cat /tmp/shooter.pid)" 2>/dev/null || true
+          fi
