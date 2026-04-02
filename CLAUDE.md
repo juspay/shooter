@@ -144,17 +144,19 @@ The `shooter` CLI (via `bin/shooter.cjs`) supports the following commands:
 
 | Command           | Description                                        |
 | ----------------- | -------------------------------------------------- |
-| `start`           | Start the server (default if no command given)     |
-| `stop`            | Stop the running server (via PID file)             |
-| `status`          | Show server status, PID, port, autostart state     |
-| `autostart on`    | Enable autostart on login (LaunchAgent / systemd)  |
-| `autostart off`   | Disable autostart                                  |
+| `start`           | Start server + tunnel (foreground, default)         |
+| `start -d`        | Start in background (daemon mode)                   |
+| `start --no-tunnel` | Start without Cloudflare Tunnel                   |
+| `stop`            | Stop server and tunnel                              |
+| `status`          | Show server status, PID, port, tunnel URL           |
+| `autostart on`    | Enable autostart on login (LaunchAgent / systemd)   |
+| `autostart off`   | Disable autostart                                   |
 | `logs`            | Tail server logs (LaunchAgent log file or journalctl) |
 | `setup`           | Run the interactive setup wizard (`--auto` for non-interactive) |
-| `version`         | Show version number                                |
-| `help`            | Show help message                                  |
+| `version`         | Show version number                                 |
+| `help`            | Show help message                                   |
 
-PID file: `~/.shooter/shooter.pid`. Logs: `~/.shooter/logs/shooter.log`.
+PID file: `~/.shooter/shooter.pid`. Tunnel PID: `~/.shooter/tunnel.pid`. Logs: `~/.shooter/logs/shooter.log`. Tunnel logs: `~/.shooter/logs/tunnel.log`.
 
 ## Security Requirements
 
