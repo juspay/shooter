@@ -152,7 +152,8 @@ The `shooter` CLI (via `bin/shooter.cjs`) supports the following commands:
 | `autostart on`    | Enable autostart on login (LaunchAgent / systemd)   |
 | `autostart off`   | Disable autostart                                   |
 | `logs`            | Tail server logs (LaunchAgent log file or journalctl) |
-| `setup`           | Run the interactive setup wizard (`--auto` for non-interactive) |
+| `setup`           | Quick setup — API key + build (~60s, push deferred) |
+| `setup --push`    | Add/reconfigure iOS or Android push notifications |
 | `version`         | Show version number                                 |
 | `help`            | Show help message                                   |
 
@@ -174,10 +175,14 @@ PID file: `~/.shooter/shooter.pid`. Tunnel PID: `~/.shooter/tunnel.pid`. Logs: `
 2. Use `plans/PLAN-B.MD` for comprehensive system architecture
 3. Implement in phases as outlined in the plans
 4. Test components individually before integration
+5. Setup is now streamlined: `shooter setup` generates API key and builds (~60 seconds)
+6. Push notifications are optional add-ons: `shooter setup --push`
 
 ## Environment Setup
 
 See `.env.example` for the full template. Required environment variables (set in `.env` for local dev):
+
+**Only `API_KEY` is required to start.** All push notification config is optional and can be added later with `shooter setup --push`.
 
 - `API_KEY` - Shared auth key used by the server AND hooks (unified; not `SHOOTER_API_KEY`)
 - `PORT` - Server port (default: 54007)
@@ -221,7 +226,7 @@ The plans include comprehensive testing approaches:
 ## Deployment
 
 - **One-command install**: `curl -fsSL https://raw.githubusercontent.com/juspay/shooter/release/scripts/install.sh | sh` -- clones to `~/.shooter/repo`, auto-generates API key, installs deps, builds, offers cloudflared install, enables autostart, and starts the server
-- **First-time setup**: `pnpm setup` runs interactive wizard (generates `.env`, configures hooks); pass `--auto` for non-interactive mode
+- **First-time setup**: `pnpm setup` runs streamlined wizard (generates API key, builds); pass `--auto` for non-interactive, `--push` to configure push notifications
 - **Build and run**: `pnpm build && pnpm start` (adapter-node, runs custom `server.ts` on port 54007)
 - **Build guard**: `server.ts` checks for `build/handler.js` before starting and exits with a clear error if missing
 - **Autostart**: `shooter autostart on` installs a LaunchAgent (macOS) or systemd user unit (Linux) so the server starts on login

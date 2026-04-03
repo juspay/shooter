@@ -9,7 +9,7 @@ const { execSync, spawn } = require('child_process');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const http = require('http');
+
 
 // ── ANSI helpers ─────────────────────────────────────────────────────
 const C = {
@@ -63,8 +63,17 @@ const ROOT = process.env.SHOOTER_PKG_ROOT || path.resolve(__dirname, '..');
 const SHOOTER_HOME = process.env.SHOOTER_HOME || path.join(require('os').homedir(), '.shooter');
 const DOT_ENV_PATH = path.join(SHOOTER_HOME, '.env');
 const AUTO_MODE = process.argv.includes('--auto');
+const PUSH_MODE = process.argv.includes('--push');
 
 let rl; // readline interface — created in main()
+
+// ── Auto-incrementing step counter ──────────────────────────────────
+let _stepNum = 0;
+let _totalSteps = 5;
+function step(label) {
+  _stepNum++;
+  console.log(`\n${C.blue}[${_stepNum}/${_totalSteps}] ${label}${C.reset}\n`);
+}
 
 // ── Readline helpers ─────────────────────────────────────────────────
 
@@ -97,18 +106,6 @@ async function askRequired(question, validator) {
   }
 }
 
-async function askMultiline(prompt) {
-  console.log(cyan(prompt));
-  console.log(dim('  Paste the content, then press Enter on an empty line to finish:'));
-  const lines = [];
-  while (true) {
-    const line = await ask('');
-    if (line === '') break;
-    lines.push(line);
-  }
-  return lines.join('\n');
-}
-
 // ── Banner ───────────────────────────────────────────────────────────
 
 function printBanner() {
@@ -120,7 +117,7 @@ function printBanner() {
   console.log(`${C.cyan}${C.bold} |____/|_| |_|\\___/ \\___/ \\__\\___|_|   ${C.reset}`);
   console.log('');
   console.log(bold('  Interactive Setup Wizard'));
-  console.log(dim('  Push notifications for your coding sessions'));
+  console.log(dim('  Remote terminals, session viewer & push notifications'));
   console.log('');
   console.log(dim('  ─────────────────────────────────────────'));
   console.log('');
@@ -129,7 +126,7 @@ function printBanner() {
 // ── Prerequisite checks ─────────────────────────────────────────────
 
 function checkPrerequisites() {
-  console.log(bold('1. Checking prerequisites...\n'));
+  step('Checking prerequisites...');
 
   // Node.js version
   const nodeVersion = process.versions.node;
@@ -205,75 +202,69 @@ function validateEmail(email) {
 
 // ── Collect configuration ────────────────────────────────────────────
 
-async function collectConfig() {
-  const config = {
-    apiKey: '',
-    // iOS APNs
-    wantIos: false,
-    apnsKey: '',
-    apnsKeyId: '',
-    apnsTeamId: '',
-    apnsBundleId: '',
-    apnsProduction: false,
-    deviceToken: '',
-    // Android FCM
-    wantAndroid: false,
-    fcmProjectId: '',
-    fcmClientEmail: '',
-    fcmPrivateKey: '',
-    androidDeviceToken: '',
-  };
+// ── Collect push notification config (separate flow) ────────────────
 
-  // ── Auto mode: reuse existing key or generate new, skip push config ──
-  if (AUTO_MODE) {
-    console.log(bold('2. Auto-configuring...\n'));
-
-    // Preserve existing API_KEY if .env already exists
-    if (fs.existsSync(DOT_ENV_PATH)) {
-      const existing = fs.readFileSync(DOT_ENV_PATH, 'utf-8');
-      const match = existing.match(/^API_KEY=(.+)$/m);
-      if (match && match[1]) {
-        config.apiKey = match[1];
-        const maskedKey = mask(config.apiKey);
-        console.log(green(`  Existing API key preserved: ${maskedKey}`));
-        console.log(dim('  Push notifications skipped (run "shooter setup" to configure later)'));
-        console.log('');
-        return config;
-      }
-    }
-
-    config.apiKey = generateSecureKey();
-    const maskedKey = mask(config.apiKey);
-    console.log(green(`  API key generated: ${maskedKey}`));
-    console.log(dim('  Push notifications skipped (run "shooter setup" to configure later)'));
-    console.log('');
-    return config;
-  }
-
-  // ── API Key ──────────────────────────────────────────────────────
-  console.log(bold('2. Server authentication\n'));
-  const apiKeyAnswer = await ask(`  API_KEY ${dim('(press Enter to auto-generate)')}: `);
-  if (apiKeyAnswer) {
-    config.apiKey = apiKeyAnswer;
-  } else {
-    config.apiKey = generateSecureKey();
-    const maskedKey = mask(config.apiKey);
-    console.log(green(`  Generated API key: ${maskedKey}`));
-    console.log(dim('  (Saved to ~/.shooter/.env)'));
-  }
-  console.log('');
-
+async function collectPushConfig(config) {
   // ── iOS Push Notifications ───────────────────────────────────────
-  console.log(bold('3. iOS Push Notifications\n'));
-  config.wantIos = await confirm('  Do you want iOS push notifications?');
+  console.log(bold('  iOS Push Notifications\n'));
+  config.wantIos = await confirm('  Configure iOS push notifications?');
 
   if (config.wantIos) {
     console.log('');
 
-    // APNs key (.p8)
-    config.apnsKey = await askMultiline('  APNS_KEY (.p8 private key contents):');
-    if (!config.apnsKey.includes('BEGIN PRIVATE KEY')) {
-      console.log(yellow('  Warning: Key does not look like a .p8 file. Continuing anyway.'));
+    // APNs key (.p8) — accept file path or pasted content, with retry on invalid input
+    async function askForP8Key() {
+      const apnsKeyInput = await askRequired(
+        `  APNS_KEY (.p8 file path or paste key): `,
+        (val) => {
+          if (!val) return 'APNs key is required.';
+          return null;
+        }
+      );
+
+      let key;
+
+      // Check if input is a file path
+      if (fs.existsSync(apnsKeyInput)) {
+        try {
+          key = fs.readFileSync(apnsKeyInput, 'utf-8').trim();
+          console.log(green(`  Read key from ${apnsKeyInput}`));
+        } catch (err) {
+          console.log(red(`  Could not read file: ${err.message}`));
+          process.exit(1);
+        }
+      } else if (apnsKeyInput.includes('BEGIN PRIVATE KEY')) {
+        // User pasted inline content
+        key = apnsKeyInput;
+      } else {
+        // Might be a partial path or multiline paste — try multiline
+        console.log(yellow('  Input does not look like a file path or key.'));
+        console.log(dim('  Paste the full .p8 key contents (press Enter on empty line to finish):'));
+        const lines = [apnsKeyInput];
+        while (true) {
+          const line = await ask('');
+          if (line === '') break;
+          lines.push(line);
+        }
+        key = lines.join('\n');
+      }
+
+      if (!key.includes('BEGIN PRIVATE KEY')) {
+        console.log(yellow('  Warning: File does not appear to be a valid .p8 private key.'));
+        const retry = await ask(cyan('  Re-enter path? [Y/n]: '));
+        if (retry.toLowerCase() !== 'n') {
+          return askForP8Key(); // Recursive retry
+        }
+        console.log(yellow('  Skipping APNs configuration.'));
+        return null;
+      }
+
+      return key;
+    }
+
+    config.apnsKey = await askForP8Key();
+    if (!config.apnsKey) {
+      config.wantIos = false;
     }
     console.log('');
 
@@ -302,19 +293,39 @@ async function collectConfig() {
   console.log('');
 
   // ── Android Push Notifications ───────────────────────────────────
-  console.log(bold('4. Android Push Notifications\n'));
-  config.wantAndroid = await confirm('  Do you want Android push notifications?');
+  console.log(bold('  Android Push Notifications\n'));
+  config.wantAndroid = await confirm('  Configure Android push notifications?');
 
   if (config.wantAndroid) {
     console.log('');
     config.fcmProjectId = await askRequired('  FCM_PROJECT_ID: ');
     config.fcmClientEmail = await askRequired('  FCM_CLIENT_EMAIL: ', validateEmail);
 
-    config.fcmPrivateKey = await askMultiline('  FCM_PRIVATE_KEY (service account private key):');
+    const fcmKeyInput = await askRequired('  FCM_PRIVATE_KEY (file path or paste key): ');
+
+    if (fs.existsSync(fcmKeyInput)) {
+      try {
+        config.fcmPrivateKey = fs.readFileSync(fcmKeyInput, 'utf-8').trim();
+        console.log(green(`  Read key from ${fcmKeyInput}`));
+      } catch (err) {
+        console.log(red(`  Could not read file: ${err.message}`));
+        process.exit(1);
+      }
+    } else if (fcmKeyInput.includes('BEGIN')) {
+      config.fcmPrivateKey = fcmKeyInput;
+    } else {
+      console.log(dim('  Paste the full private key (press Enter on empty line to finish):'));
+      const lines = [fcmKeyInput];
+      while (true) {
+        const line = await ask('');
+        if (line === '') break;
+        lines.push(line);
+      }
+      config.fcmPrivateKey = lines.join('\n');
+    }
+
     if (!config.fcmPrivateKey.includes('BEGIN')) {
-      console.log(
-        yellow('  Warning: Key does not look like a PEM private key. Continuing anyway.')
-      );
+      console.log(yellow('  Warning: Key does not look like a PEM private key. Continuing anyway.'));
     }
     console.log('');
 
@@ -326,6 +337,128 @@ async function collectConfig() {
     }
   }
   console.log('');
+}
+
+// ── Load existing push config from .env (preserve during non-push setup) ──
+
+function loadExistingPushConfig(config) {
+  if (!fs.existsSync(DOT_ENV_PATH)) return;
+  const existing = fs.readFileSync(DOT_ENV_PATH, 'utf-8');
+
+  const get = (key) => {
+    const m = existing.match(new RegExp(`^${key}=["']?(.+?)["']?$`, 'm'));
+    return m ? m[1] : '';
+  };
+
+  // Preserve iOS config if it was previously set
+  const apnsKeyId = get('APNS_KEY_ID');
+  if (apnsKeyId) {
+    config.wantIos = true;
+    // Read the raw APNS_KEY (may have escaped newlines)
+    const rawApnsKey = get('APNS_KEY');
+    config.apnsKey = rawApnsKey ? rawApnsKey.replace(/\\n/g, '\n') : '';
+    config.apnsKeyId = apnsKeyId;
+    config.apnsTeamId = get('APNS_TEAM_ID');
+    config.apnsBundleId = get('APNS_BUNDLE_ID');
+    config.apnsProduction = get('APNS_PRODUCTION') === 'true';
+    config.deviceToken = get('DEVICE_TOKEN');
+  }
+
+  // Preserve Android config if it was previously set
+  const fcmProjectId = get('FCM_PROJECT_ID');
+  if (fcmProjectId) {
+    config.wantAndroid = true;
+    config.fcmProjectId = fcmProjectId;
+    config.fcmClientEmail = get('FCM_CLIENT_EMAIL');
+    const rawFcmKey = get('FCM_PRIVATE_KEY');
+    config.fcmPrivateKey = rawFcmKey ? rawFcmKey.replace(/\\n/g, '\n') : '';
+    config.androidDeviceToken = get('ANDROID_DEVICE_TOKEN');
+  }
+}
+
+async function collectConfig() {
+  const config = {
+    apiKey: '',
+    // iOS APNs
+    wantIos: false,
+    apnsKey: '',
+    apnsKeyId: '',
+    apnsTeamId: '',
+    apnsBundleId: '',
+    apnsProduction: false,
+    deviceToken: '',
+    // Android FCM
+    wantAndroid: false,
+    fcmProjectId: '',
+    fcmClientEmail: '',
+    fcmPrivateKey: '',
+    androidDeviceToken: '',
+  };
+
+  // ── Auto mode: reuse existing key or generate new, skip push config ──
+  if (AUTO_MODE) {
+    step('Auto-configuring...');
+
+    // Preserve existing API_KEY if .env already exists
+    if (fs.existsSync(DOT_ENV_PATH)) {
+      const existing = fs.readFileSync(DOT_ENV_PATH, 'utf-8');
+      const match = existing.match(/^API_KEY=["']?(.+?)["']?$/m);
+      if (match && match[1]) {
+        config.apiKey = match[1];
+        const maskedKey = mask(config.apiKey);
+        console.log(green(`  Existing API key preserved: ${maskedKey}`));
+        loadExistingPushConfig(config);
+        if (config.wantIos || config.wantAndroid) {
+          console.log(green('  Existing push config preserved.'));
+        } else {
+          console.log(dim('  Push notifications not configured (add later with "shooter setup --push")'));
+        }
+        console.log('');
+        return config;
+      }
+    }
+
+    config.apiKey = generateSecureKey();
+    const maskedKey = mask(config.apiKey);
+    console.log(green(`  API key generated: ${maskedKey}`));
+    console.log(dim('  Push notifications not configured (add later with "shooter setup --push")'));
+    console.log('');
+    return config;
+  }
+
+  // ── API Key ──────────────────────────────────────────────────────
+  step('Server authentication');
+  const apiKeyAnswer = await ask(`  API_KEY ${dim('(press Enter to auto-generate)')}: `);
+  if (apiKeyAnswer) {
+    config.apiKey = apiKeyAnswer;
+  } else {
+    config.apiKey = generateSecureKey();
+    const maskedKey = mask(config.apiKey);
+    console.log(green(`  Generated API key: ${maskedKey}`));
+    console.log(dim('  (Saved to ~/.shooter/.env)'));
+  }
+  console.log('');
+
+  // ── Push notifications: only if --push flag or user opts in ──────
+  if (PUSH_MODE) {
+    // Direct push config mode — user explicitly asked for it
+    step('Push notification setup');
+    await collectPushConfig(config);
+  } else {
+    // Default: skip push, show how to add later
+    // Preserve any existing push config from a previous setup
+    loadExistingPushConfig(config);
+
+    if (config.wantIos || config.wantAndroid) {
+      console.log(dim('  Existing push notification config preserved.'));
+      console.log(dim('  To reconfigure: shooter setup --push'));
+    } else {
+      console.log(dim('  Push notifications are optional and not required for the server.'));
+      console.log(dim('  Terminals, sessions, and the web UI work without push config.'));
+      console.log(dim(`  Add push later: ${cyan('shooter setup --push')}`));
+    }
+    console.log('');
+  }
 
   return config;
 }
@@ -407,7 +540,7 @@ function buildEnvContent(config) {
 }
 
 async function writeEnv(config) {
-  console.log(bold('5. Writing .env file\n'));
+  step('Writing .env file');
 
   if (fs.existsSync(DOT_ENV_PATH) && !AUTO_MODE) {
     const overwrite = await confirm('  .env already exists. Overwrite it?');
@@ -427,69 +560,17 @@ async function writeEnv(config) {
   }
 
   fs.writeFileSync(DOT_ENV_PATH, content, { mode: 0o600 });
+  // Enforce secure permissions even if file already existed
+  fs.chmodSync(DOT_ENV_PATH, 0o600);
   console.log(green('  .env written successfully.'));
   console.log('');
   return true;
 }
 
-// ── Shell profile export ─────────────────────────────────────────────
-
-function detectShellProfile() {
-  const home = require('os').homedir();
-  const shell = process.env.SHELL || '';
-
-  if (shell.endsWith('/zsh')) {
-    return path.join(home, '.zshrc');
-  }
-  if (shell.endsWith('/bash')) {
-    // macOS uses .bash_profile for login shells; Linux uses .bashrc
-    const bashProfile = path.join(home, '.bash_profile');
-    if (fs.existsSync(bashProfile)) return bashProfile;
-    return path.join(home, '.bashrc');
-  }
-  // Fallback for other shells
-  return path.join(home, '.profile');
-}
-
-async function offerShellExport(apiKey) {
-  console.log(bold('6. Shell environment\n'));
-
-  const profilePath = detectShellProfile();
-  const profileName = path.basename(profilePath);
-
-  // Check if export already exists
-  if (fs.existsSync(profilePath)) {
-    const contents = fs.readFileSync(profilePath, 'utf-8');
-    if (contents.includes('export API_KEY=')) {
-      console.log(green(`  export API_KEY is already in ~/${profileName}`));
-      console.log('');
-      return;
-    }
-  }
-
-  console.log(dim('  The Claude Code hooks need API_KEY in your shell environment.'));
-  const shouldAdd = AUTO_MODE || await confirm(`  Add 'export API_KEY=...' to ~/${profileName}?`);
-
-  if (shouldAdd) {
-    const exportLine = `\nexport API_KEY="${escapeForDoubleQuotedShell(apiKey)}"\n`;
-    fs.appendFileSync(profilePath, exportLine, 'utf-8');
-    console.log(green(`  Added to ~/${profileName}`));
-    console.log(
-      yellow(`  Run ${cyan(`source ~/${profileName}`)} or open a new terminal for hooks to work.`)
-    );
-  } else {
-    console.log(
-      yellow('  Skipped. You will need to set API_KEY manually for hooks to authenticate.')
-    );
-    console.log(dim(`  Add this to your shell profile:  export API_KEY="<your key from .env>"`));
-  }
-  console.log('');
-}
-
 // ── Build ────────────────────────────────────────────────────────────
 
 function runBuild() {
-  console.log(bold('7. Building the project...\n'));
+  step('Building the project...');
   try {
     execSync('pnpm build', { cwd: ROOT, stdio: 'inherit' });
     console.log('');
@@ -503,107 +584,6 @@ function runBuild() {
     console.log('');
     return false;
   }
-}
-
-// ── Health check ─────────────────────────────────────────────────────
-
-function testHealth() {
-  return new Promise((resolve) => {
-    console.log(bold('9. Testing server health...\n'));
-
-    const port = process.env.PORT || 54007;
-    let serverProcess;
-    let resolved = false;
-
-    function finish(ok, msg) {
-      if (resolved) return;
-      resolved = true;
-      if (serverProcess && !serverProcess.killed) {
-        serverProcess.kill('SIGTERM');
-      }
-      if (ok) {
-        console.log(green(`  ${msg}`));
-      } else {
-        console.log(yellow(`  ${msg}`));
-      }
-      console.log('');
-      resolve(ok);
-    }
-
-    // Start the server
-    serverProcess = spawn('node', ['--import', 'tsx', 'server.ts'], {
-      cwd: ROOT,
-      stdio: 'pipe',
-      env: { ...process.env, PORT: port.toString(), SHOOTER_HOME, SHOOTER_PKG_ROOT: ROOT },
-    });
-
-    serverProcess.on('error', (err) => {
-      finish(false, `Could not start server: ${err.message}`);
-    });
-
-    serverProcess.on('exit', (code) => {
-      if (!resolved) {
-        finish(false, `Server exited unexpectedly (code ${code}).`);
-      }
-    });
-
-    // Capture stderr/stdout for "listening" signal; try health after delay
-    let output = '';
-    const collectOutput = (data) => {
-      output += data.toString();
-    };
-    serverProcess.stdout.on('data', collectOutput);
-    serverProcess.stderr.on('data', collectOutput);
-
-    // Give the server up to 15 seconds to start, polling every second
-    let attempts = 0;
-    const maxAttempts = 15;
-
-    const poll = setInterval(() => {
-      attempts++;
-      if (resolved) {
-        clearInterval(poll);
-        return;
-      }
-      if (attempts > maxAttempts) {
-        clearInterval(poll);
-        finish(
-          false,
-          'Server did not respond within 15 seconds. You can test manually with: curl http://localhost:' +
-            port +
-            '/api/health'
-        );
-        return;
-      }
-
-      const req = http.get(`http://localhost:${port}/api/health`, (res) => {
-        let body = '';
-        res.on('data', (chunk) => {
-          body += chunk;
-        });
-        res.on('end', () => {
-          clearInterval(poll);
-          try {
-            const data = JSON.parse(body);
-            if (data.status === 'healthy') {
-              finish(true, `Health check passed: status=${data.status}`);
-            } else {
-              finish(
-                true,
-                `Server running (status=${data.status}). Some optional features may need configuration.`
-              );
-            }
-          } catch {
-            finish(true, 'Server responded but health response was not JSON.');
-          }
-        });
-      });
-      req.on('error', () => {
-        // Server not ready yet — will retry
-      });
-      req.setTimeout(2000, () => req.destroy());
-    }, 1000);
-  });
 }
 
 // ── Main ─────────────────────────────────────────────────────────────
@@ -625,17 +605,30 @@ async function main() {
     rl.close();
   });
 
+  // Reset step counter; push mode adds one extra step
+  _stepNum = 0;
+  _totalSteps = (PUSH_MODE && !AUTO_MODE) ? 6 : 5;
+
   printBanner();
+
+  if (PUSH_MODE) {
+    console.log(bold('  Adding push notification support...\n'));
+  }
+
   checkPrerequisites();
 
   const config = await collectConfig();
   await writeEnv(config);
-  await offerShellExport(config.apiKey);
+
+  // API_KEY is stored in ~/.shooter/.env — hooks read it automatically
+  console.log(dim('  API_KEY is stored in ~/.shooter/.env'));
+  console.log(dim('  Claude Code hooks read it automatically from there.'));
+  console.log('');
 
   const buildOk = runBuild();
 
   // ── Remote access info ───────────────────────────────────────────────
-  console.log(bold('8. Remote access (optional)\n'));
+  step('Remote access (optional)');
 
   let cloudflaredAvailable = false;
   try {
@@ -710,7 +703,8 @@ async function main() {
   rl.close();
 
   if (buildOk) {
-    await testHealth();
+    console.log(green('  Ready to start! Run: shooter start'));
+    console.log('');
   }
 
   // ── Done ───────────────────────────────────────────────────────────
@@ -726,8 +720,15 @@ async function main() {
   console.log(bold('  Your API key (enter this in the app on your phone):'));
   console.log(`\n  ${C.bold}${C.cyan}${mask(config.apiKey)}${C.reset}\n`);
   if (!config.wantIos && !config.wantAndroid) {
-    console.log(yellow('  Note: No push notification platform was configured.'));
-    console.log(dim('  Run shooter setup again to add iOS or Android push notifications.'));
+    console.log(bold('  Optional add-ons:'));
+    console.log(`  ${dim('Push notifications:')}  ${cyan('shooter setup --push')}`);
+    console.log(`  ${dim('Cloudflare Tunnel:')}   ${cyan('shooter start')} ${dim('(auto-starts tunnel)')}`);
+    console.log('');
+  } else {
+    const platforms = [];
+    if (config.wantIos) platforms.push('iOS');
+    if (config.wantAndroid) platforms.push('Android');
+    console.log(green(`  Push notifications: ${platforms.join(' + ')} configured`));
     console.log('');
   }
 

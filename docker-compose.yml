@@ -4,10 +4,25 @@ services:
     ports:
       - '54007:54007'
     env_file:
-      - .env
+      - path: .env
+        required: false
+    # Required: Set API_KEY for authentication
+    # Option 1: Add API_KEY=your-key-here to your .env file
+    # Option 2: Uncomment below and set directly:
+    # environment:
+    #   - API_KEY=your-secret-key-here
     volumes:
       - shooter-data:/root/.shooter
     restart: unless-stopped
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate --url http://shooter:54007
+    depends_on:
+      - shooter
+    restart: unless-stopped
+    profiles:
+      - tunnel
 
 volumes:
   shooter-data:

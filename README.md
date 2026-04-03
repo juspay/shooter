@@ -71,18 +71,22 @@ Open [http://localhost:54007](http://localhost:54007) in your browser. Visit `/c
 git clone https://github.com/juspay/shooter.git
 cd shooter
 pnpm install
-cp .env.example .env
-# Edit .env with your values (at minimum, set API_KEY)
+pnpm setup        # generates ~/.shooter/.env with API key, builds the project
+pnpm start
+```
+
+Or without the wizard:
+
+```bash
+git clone https://github.com/juspay/shooter.git
+cd shooter
+pnpm install
+mkdir -p ~/.shooter && echo "API_KEY=$(openssl rand -hex 32)" > ~/.shooter/.env
 pnpm build
 pnpm start
 ```
 
-The hook notifier reads `API_KEY` from the environment. Export it in your shell profile so hooks can authenticate with the server:
-
-```bash
-echo 'export API_KEY="your-api-key-here"' >> ~/.zshrc
-source ~/.zshrc
-```
+> **Note:** Configuration lives in `~/.shooter/.env` (not the repo root). The hook notifier reads `API_KEY` from this file automatically.
 
 ---
 
@@ -131,7 +135,7 @@ source ~/.zshrc
 
 ## Configuration
 
-Copy `.env.example` to `.env` and fill in your values. The `pnpm setup` wizard handles this interactively.
+Configuration is stored in `~/.shooter/.env`. The `pnpm setup` wizard generates this file interactively. Only `API_KEY` is required to start -- push notification config can be added later with `shooter setup --push`.
 
 | Variable               | Required | Default | Description                                                      |
 | ---------------------- | -------- | ------- | ---------------------------------------------------------------- |
@@ -279,9 +283,15 @@ The `PermissionRequest` hook has a 180-second timeout in `.claude/settings.json`
 ### Quick Start
 
 ```bash
-cp .env.example .env
-# Edit .env with your values
+# Minimal — just set API_KEY:
+echo "API_KEY=$(openssl rand -hex 32)" > .env
 docker compose up -d
+```
+
+Or with a Cloudflare Tunnel for remote access:
+
+```bash
+docker compose --profile tunnel up -d
 ```
 
 ### Manual Build and Run
@@ -291,14 +301,16 @@ docker build -t shooter .
 
 docker run -d \
   --name shooter \
-  --env-file .env \
+  -e API_KEY=your-secret-key-here \
   -p 54007:54007 \
   -v shooter-data:/root/.shooter \
   --restart unless-stopped \
   shooter
 ```
 
-The multi-stage Dockerfile uses `node:20-slim` and includes build tools for `node-pty` and `better-sqlite3` native addons. SQLite data is persisted in the `shooter-data` volume. The `.env` file is injected at runtime and never baked into the image.
+> **Required:** Set `API_KEY` either via `-e API_KEY=...`, `--env-file .env`, or in `docker-compose.yml`. Without it, all authenticated endpoints return 401.
+
+The multi-stage Dockerfile uses `node:20-slim` with native addon binaries copied from the build stage (no build tools in the production image). SQLite data is persisted in the `shooter-data` volume. The `.env` file is injected at runtime and never baked into the image.
 
 A separate `Dockerfile.test` is provided for verifying the fresh-user install experience in an isolated container.
 
@@ -311,10 +323,25 @@ services:
     ports:
       - '54007:54007'
     env_file:
-      - .env
+      - path: .env
+        required: false
+    # Set API_KEY in .env or uncomment below:
+    # environment:
+    #   - API_KEY=your-secret-key-here
     volumes:
       - shooter-data:/root/.shooter
     restart: unless-stopped
+
+  # Optional: Cloudflare Tunnel for remote access
+  # Start with: docker compose --profile tunnel up -d
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate --url http://shooter:54007
+    depends_on:
+      - shooter
+    restart: unless-stopped
+    profiles:
+      - tunnel
 
 volumes:
   shooter-data:
@@ -404,7 +431,7 @@ The `shooter` command (via `bin/shooter.cjs` or the global `shooter` symlink) su
 | `shooter autostart on`  | Enable autostart on login (LaunchAgent on macOS, systemd on Linux) |
 | `shooter autostart off` | Disable autostart and remove the service definition              |
 | `shooter logs`       | Tail server logs (log file on macOS, journalctl on Linux)          |
-| `shooter setup`      | Run the interactive setup wizard; pass `--auto` for non-interactive|
+| `shooter setup`      | Quick setup (~60s): API key + build. `--auto` for non-interactive, `--push` for push config |
 | `shooter version`    | Print version number                                               |
 | `shooter help`       | Show all available commands                                        |
 
@@ -483,6 +510,70 @@ shooter/
 
 ---
 
+## Updating
+
+If you installed via the one-command installer:
+
+```bash
+cd ~/.shooter/repo
+git pull origin release
+pnpm install
+pnpm build
+shooter stop && shooter start -d
+```
+
+Or re-run the installer -- it detects the existing installation and offers to update:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/juspay/shooter/release/scripts/install.sh | sh
+```
+
+If you installed via npm:
+
+```bash
+npm update -g @juspay/shooter
+```
+
+---
+
+## Uninstall
+
+```bash
+# 1. Stop the server and disable autostart
+shooter stop
+shooter autostart off
+
+# 2. Remove the data directory (config, logs, SQLite database)
+rm -rf ~/.shooter
+
+# 3. Remove the global command symlink
+rm -f ~/.local/bin/shooter
+
+# 4. Remove the repo (if installed via one-command installer)
+rm -rf ~/.shooter/repo
+```
+
+If you installed via npm: `npm uninstall -g @juspay/shooter`
+
+To also remove Claude Code hooks, delete the `hooks` section from `.claude/settings.json` in each project that uses Shooter.
+
+---
+
+## Reset
+
+To reset Shooter to a clean state without reinstalling:
+
+```bash
+shooter stop
+rm ~/.shooter/.env            # Remove config (re-run shooter setup to regenerate)
+rm ~/.shooter/shooter.db      # Remove terminal history database
+rm -rf ~/.shooter/logs        # Remove log files
+shooter setup                 # Regenerate config
+shooter start -d              # Restart
+```
+
+---
+
 ## Troubleshooting
 
 ### Server does not start
@@ -509,9 +600,9 @@ shooter/
 
 ### Hooks not sending notifications
 
-- `API_KEY` must be exported in your shell environment, not just in `.env`: `export API_KEY="..."`
+- The notifier reads `API_KEY` from `~/.shooter/.env` automatically. If that file is missing or empty, run `shooter setup`.
 - Verify the hooks are configured in `.claude/settings.json`
-- Test connectivity: `curl -H "Authorization: Bearer $API_KEY" http://localhost:54007/api/health`
+- Test connectivity: `curl -H "Authorization: Bearer $(grep API_KEY ~/.shooter/.env | cut -d= -f2 | tr -d '\"')" http://localhost:54007/api/health`
 
 ### Terminal sessions lost after restart
 
@@ -526,8 +617,9 @@ shooter/
 
 ### Port already in use
 
-- Default port is 54007. Set `PORT=<number>` in `.env` to use a different port.
-- Check what is using the port: `lsof -i :54007`
+- `shooter start` detects port conflicts automatically and prints a clear error
+- Default port is 54007. Set `PORT=<number>` in `~/.shooter/.env` to use a different port
+- To find what's using the port: `lsof -i :54007` (macOS) or `ss -tlnp | grep 54007` (Linux)
 
 ---
 

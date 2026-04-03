@@ -187,6 +187,18 @@ function startServer() {
   const noTunnel = hasFlag('--no-tunnel');
   const port = resolvePort();
 
+  // Check if port is already in use (no external tools needed)
+  try {
+    execSync(
+      `"${process.execPath}" -e "const s=require('net').createServer();s.listen(${parseInt(port, 10)},()=>s.close());s.on('error',e=>{if(e.code==='EADDRINUSE')process.exit(1)})"`,
+      { stdio: 'ignore', timeout: 2000 }
+    );
+  } catch {
+    console.error(`Error: Port ${port} is already in use.`);
+    console.error('Stop the existing process or set a different PORT in ~/.shooter/.env');
+    process.exit(1);
+  }
+
   if (daemon) {
     // ── Daemon mode: detach, redirect to log file ──
     fs.mkdirSync(LOG_DIR, { recursive: true });
@@ -226,22 +238,23 @@ function startServer() {
     console.log(`  URL:   http://localhost:${port}`);
     console.log(`  Logs:  ${LOG_FILE}`);
 
-    // Wait briefly for server to be ready before starting tunnel
+    // Start tunnel in background if available; it writes URL to ~/.shooter/.tunnel_url
     if (!noTunnel && isCloudflaredAvailable()) {
       setTimeout(() => {
         startTunnel(port);
       }, 3000);
-      // Keep process alive long enough for tunnel URL to appear
-      setTimeout(() => process.exit(0), 20000);
-    } else {
-      if (!noTunnel && !isCloudflaredAvailable()) {
-        console.log('  (cloudflared not found — no tunnel. Install: brew install cloudflared)');
-      }
-      process.exit(0);
+    } else if (!noTunnel && !isCloudflaredAvailable()) {
+      console.log('  (cloudflared not found — no tunnel. Install: brew install cloudflared)');
     }
+    // Exit immediately — daemon is running, tunnel starts async
+    process.exit(0);
   } else {
     // ── Foreground mode: inherit stdio ──
-    const child = spawn(process.execPath, ['--import', 'tsx', serverEntry], {
+    const tsxLoader = path.join(PKG_ROOT, 'node_modules', 'tsx', 'dist', 'loader.mjs');
+    const nodeArgs = fs.existsSync(tsxLoader)
+      ? ['--import', `file://${tsxLoader}`, serverEntry]
+      : ['--import', 'tsx', serverEntry];
+    const child = spawn(process.execPath, nodeArgs, {
       cwd: PKG_ROOT,
       stdio: 'inherit',
       env: {
@@ -252,6 +265,9 @@ function startServer() {
     });
 
     writePid(child.pid);
+
+    // Clean up any stale tunnel from previous run (important for LaunchAgent restart)
+    stopTunnel();
 
     // Start tunnel in foreground mode too (unless --no-tunnel)
     let tunnelStarted = false;
@@ -448,7 +464,7 @@ function enableLaunchAgent() {
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
-    <string>${path.dirname(nodeBin)}:/usr/local/bin:/usr/bin:/bin</string>
+    <string>${path.dirname(nodeBin)}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
     <key>SHOOTER_HOME</key>
     <string>${SHOOTER_HOME}</string>
   </dict>
@@ -630,7 +646,8 @@ Commands:
   autostart on     Start automatically on login (macOS/Linux)
   autostart off    Disable autostart
   logs             Tail server logs
-  setup            Run the interactive setup wizard
+  setup            Quick setup (API key + build, ~60 seconds)
+  setup --push     Add/reconfigure push notifications
   version          Show version number
   help             Show this help message
 
@@ -645,7 +662,8 @@ Examples:
   shooter status           Check status and tunnel URL
   shooter autostart on     Enable autostart on login
   shooter logs             Follow server logs
-  shooter setup            Configure credentials
+  shooter setup            Quick setup (~60s, push deferred)
+  shooter setup --push     Add iOS/Android push notifications
 `.trim()
   );
 }
