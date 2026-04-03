@@ -37,13 +37,9 @@ RUN pnpm add tsx && pnpm prune --prod
 # ── Stage 2: Production ──────────────────────────────────────────────
 FROM node:20-slim AS production
 
-# Install runtime dependencies for node-pty native addons.
-# node-pty dynamically loads its .node binding at runtime and
-# better-sqlite3 needs the C++ runtime libraries.
-RUN apt-get update && apt-get install -y \
-    python3 \
-    make \
-    g++ \
+# Install only the minimal C++ runtime needed by native .node addons
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libstdc++6 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -51,6 +47,11 @@ WORKDIR /app
 # Copy the pruned node_modules (production deps + tsx) from builder.
 # This preserves pnpm's internal symlink structure intact.
 COPY --from=builder /app/node_modules ./node_modules
+
+# Overwrite with prebuilt native addon binaries from the builder stage
+# so we don't need python3/make/g++ in the production image.
+COPY --from=builder /app/node_modules/node-pty/build/ ./node_modules/node-pty/build/
+COPY --from=builder /app/node_modules/better-sqlite3/build/ ./node_modules/better-sqlite3/build/
 
 # Copy built output from builder stage
 COPY --from=builder /app/build ./build
@@ -63,6 +64,7 @@ COPY server.ts ./
 COPY tsconfig.json ./
 
 # Copy source modules imported by server.ts at runtime (tsx resolves these)
+COPY src/lib/env.ts ./src/lib/env.ts
 COPY src/lib/modules/server ./src/lib/modules/server
 
 # Create data directory for SQLite persistence

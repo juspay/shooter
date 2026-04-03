@@ -39,6 +39,20 @@ const LOCAL_BASE_URL = `http://localhost:${LOCAL_PORT}`;
 const BASE_URL = USE_LOCAL ? LOCAL_BASE_URL : REMOTE_BASE_URL;
 const API_URL = `${BASE_URL}/api/notify`;
 
+// Read API_KEY from ~/.shooter/.env if not in environment
+if (!process.env.API_KEY && !process.env.SHOOTER_API_KEY) {
+  const envPath = path.join(require('os').homedir(), '.shooter', '.env');
+  try {
+    const envContent = fs.readFileSync(envPath, 'utf-8');
+    const match = envContent.match(/^API_KEY=["']?([^"'\n]+)["']?$/m);
+    if (match) {
+      process.env.API_KEY = match[1];
+    }
+  } catch {
+    // .env file doesn't exist — API_KEY must be in environment
+  }
+}
+
 // Authentication
 const API_KEY = process.env.API_KEY || process.env.SHOOTER_API_KEY;
 const DEVICE_TOKEN = process.env.SHOOTER_DEVICE_TOKEN || null;
@@ -1467,7 +1481,7 @@ const OpenCodePlugin = async (ctx) => {
     },
 
     // Specific hook: After tool execution
-    'tool.execute.after': async (input, output) => {
+    'tool.execute.after': async (input, _output) => {
       const commonEvent = adaptOpenCodeEvent('tool.execute.after', {
         tool: input?.tool || 'unknown',
       });

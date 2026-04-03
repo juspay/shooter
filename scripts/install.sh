@@ -184,11 +184,12 @@ check_linux_build_tools() {
 
         if ask_yes_no "  Install build tools now? ($install_cmd)" "y"; then
             info "Installing build tools..."
-            eval "$install_cmd"
+            $install_cmd
             success "Build tools installed."
         else
-            warn "Continuing without build tools. Terminal features (node-pty) and"
-            warn "database (better-sqlite3) may not work."
+            error "Build tools are required for native modules (node-pty, better-sqlite3)."
+            error "Install them manually:$missing"
+            exit 1
         fi
     else
         success "Build tools available (make, g++, python3)"
@@ -250,13 +251,11 @@ find_node() {
 }
 
 check_node() {
-    NODE_BIN="$(find_node)"
+    NODE_BIN="$(find_node)" || true
     if [ -n "$NODE_BIN" ]; then
         node_version="$("$NODE_BIN" --version)"
         success "Node.js $node_version ($NODE_BIN)"
-        local dir_path
-        dir_path="$(dirname "$NODE_BIN")"
-        export PATH="$dir_path:$PATH"
+        export PATH="$(dirname "$NODE_BIN"):$PATH"
         return 0
     fi
 
@@ -283,8 +282,12 @@ bootstrap_pnpm() {
     # Try corepack first
     if command -v corepack >/dev/null 2>&1; then
         if corepack enable 2>/dev/null; then
-            success "pnpm enabled via corepack"
-            return 0
+            # Pre-download pnpm to avoid interactive prompt during install
+            COREPACK_ENABLE_AUTO_PIN=0 corepack prepare pnpm@10.28.2 --activate 2>/dev/null
+            if command -v pnpm >/dev/null 2>&1; then
+                success "pnpm $(pnpm --version) (via corepack)"
+                return 0
+            fi
         fi
     fi
 
@@ -330,7 +333,7 @@ handle_existing() {
             1)
                 step "Updating existing installation"
                 cd "$SHOOTER_REPO"
-                git pull --rebase origin "$REPO_BRANCH"
+                git fetch origin "$REPO_BRANCH" && git reset --hard "origin/$REPO_BRANCH"
                 success "Repository updated."
                 return 0
                 ;;
@@ -340,11 +343,15 @@ handle_existing() {
                 success "Removed $SHOOTER_REPO"
                 return 1
                 ;;
-            *)
+            3|abort)
                 info "Aborted. No changes made."
                 # Disable cleanup trap since nothing was cloned
                 CLEANUP_CLONED=0
                 exit 0
+                ;;
+            *)
+                error "Invalid choice: $choice"
+                exit 1
                 ;;
         esac
     fi
@@ -404,35 +411,6 @@ run_setup_wizard() {
         cd "$SHOOTER_REPO"
         pnpm build
         success "Build complete."
-    fi
-}
-
-# ── Global command ────────────────────────────────────────────────────
-
-offer_global_command() {
-    step "Global command"
-    BIN_DIR="$HOME/.local/bin"
-    SHOOTER_BIN="$BIN_DIR/shooter"
-
-    if [ -x "$SHOOTER_BIN" ]; then
-        success "'shooter' command already linked."
-        return
-    fi
-
-    if ask_yes_no "  Install 'shooter' as a global command?" "y"; then
-        mkdir -p "$BIN_DIR"
-        ln -sf "$SHOOTER_REPO/bin/shooter.cjs" "$SHOOTER_BIN"
-        chmod +x "$SHOOTER_BIN"
-        success "'shooter' linked to $SHOOTER_BIN"
-
-        # Check if ~/.local/bin is in PATH
-        case ":$PATH:" in
-            *":$BIN_DIR:"*) ;;
-            *)
-                warn "$BIN_DIR is not in your PATH."
-                info "Add to your shell profile: export PATH=\"\$HOME/.local/bin:\$PATH\""
-                ;;
-        esac
     fi
 }
 
@@ -515,46 +493,55 @@ start_server_and_tunnel() {
     step "Starting Shooter"
 
     cd "$SHOOTER_REPO"
+    port="$DEFAULT_PORT"
 
-    # Start the server
-    SHOOTER_HOME="$SHOOTER_HOME" "$NODE_BIN" bin/shooter.cjs start &
-    SERVER_BG_PID=$!
-    sleep 3
+    # Check if port is already in use
+    if command -v lsof >/dev/null 2>&1; then
+        if lsof -i ":${port}" -sTCP:LISTEN >/dev/null 2>&1; then
+            warn "Port ${port} is already in use."
+            info "Stop the existing process or set a different PORT in ~/.shooter/.env"
+            return 1
+        fi
+    fi
+
+    # Start server in daemon mode (detaches from terminal, auto-starts tunnel if cloudflared available)
+    SHOOTER_HOME="$SHOOTER_HOME" "$NODE_BIN" bin/shooter.cjs start -d
+
+    # Wait for server to be ready (up to 15s)
+    waited=0
+    while [ "$waited" -lt 15 ]; do
+        if curl -sf "http://localhost:${port}/api/health" >/dev/null 2>&1; then
+            break
+        fi
+        sleep 1
+        waited=$((waited + 1))
+    done
 
     # Verify server is up
-    port="$DEFAULT_PORT"
     if curl -sf "http://localhost:${port}/api/health" >/dev/null 2>&1; then
         success "Server running on http://localhost:${port}"
     else
         warn "Server may still be starting. Check with: shooter status"
     fi
 
-    # Start cloudflare quick tunnel if available
-    if command -v cloudflared >/dev/null 2>&1; then
-        info "Starting Cloudflare Tunnel..."
-
-        # Quick tunnel — run in background, capture URL from log file
-        tunnel_log="$SHOOTER_HOME/logs/tunnel.log"
-        mkdir -p "$(dirname "$tunnel_log")"
-        cloudflared tunnel --url "http://localhost:${port}" > "$tunnel_log" 2>&1 &
-        TUNNEL_PID=$!
-
-        # Wait up to 10s for the tunnel URL to appear in logs
+    # Check for tunnel URL (daemon mode starts tunnel automatically)
+    if [ -f "$SHOOTER_HOME/.tunnel_url" ]; then
+        TUNNEL_URL="$(cat "$SHOOTER_HOME/.tunnel_url")"
+        success "Tunnel active: $TUNNEL_URL"
+    elif command -v cloudflared >/dev/null 2>&1; then
+        # Tunnel may still be starting — wait a few more seconds
         waited=0
         while [ "$waited" -lt 10 ]; do
-            if grep -qo 'https://[^ ]*trycloudflare\.com' "$tunnel_log" 2>/dev/null; then
-                grep -o 'https://[^ ]*trycloudflare\.com' "$tunnel_log" | head -1 > "$SHOOTER_HOME/.tunnel_url"
+            if [ -f "$SHOOTER_HOME/.tunnel_url" ]; then
+                TUNNEL_URL="$(cat "$SHOOTER_HOME/.tunnel_url")"
+                success "Tunnel active: $TUNNEL_URL"
                 break
             fi
             sleep 1
             waited=$((waited + 1))
         done
-
-        if [ -f "$SHOOTER_HOME/.tunnel_url" ]; then
-            TUNNEL_URL="$(cat "$SHOOTER_HOME/.tunnel_url")"
-            success "Tunnel active: $TUNNEL_URL"
-        else
-            warn "Tunnel is starting in the background. Check 'shooter status' shortly."
+        if [ -z "$TUNNEL_URL" ]; then
+            info "Tunnel is starting in the background. Check 'shooter status' shortly."
         fi
     else
         info "No cloudflared found — server accessible on local network only."
@@ -622,14 +609,79 @@ main() {
     install_deps
     run_setup_wizard
 
-    # Optional extras
-    offer_global_command
+    # Optional extras — single prompt instead of 3 separate ones
+    step "Optional extras"
+    printf '\n'
+    printf '  The following are recommended:\n'
+    printf '    %s1.%s Global %sshooter%s command (run from anywhere)\n' "$BOLD" "$RESET" "$CYAN" "$RESET"
+    printf '    %s2.%s Cloudflare Tunnel (remote access from phone)\n' "$BOLD" "$RESET"
+    printf '    %s3.%s Autostart on login\n' "$BOLD" "$RESET"
+    printf '\n'
 
-    # Cloudflare Tunnel
-    install_cloudflared
+    if ask_yes_no "  Install all recommended extras?" "y"; then
+        # Global command
+        BIN_DIR="$HOME/.local/bin"
+        SHOOTER_BIN="$BIN_DIR/shooter"
+        if [ ! -x "$SHOOTER_BIN" ]; then
+            mkdir -p "$BIN_DIR"
+            if [ -d "$SHOOTER_BIN" ]; then
+                error "$SHOOTER_BIN exists as a directory. Remove it and re-run."
+                exit 1
+            fi
+            ln -sf "$SHOOTER_REPO/bin/shooter.cjs" "$SHOOTER_BIN"
+            chmod +x "$SHOOTER_BIN"
+            success "'shooter' command linked to $SHOOTER_BIN"
+            case ":$PATH:" in
+                *":$BIN_DIR:"*) ;;
+                *)
+                    warn "$BIN_DIR is not in your PATH."
+                    info "Add this to your shell profile (~/.bashrc, ~/.zshrc, etc.):"
+                    info "  export PATH=\"\$HOME/.local/bin:\$PATH\""
 
-    # Autostart + launch
-    enable_autostart
+                    # Attempt to auto-configure PATH in shell profile
+                    SHELL_NAME=$(basename "$SHELL")
+                    case "$SHELL_NAME" in
+                        bash)
+                            RC_FILE="$HOME/.bashrc"
+                            [ -f "$HOME/.bash_profile" ] && RC_FILE="$HOME/.bash_profile"
+                            ;;
+                        zsh)
+                            RC_FILE="$HOME/.zshrc"
+                            ;;
+                        fish)
+                            RC_FILE="$HOME/.config/fish/config.fish"
+                            ;;
+                        *)
+                            RC_FILE=""
+                            ;;
+                    esac
+
+                    if [ -n "$RC_FILE" ] && [ -f "$RC_FILE" ]; then
+                        if ! grep -q '\.local/bin' "$RC_FILE" 2>/dev/null; then
+                            echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$RC_FILE"
+                            success "Added ~/.local/bin to $RC_FILE"
+                            info "Run 'source $RC_FILE' or start a new terminal to use the 'shooter' command."
+                        fi
+                    fi
+                    ;;
+            esac
+        else
+            success "'shooter' command already linked."
+        fi
+
+        # Cloudflare Tunnel
+        install_cloudflared
+
+        # Autostart
+        enable_autostart
+    else
+        info "Skipped extras. You can add them later:"
+        info "  Global command:   ln -sf $SHOOTER_REPO/bin/shooter.cjs ~/.local/bin/shooter"
+        info "  Cloudflare:       brew install cloudflared  (or see docs)"
+        info "  Autostart:        shooter autostart on"
+    fi
+
+    # Start server + tunnel
     start_server_and_tunnel
 
     # Done

@@ -45,8 +45,11 @@
   "engines": {
     "node": ">=20"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
-    "postinstall": "node-gyp rebuild --directory=node_modules/node-pty --loglevel=silent > /dev/null 2>&1 || echo '⚠ node-pty build failed — terminal features will not work. Install build tools: macOS: xcode-select --install | Linux: apt install python3 make g++'",
+    "postinstall": "node-gyp rebuild --directory=node_modules/node-pty --loglevel=silent > /dev/null 2>&1 || echo '⚠ node-pty build failed — terminal features will not work. Install build tools: macOS: xcode-select --install | Linux: apt install python3 make g++'; node-gyp rebuild --directory=node_modules/better-sqlite3 --loglevel=silent > /dev/null 2>&1 || echo '⚠ better-sqlite3 build failed — terminal persistence will not work.'",
     "build": "vite build",
     "postbuild": "cp src/lib/modules/server/terminal/pty-holder.cjs build/pty-holder.cjs",
     "dev": "vite dev --open",

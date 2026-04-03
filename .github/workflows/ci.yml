@@ -194,3 +194,172 @@ jobs:
           if [ -f /tmp/shooter.pid ]; then
             kill "$(cat /tmp/shooter.pid)" 2>/dev/null || true
           fi
+
+  macos-build:
+    runs-on: macos-14
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PNPM
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build
+        run: pnpm run build
+
+      - name: 'Test: native modules compiled'
+        run: |
+          test -f node_modules/node-pty/build/Release/pty.node
+          echo "node-pty: OK"
+          test -f node_modules/better-sqlite3/build/Release/better_sqlite3.node
+          echo "better-sqlite3: OK"
+
+      - name: 'Test: server starts on macOS'
+        env:
+          SMOKE_API_KEY: ci-macos-key
+        run: |
+          API_KEY="$SMOKE_API_KEY" node --import tsx server.ts &
+          for i in $(seq 1 15); do
+            if curl --connect-timeout 2 -sf http://localhost:54007/api/health >/dev/null 2>&1; then
+              echo "Server ready after ${i}s"
+              break
+            fi
+            sleep 1
+          done
+          curl -sf http://localhost:54007/api/health | python3 -m json.tool
+          kill %1 2>/dev/null || true
+
+  installer-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PNPM
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: 'Test: install.sh POSIX syntax'
+        run: sh -n scripts/install.sh
+
+      - name: 'Test: setup --auto from scratch'
+        run: |
+          pnpm install
+          node scripts/setup.cjs --auto 2>&1
+          test -f "$HOME/.shooter/.env"
+          grep -q '^API_KEY=' "$HOME/.shooter/.env"
+          echo "Setup auto mode: OK"
+
+      - name: 'Test: setup --auto idempotency'
+        run: |
+          ORIGINAL=$(grep '^API_KEY=' "$HOME/.shooter/.env")
+          node scripts/setup.cjs --auto 2>&1
+          AFTER=$(grep '^API_KEY=' "$HOME/.shooter/.env")
+          test "$ORIGINAL" = "$AFTER"
+          echo "Idempotency: OK"
+
+      - name: 'Test: .env permissions enforced'
+        run: |
+          chmod 644 "$HOME/.shooter/.env"
+          node scripts/setup.cjs --auto 2>&1
+          PERMS=$(stat -c '%a' "$HOME/.shooter/.env")
+          test "$PERMS" = "600"
+          echo "Permissions: OK ($PERMS)"
+
+  docker-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t shooter-ci .
+
+      - name: 'Test: container boots and serves health'
+        run: |
+          docker run -d --name shooter-ci -e API_KEY=ci-docker-key -p 54013:54007 shooter-ci
+          for i in $(seq 1 20); do
+            if curl --connect-timeout 2 -sf http://localhost:54013/api/health >/dev/null 2>&1; then
+              echo "Container ready after ${i}s"
+              break
+            fi
+            sleep 1
+          done
+          HEALTH=$(curl --connect-timeout 5 --max-time 10 -sf http://localhost:54013/api/health)
+          echo "$HEALTH" | jq .
+          echo "$HEALTH" | jq -e '.status == "healthy"'
+
+      - name: 'Test: auth works in container'
+        run: |
+          CODE=$(curl --connect-timeout 5 --max-time 10 -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer ci-docker-key" http://localhost:54013/api/sessions)
+          echo "Sessions auth: HTTP $CODE"
+          test "$CODE" = "200"
+
+      - name: 'Test: 401 without auth in container'
+        run: |
+          CODE=$(curl --connect-timeout 5 --max-time 10 -s -o /dev/null -w "%{http_code}" http://localhost:54013/api/sessions)
+          echo "No auth: HTTP $CODE"
+          test "$CODE" = "401"
+
+      - name: Cleanup
+        if: always()
+        run: docker rm -f shooter-ci 2>/dev/null || true
+
+  setup-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PNPM
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: 'Test: setup wizard (auto mode)'
+        run: |
+          node scripts/setup.cjs --auto
+          echo "Setup completed successfully"
+
+      - name: 'Test: .env was created'
+        run: |
+          ENV_FILE="$HOME/.shooter/.env"
+          test -f "$ENV_FILE"
+          echo "API_KEY is set:"
+          grep -q '^API_KEY=' "$ENV_FILE"
+
+      - name: 'Test: build output exists'
+        run: |
+          test -d build
+          test -f build/handler.js
+          echo "Build output verified"
+
+      - name: 'Test: setup --auto preserves existing config'
+        run: |
+          # Run setup again — should preserve existing API_KEY
+          ORIGINAL_KEY=$(grep '^API_KEY=' "$HOME/.shooter/.env" | head -1)
+          node scripts/setup.cjs --auto
+          NEW_KEY=$(grep '^API_KEY=' "$HOME/.shooter/.env" | head -1)
+          test "$ORIGINAL_KEY" = "$NEW_KEY"
+          echo "API key preserved on re-run"
