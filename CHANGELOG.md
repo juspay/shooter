@@ -1,3 +1,9 @@
+## [1.5.0](https://github.com/juspay/shooter/compare/v1.4.0...v1.5.0) (2026-04-03)
+
+### Features
+
+*  simplify setup, fix Docker boot, harden installer ([b9c970d](https://github.com/juspay/shooter/commit/b9c970d669c148fc33d356431bdd15330651c1d0))
+
 ## [1.4.0](https://github.com/juspay/shooter/compare/v1.3.0...v1.4.0) (2026-04-02)
 
 ### Features
