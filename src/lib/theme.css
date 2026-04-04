@@ -421,13 +421,13 @@
 }
 
 .pill-live {
-  --pill-background: rgba(34, 197, 94, 0.15);
-  --pill-color: #22c55e;
-  --pill-border: 1px solid rgba(34, 197, 94, 0.3);
+  --pill-background: var(--ds-green-alpha-200);
+  --pill-color: var(--ds-green-700);
+  --pill-border: 1px solid var(--ds-green-alpha-400);
   --pill-font-size: 0.7rem;
   --pill-padding: 2px 10px;
-  --pill-hover-background: rgba(34, 197, 94, 0.15);
-  --pill-hover-color: #22c55e;
+  --pill-hover-background: var(--ds-green-alpha-200);
+  --pill-hover-color: var(--ds-green-700);
   --pill-cursor: default;
   font-weight: 700;
   letter-spacing: 0.05em;
@@ -504,6 +504,126 @@
   --pill-hover-background: var(--ds-amber-100);
   --pill-hover-color: var(--ds-amber-900);
   --pill-cursor: inherit;
+}
+
+/* ===== Icon Sizes ===== */
+.icon-14 {
+  --icon-width: 14px;
+  --icon-height: 14px;
+  --icon-padding: 0;
+  --icon-container-paddding: 0;
+}
+
+.icon-16 {
+  --icon-width: 16px;
+  --icon-height: 16px;
+  --icon-padding: 0;
+  --icon-container-paddding: 0;
+}
+
+.icon-18 {
+  --icon-width: 18px;
+  --icon-height: 18px;
+  --icon-padding: 0;
+  --icon-container-paddding: 0;
+}
+
+.icon-24 {
+  --icon-width: 24px;
+  --icon-height: 24px;
+  --icon-padding: 0;
+  --icon-container-paddding: 0;
+}
+
+.icon-26 {
+  --icon-width: 26px;
+  --icon-height: 26px;
+  --icon-padding: 0;
+  --icon-container-paddding: 0;
+}
+
+/* ===== RelativeTime ===== */
+.terminal-time {
+  --relative-time-font-size: var(--text-xs);
+  --relative-time-color: var(--text-tertiary);
+  --relative-time-font-weight: 400;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* ===== Status Badge Pill Variants ===== */
+
+.pill-status-online {
+  --pill-background: var(--ds-green-100);
+  --pill-color: var(--ds-green-900);
+  --pill-font-size: var(--text-xs);
+  --pill-font-weight: 500;
+  --pill-padding: 0 var(--space-3);
+  --pill-border-radius: var(--radius-full);
+  --pill-hover-background: var(--ds-green-100);
+  --pill-hover-color: var(--ds-green-900);
+  --pill-cursor: default;
+  height: 26px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.pill-status-offline {
+  --pill-background: var(--ds-red-100);
+  --pill-color: var(--ds-red-900);
+  --pill-font-size: var(--text-xs);
+  --pill-font-weight: 500;
+  --pill-padding: 0 var(--space-3);
+  --pill-border-radius: var(--radius-full);
+  --pill-hover-background: var(--ds-red-100);
+  --pill-hover-color: var(--ds-red-900);
+  --pill-cursor: default;
+  height: 26px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.pill-status-degraded {
+  --pill-background: var(--ds-amber-100);
+  --pill-color: var(--ds-amber-900);
+  --pill-font-size: var(--text-xs);
+  --pill-font-weight: 500;
+  --pill-padding: 0 var(--space-3);
+  --pill-border-radius: var(--radius-full);
+  --pill-hover-background: var(--ds-amber-100);
+  --pill-hover-color: var(--ds-amber-900);
+  --pill-cursor: default;
+  height: 26px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.pill-status-unknown {
+  --pill-background: var(--ds-gray-300);
+  --pill-color: var(--text-secondary);
+  --pill-font-size: var(--text-xs);
+  --pill-font-weight: 500;
+  --pill-padding: 0 var(--space-3);
+  --pill-border-radius: var(--radius-full);
+  --pill-hover-background: var(--ds-gray-300);
+  --pill-hover-color: var(--text-secondary);
+  --pill-cursor: default;
+  height: 26px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.pill-status-online::before,
+.pill-status-offline::before,
+.pill-status-degraded::before,
+.pill-status-unknown::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
 }
 
 /* ===== Shimmer Variant Classes ===== */

@@ -225,15 +225,11 @@
     {:else}
       <!-- Show details toggle -->
       <div class="chatview-details-toggle">
-        <button
-          class="chatview-details-btn"
-          class:active={showDetails}
+        <Button
+          classes="chatview-details-btn {showDetails ? 'active' : ''}"
           onclick={toggleShowDetails}
-          type="button"
-        >
-          <span class="chatview-details-icon">{showDetails ? '&#9660;' : '&#9654;'}</span>
-          {showDetails ? 'Hide details' : 'Show details'}
-        </button>
+          text="{showDetails ? '\u25BC' : '\u25B6'} {showDetails ? 'Hide details' : 'Show details'}"
+        />
       </div>
 
       {#each messages as message (message.id)}
@@ -495,8 +491,8 @@
     justify-content: space-between;
     gap: var(--space-3, 0.75rem);
     padding: var(--space-2, 0.5rem) var(--space-4, 1rem);
-    background: #111827;
-    border-bottom: 1px solid #1e293b;
+    background: var(--ds-background-200, #111827);
+    border-bottom: 1px solid var(--border, #1e293b);
     min-height: 48px;
     flex-shrink: 0;
   }
@@ -575,36 +571,23 @@
     z-index: 5;
   }
 
-  .chatview-details-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1, 0.25rem);
-    padding: 4px 10px;
-    border: 1px solid var(--border, #2a2a2a);
-    border-radius: var(--radius-sm, 4px);
-    background: var(--bg-secondary, #141414);
-    color: var(--text-tertiary, #7d7d7d);
-    font-size: 0.7rem;
-    cursor: pointer;
+  :global(.chatview-details-btn) {
+    --button-height: auto;
+    --button-padding: 4px 10px;
+    --button-border: 1px solid var(--border, #2a2a2a);
+    --button-border-radius: var(--radius-sm, 4px);
+    --button-color: var(--bg-secondary, #141414);
+    --button-text-color: var(--text-tertiary, #7d7d7d);
+    --button-font-size: 0.7rem;
+    --button-hover-color: var(--bg-secondary, #141414);
+    --button-hover-text-color: var(--text-secondary, #a3a3a3);
+    --button-hover-border: 1px solid var(--text-tertiary, #7d7d7d);
     user-select: none;
-    transition:
-      color var(--transition-fast, 150ms),
-      border-color var(--transition-fast, 150ms);
   }
 
-  .chatview-details-btn:hover {
-    color: var(--text-secondary, #a3a3a3);
-    border-color: var(--text-tertiary, #7d7d7d);
-  }
-
-  .chatview-details-btn.active {
-    color: var(--text-secondary, #a3a3a3);
-    border-color: var(--text-tertiary, #7d7d7d);
-  }
-
-  .chatview-details-icon {
-    font-size: 0.55rem;
-    line-height: 1;
+  :global(.chatview-details-btn.active) {
+    --button-text-color: var(--text-secondary, #a3a3a3);
+    --button-border: 1px solid var(--text-tertiary, #7d7d7d);
   }
 
   /* Tool group (collapsed N tools) */

@@ -21,7 +21,7 @@
   class:connected={status === 'connected'}
   aria-label="Connection: {status}"
 >
-  <span class="status-dot {status}"></span>
+  <span class="conn-dot {status}"></span>
   <span class="status-label">{label}</span>
   {#if status === 'disconnected' && onretry}
     <Button classes="btn-ghost btn-sm btn-retry" onclick={onretry} text="Retry" />
@@ -40,7 +40,7 @@
   }
 
   .connection-status.connected {
-    color: #22c55e;
+    color: var(--ds-green-700);
   }
 
   .connection-status.reconnecting {
@@ -51,34 +51,24 @@
     color: var(--ds-red-900);
   }
 
-  .status-dot {
+  .conn-dot {
     width: 8px;
     height: 8px;
     border-radius: 50%;
     flex-shrink: 0;
   }
 
-  .status-dot.connected {
-    background: #22c55e;
+  .conn-dot.connected {
+    background: var(--ds-green-700);
   }
 
-  .status-dot.reconnecting {
+  .conn-dot.reconnecting {
     background: var(--ds-amber-700);
     animation: pulse-dot 1.5s ease-in-out infinite;
   }
 
-  .status-dot.disconnected {
+  .conn-dot.disconnected {
     background: var(--ds-red-700);
-  }
-
-  @keyframes pulse-dot {
-    0%,
-    100% {
-      opacity: 1;
-    }
-    50% {
-      opacity: 0.3;
-    }
   }
 
   .status-label {

@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@juspay/svelte-ui-components':
-        specifier: ^2.13.1
-        version: 2.14.1(svelte@5.55.0)(type-decoder@2.3.1)
+        specifier: ^2.18.0
+        version: 2.18.0(svelte@5.55.0)(type-decoder@2.3.1)
       '@parse/node-apn':
         specifier: ^7.1.0
         version: 7.1.0
@@ -469,8 +469,8 @@ packages:
   '@js-sdsl/ordered-map@4.4.2':
     resolution: {integrity: sha512-iUKgm52T8HOE/makSxjqoWhe95ZJA1/G1sYsGev2JDKUSS14KAgg1LHb+Ba+IPow0xflbnSkOsZcO08C7w1gYw==}
 
-  '@juspay/svelte-ui-components@2.14.1':
-    resolution: {integrity: sha512-hEh5a1uZsUJ2Cm6PkxnHoSDFt07GexjtJm3jELMXt16ZBl6/zht5xhiOP4jl2yzfUwEdo/V4jmGWz5pxDDQcsQ==}
+  '@juspay/svelte-ui-components@2.18.0':
+    resolution: {integrity: sha512-cq+HsFuAQsB3CCE6AED7cX6wViGGnAaOmtHIEh4ltfKU7y9XfxWkzCezpQieMg8g6Y5FMqqbTqgEUhRnsJDX7A==}
     peerDependencies:
       svelte: ^5.41.2
       type-decoder: ^2.1.0
@@ -3537,7 +3537,7 @@ snapshots:
   '@js-sdsl/ordered-map@4.4.2':
     optional: true
 
-  '@juspay/svelte-ui-components@2.14.1(svelte@5.55.0)(type-decoder@2.3.1)':
+  '@juspay/svelte-ui-components@2.18.0(svelte@5.55.0)(type-decoder@2.3.1)':
     dependencies:
       svelte: 5.55.0
       type-decoder: 2.3.1

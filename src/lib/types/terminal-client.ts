@@ -51,7 +51,7 @@ export interface LaunchSheetProps {
   apiKey: string;
   onClose: () => void;
   onLaunch: (response: CreateTerminalResponse) => void;
-  open: boolean;
+  open?: boolean;
 }
 
 export interface LayoutData {

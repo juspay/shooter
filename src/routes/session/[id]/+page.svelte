@@ -12,7 +12,7 @@
   import { page } from '$app/state';
   import { getCached, setCache } from '$lib/modules/client/common';
   import ChatView from '$lib/modules/client/terminal/ChatView.svelte';
-  import { Shimmer } from '@juspay/svelte-ui-components';
+  import { Button, Shimmer } from '@juspay/svelte-ui-components';
   import { onMount } from 'svelte';
 
   // --- State ---
@@ -584,9 +584,12 @@
     <div class="session-chat-container">
       {#if hasMoreMessages}
         <div class="load-earlier-row">
-          <button class="load-earlier-btn" onclick={loadEarlierMessages} disabled={loadingMore}>
-            {loadingMore ? 'Loading...' : 'Load earlier messages'}
-          </button>
+          <Button
+            text={loadingMore ? 'Loading...' : 'Load earlier messages'}
+            classes="btn-ghost btn-sm"
+            disabled={loadingMore}
+            onclick={loadEarlierMessages}
+          />
         </div>
       {/if}
       <ChatView
@@ -644,18 +647,8 @@
 
   .resume-status {
     font-size: 0.75rem;
-    color: var(--text-tertiary, #888);
-    animation: pulse 1.5s ease-in-out infinite;
-  }
-
-  @keyframes pulse {
-    0%,
-    100% {
-      opacity: 1;
-    }
-    50% {
-      opacity: 0.4;
-    }
+    color: var(--text-tertiary);
+    animation: pulse-dot 1.5s ease-in-out infinite;
   }
 
   .connection-dot {
@@ -667,12 +660,12 @@
   }
 
   .connection-dot.connected {
-    background: #4ade80;
+    background: var(--ds-green-500);
   }
 
   .connection-dot.reconnecting {
-    background: #f59e0b;
-    animation: pulse 1s ease-in-out infinite;
+    background: var(--ds-amber-700);
+    animation: pulse-dot 1s ease-in-out infinite;
   }
 
   /* Chat container fills remaining space */
@@ -692,23 +685,4 @@
     border-bottom: 1px solid var(--border);
   }
 
-  .load-earlier-btn {
-    font-size: 0.8rem;
-    color: var(--text-secondary);
-    background: none;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm, 4px);
-    padding: 4px 12px;
-    cursor: pointer;
-  }
-
-  .load-earlier-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .load-earlier-btn:hover:not(:disabled) {
-    color: var(--text-primary);
-    border-color: var(--text-tertiary, #888);
-  }
 </style>

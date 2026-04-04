@@ -10,14 +10,22 @@
   import { browser } from '$app/environment';
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
-  import { EmptyState } from '$lib/modules/client/common';
+  import AlertTriangleSvg from '$lib/assets/icons/alert-triangle.svg?raw';
   import ChatView from '$lib/modules/client/terminal/ChatView.svelte';
   import CommandPalette from '$lib/modules/client/terminal/CommandPalette.svelte';
   import ConnectionStatus from '$lib/modules/client/terminal/ConnectionStatus.svelte';
-  import { createShortcutManager, modLabel } from '$lib/modules/client/terminal/keyboard-shortcuts';
+  import { createShortcutManager } from '$lib/modules/client/terminal/keyboard-shortcuts';
   import QuickKeys from '$lib/modules/client/terminal/QuickKeys.svelte';
   import ShortcutsHelp from '$lib/modules/client/terminal/ShortcutsHelp.svelte';
-  import { Button, Input, Pill, Tabs, Tooltip } from '@juspay/svelte-ui-components';
+  import {
+    Button,
+    EmptyState,
+    Icon,
+    Input,
+    Pill,
+    Tabs,
+    Tooltip,
+  } from '@juspay/svelte-ui-components';
   import { onDestroy, onMount } from 'svelte';
 
   // ------- Constants -------
@@ -665,7 +673,9 @@
         Terminals
       </a>
     </div>
-    <EmptyState icon="alert-triangle" title="Error" description={error} />
+    <EmptyState title="Error" description={error}>
+      {#snippet icon()}<Icon svg={AlertTriangleSvg} classes="icon-24" />{/snippet}
+    </EmptyState>
   </main>
 {:else if terminal}
   <div class="term-page">
@@ -711,15 +721,14 @@
           />
         {/if}
 
-        <button
-          class="term-shortcuts-btn"
+        <Button
+          classes="term-shortcuts-btn"
           onclick={(): void => {
             showShortcutsHelp = !showShortcutsHelp;
           }}
-          type="button"
-          title="{modLabel}+/ for shortcuts"
-          aria-label="Keyboard shortcuts">?</button
-        >
+          text="?"
+          ariaLabel="Keyboard shortcuts"
+        />
 
         {#if isRunning}
           <Button
@@ -907,25 +916,19 @@
   }
 
   /* Shortcuts button */
-  .term-shortcuts-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--border);
-    background: transparent;
-    color: var(--text-tertiary);
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
+  :global(.term-shortcuts-btn) {
+    --button-height: 28px;
+    --button-width: 28px;
+    --button-padding: 0;
+    --button-border-radius: var(--radius-sm);
+    --button-border: 1px solid var(--border);
+    --button-color: transparent;
+    --button-text-color: var(--text-tertiary);
+    --button-font-size: 14px;
+    --button-font-weight: 600;
+    --button-hover-color: var(--component-bg-hover);
+    --button-hover-text-color: var(--text-primary);
     flex-shrink: 0;
-  }
-
-  .term-shortcuts-btn:hover {
-    background: var(--component-bg-hover);
-    color: var(--text-primary);
   }
 
   /* CWD display */
@@ -968,24 +971,12 @@
   }
 
   .activity-active {
-    background: #4ade80;
+    background: var(--ds-green-500);
     animation: activity-pulse 600ms ease-in-out infinite;
   }
 
   .activity-idle {
     background: var(--ds-gray-600);
-  }
-
-  @keyframes activity-pulse {
-    0%,
-    100% {
-      transform: scale(1);
-      opacity: 1;
-    }
-    50% {
-      transform: scale(1.5);
-      opacity: 0.7;
-    }
   }
 
   /* ============================================
@@ -998,7 +989,7 @@
     min-height: 0;
     overflow: hidden;
     padding: var(--space-1);
-    background: #0a0a0f;
+    background: var(--ds-background-200, #0a0a0f);
   }
 
   .term-body :global(.xterm) {

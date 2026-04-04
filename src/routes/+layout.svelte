@@ -6,7 +6,11 @@
   import { browser } from '$app/environment';
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
-  import { Icon, StatusBadge } from '$lib/modules/client/common';
+  import BellSvg from '$lib/assets/icons/bell.svg?raw';
+  import DashboardSvg from '$lib/assets/icons/dashboard.svg?raw';
+  import SettingsSvg from '$lib/assets/icons/settings.svg?raw';
+  import TerminalSvg from '$lib/assets/icons/terminal.svg?raw';
+  import { Button, Icon, Pill } from '@juspay/svelte-ui-components';
   import { onMount, type Snippet } from 'svelte';
 
   const { children, data }: { children: Snippet; data: LayoutData } = $props();
@@ -26,6 +30,19 @@
   });
 
   let systemStatus = $state<'degraded' | 'error' | 'healthy' | 'unknown'>('unknown');
+
+  const statusLabels: Record<string, string> = {
+    degraded: 'Degraded',
+    error: 'Offline',
+    healthy: 'Online',
+    unknown: 'Checking',
+  };
+  const statusClasses: Record<string, string> = {
+    degraded: 'pill-status-degraded',
+    error: 'pill-status-offline',
+    healthy: 'pill-status-online',
+    unknown: 'pill-status-unknown',
+  };
 
   onMount(() => {
     void checkSystemStatus();
@@ -65,30 +82,19 @@
       </a>
 
       <div class="nav-right">
-        <StatusBadge status={systemStatus} />
-        <button
-          class="btn-gear {$page.url.pathname === '/config' ? 'btn-gear-active' : ''}"
+        <Pill
+          text={statusLabels[systemStatus] || 'Checking'}
+          classes={statusClasses[systemStatus] || 'pill-status-unknown'}
+        />
+        <Button
+          classes="btn-gear {$page.url.pathname === '/config' ? 'btn-gear-active' : ''}"
           onclick={(): void => {
             void goto('/config');
           }}
-          aria-label="Settings"
+          ariaLabel="Settings"
         >
-          <svg
-            width="18"
-            height="18"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <circle cx="12" cy="12" r="3"></circle>
-            <path
-              d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"
-            ></path>
-          </svg>
-        </button>
+          {#snippet icon()}<Icon svg={SettingsSvg} classes="icon-18" />{/snippet}
+        </Button>
       </div>
     </div>
   </header>
@@ -108,19 +114,7 @@
           $page.url.pathname.startsWith('/project') ||
           $page.url.pathname.startsWith('/session')}
       >
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.8"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <rect x="3" y="3" width="7" height="7"></rect>
-          <rect x="14" y="3" width="7" height="7"></rect>
-          <rect x="3" y="14" width="7" height="7"></rect>
-          <rect x="14" y="14" width="7" height="7"></rect>
-        </svg>
+        <Icon svg={DashboardSvg} classes="icon-26" />
         <span>Dashboard</span>
       </a>
       <a
@@ -128,7 +122,7 @@
         class="tab-item"
         class:active={$page.url.pathname.startsWith('/activity')}
       >
-        <Icon name="bell" size={26} />
+        <Icon svg={BellSvg} classes="icon-26" />
         <span>Activity</span>
       </a>
       <a
@@ -136,17 +130,7 @@
         class="tab-item"
         class:active={$page.url.pathname.startsWith('/terminals')}
       >
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.8"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <polyline points="4 17 10 11 4 5"></polyline>
-          <line x1="12" y1="19" x2="20" y2="19"></line>
-        </svg>
+        <Icon svg={TerminalSvg} classes="icon-26" />
         <span>Terminals</span>
       </a>
     </div>
@@ -160,30 +144,24 @@
     gap: var(--space-2);
   }
 
-  .btn-gear {
-    background: transparent;
-    color: var(--text-muted);
-    border: none;
-    padding: 0;
-    height: 36px;
-    width: 36px;
-    border-radius: var(--radius-md);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+  :global(.btn-gear) {
+    --button-color: transparent;
+    --button-text-color: var(--text-muted);
+    --button-border: none;
+    --button-padding: 0;
+    --button-height: 36px;
+    --button-width: 36px;
+    --button-border-radius: var(--radius-md);
+    --button-hover-color: var(--component-bg);
+    --button-hover-text-color: var(--text-primary);
   }
-  .btn-gear:hover {
-    background: var(--component-bg);
-    color: var(--text-primary);
-  }
-  .btn-gear:focus-visible {
+  :global(.btn-gear:focus-visible) {
     outline: 2px solid var(--ds-green-700);
     outline-offset: 2px;
   }
-  .btn-gear-active {
-    background: var(--component-bg);
-    color: var(--text-primary);
+  :global(.btn-gear-active) {
+    --button-color: var(--component-bg);
+    --button-text-color: var(--text-primary);
   }
 
   .content-area {
@@ -234,17 +212,15 @@
   .tab-item.active {
     color: var(--ds-green-700);
   }
-  .tab-item :global(svg) {
-    width: 26px;
-    height: 26px;
+  .tab-item :global(.icon) {
     flex-shrink: 0;
   }
 
   /* Mobile: page headers stack vertically, buttons wrap */
   @media (max-width: 480px) {
-    .btn-gear {
-      height: 44px;
-      width: 44px;
+    :global(.btn-gear) {
+      --button-height: 44px;
+      --button-width: 44px;
     }
     .bottom-tabs {
       height: 60px;
@@ -255,14 +231,12 @@
       gap: 3px;
       min-height: 44px;
     }
-    .tab-item :global(svg) {
-      width: 24px;
-      height: 24px;
-    }
 
-    :global(.status-badge) {
+    :global(.pill-status-online),
+    :global(.pill-status-offline),
+    :global(.pill-status-degraded),
+    :global(.pill-status-unknown) {
       font-size: 10px;
-      padding: 0 8px;
       height: 22px;
     }
 
