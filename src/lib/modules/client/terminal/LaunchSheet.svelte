@@ -1,10 +1,11 @@
 <script lang="ts">
   import type { CreateTerminalResponse, LaunchSheetProps, Preset } from '$lib/types';
 
-  import { Banner, Button, Choicebox, Input, Select } from '@juspay/svelte-ui-components';
+  import { Banner, Button, Choicebox, Input, Select, Sheet } from '@juspay/svelte-ui-components';
   import { onMount } from 'svelte';
 
-  const { apiKey, onClose, onLaunch, open }: LaunchSheetProps = $props();
+  // eslint-disable-next-line prefer-const -- open is mutated via bind:open from parent
+  let { apiKey, onClose, onLaunch, open = $bindable(false) }: LaunchSheetProps = $props();
 
   const presets: Preset[] = [
     { args: [], command: 'claude', label: 'Claude Code' },
@@ -107,172 +108,101 @@
     }
   }
 
-  function handleBackdropClick(event: MouseEvent): void {
-    if (event.target === event.currentTarget) {
-      onClose();
-    }
-  }
 
-  function handleKeydown(event: KeyboardEvent): void {
-    if (!open) {
-      return;
-    }
-    if (event.key === 'Escape') {
-      onClose();
-    }
-  }
 </script>
 
-<svelte:window onkeydown={handleKeydown} />
-
-{#if open}
-  <div class="overlay" role="presentation" onclick={handleBackdropClick}>
-    <div class="sheet" role="dialog" aria-modal="true" aria-label="New Terminal">
-      <div class="handle-bar">
-        <div class="handle"></div>
+<Sheet
+  bind:open
+  side="bottom"
+  title="New Terminal"
+  onclose={onClose}
+  classes="launch-sheet"
+>
+  {#snippet content()}
+    <div class="section">
+      <span class="section-label">Quick Launch</span>
+      <div class="preset-grid">
+        {#each presets as preset, i (preset.label)}
+          <Choicebox
+            mode="radio"
+            selected={selectedPreset === i}
+            onclick={() => {
+              selectPreset(i);
+            }}
+            classes="preset-choice"
+          >
+            {preset.label}
+          </Choicebox>
+        {/each}
       </div>
-
-      <h2 class="sheet-title">New Terminal</h2>
-
-      <div class="section">
-        <span class="section-label">Quick Launch</span>
-        <div class="preset-grid">
-          {#each presets as preset, i (preset.label)}
-            <Choicebox
-              mode="radio"
-              selected={selectedPreset === i}
-              onclick={(): void => {
-                selectPreset(i);
-              }}
-              classes="preset-choice"
-            >
-              {preset.label}
-            </Choicebox>
-          {/each}
-        </div>
-      </div>
-
-      <div class="section">
-        <span class="section-label">Working Directory</span>
-        <Select
-          items={projectPaths.length > 0
-            ? projectPaths.map((p) => ({ id: p, label: p }))
-            : [{ id: '', label: 'No recent projects' }]}
-          value={selectedCwd ? [selectedCwd] : projectPaths.length > 0 ? [projectPaths[0]] : ['']}
-          placeholder="Select a project"
-          onchange={(value: string[]): void => {
-            selectedCwd = value[0] || '';
-          }}
-          classes="launch-select"
-        />
-        <div class="custom-cwd-group">
-          <Input
-            label="Or enter a custom path"
-            bind:value={customCwd}
-            dataType="text"
-            placeholder="/path/to/project"
-            classes="input-mono launch-input"
-          />
-        </div>
-      </div>
-
-      <Button
-        classes="btn-launch"
-        disabled={launching}
-        onclick={handleLaunch}
-        showLoader={launching}
-        text={launching ? 'Launching...' : 'Launch Terminal'}
-      />
-
-      {#if launchError}
-        <Banner text={launchError} classes="banner-error launch-error-banner" />
-      {/if}
     </div>
-  </div>
-{/if}
+
+    <div class="section">
+      <span class="section-label">Working Directory</span>
+      <Select
+        items={projectPaths.length > 0
+          ? projectPaths.map((p) => ({ id: p, label: p }))
+          : [{ id: '', label: 'No recent projects' }]}
+        value={selectedCwd ? [selectedCwd] : projectPaths.length > 0 ? [projectPaths[0]] : ['']}
+        placeholder="Select a project"
+        onchange={(value) => {
+          selectedCwd = value[0] || '';
+        }}
+        classes="launch-select"
+      />
+      <div class="custom-cwd-group">
+        <Input
+          label="Or enter a custom path"
+          bind:value={customCwd}
+          dataType="text"
+          placeholder="/path/to/project"
+          classes="input-mono launch-input"
+        />
+      </div>
+    </div>
+
+    <Button
+      classes="btn-launch"
+      disabled={launching}
+      onclick={handleLaunch}
+      showLoader={launching}
+      text={launching ? 'Launching...' : 'Launch Terminal'}
+    />
+
+    {#if launchError}
+      <Banner text={launchError} classes="banner-error launch-error-banner" />
+    {/if}
+  {/snippet}
+</Sheet>
 
 <style>
-  .overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.6);
-    z-index: 200;
-    display: flex;
-    align-items: flex-end;
-    justify-content: center;
+  :global(.launch-sheet) {
+    --sheet-overlay-z-index: 200;
+    --sheet-overlay-background: rgba(0, 0, 0, 0.6);
+    --sheet-background: var(--ds-gray-100);
+    --sheet-z-index: 201;
+    --sheet-max-height: 90vh;
+    --sheet-height: auto;
+    --sheet-border: none;
+    --sheet-box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.3);
+    --sheet-header-padding: var(--space-4) var(--space-5);
+    --sheet-header-background: var(--ds-gray-100);
+    --sheet-header-border-bottom: none;
+    --sheet-title-font-size: var(--text-xl);
+    --sheet-title-font-weight: 600;
+    --sheet-title-color: var(--text-primary);
+    --sheet-close-button-color: var(--text-secondary);
+    --sheet-close-button-hover-background: var(--component-bg-hover);
+    --sheet-content-padding: 0 var(--space-5) calc(var(--space-8, 32px) + env(safe-area-inset-bottom, 0px));
   }
 
-  .sheet {
-    background: var(--ds-gray-100);
-    border-top-left-radius: var(--radius-xl);
-    border-top-right-radius: var(--radius-xl);
-    width: 100%;
-    max-height: 90vh;
-    overflow-y: auto;
-    padding: var(--space-4) var(--space-5)
-      calc(var(--space-8, 32px) + env(safe-area-inset-bottom, 0px));
-    animation: slideUp 0.25s ease;
-  }
-
-  @keyframes slideUp {
-    from {
-      transform: translateY(100%);
-    }
-    to {
-      transform: translateY(0);
-    }
-  }
-
-  /* Desktop: centered modal */
+  /* Desktop: override bottom sheet to appear as centered modal */
   @media (min-width: 768px) {
-    .overlay {
-      align-items: center;
+    :global(.launch-sheet) {
+      --sheet-max-height: 80vh;
+      --sheet-width: 480px;
+      --sheet-max-width: 90vw;
     }
-
-    .sheet {
-      max-width: 480px;
-      border-radius: var(--radius-xl);
-      animation: fadeScale 0.2s ease;
-    }
-
-    @keyframes fadeScale {
-      from {
-        opacity: 0;
-        transform: scale(0.96);
-      }
-      to {
-        opacity: 1;
-        transform: scale(1);
-      }
-    }
-  }
-
-  .handle-bar {
-    display: flex;
-    justify-content: center;
-    padding-bottom: var(--space-3);
-  }
-
-  .handle {
-    width: 36px;
-    height: 4px;
-    border-radius: var(--radius-full);
-    background: var(--ds-gray-500);
-  }
-
-  /* Hide handle bar on desktop */
-  @media (min-width: 768px) {
-    .handle-bar {
-      display: none;
-    }
-  }
-
-  .sheet-title {
-    font-size: var(--text-xl);
-    font-weight: 600;
-    color: var(--text-primary);
-    margin-bottom: var(--space-5);
-    letter-spacing: var(--tracking-tight);
   }
 
   .section {

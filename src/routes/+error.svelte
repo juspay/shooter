@@ -1,6 +1,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
+  import { Button } from '@juspay/svelte-ui-components';
 </script>
 
 <svelte:head>
@@ -27,13 +28,14 @@
       {/if}
     </p>
     <div class="error-actions">
-      <button class="error-btn" onclick={(): void => void goto('/')}>Go Home</button>
-      <button
-        class="error-btn error-btn-secondary"
+      <Button text="Go Home" classes="btn-primary" onclick={(): void => void goto('/')} />
+      <Button
+        text="Go Back"
+        classes="btn-secondary"
         onclick={(): void => {
           history.back();
-        }}>Go Back</button
-      >
+        }}
+      />
     </div>
   </div>
 </main>
@@ -55,7 +57,7 @@
   .error-code {
     font-size: 4rem;
     font-weight: 700;
-    color: var(--color-text-tertiary, #555);
+    color: var(--text-tertiary);
     line-height: 1;
     margin-bottom: var(--space-2);
   }
@@ -67,7 +69,7 @@
   }
 
   .error-message {
-    color: var(--color-text-secondary, #888);
+    color: var(--text-secondary);
     font-size: 0.875rem;
     line-height: 1.5;
     margin-bottom: var(--space-5);
@@ -77,23 +79,5 @@
     display: flex;
     gap: var(--space-3);
     justify-content: center;
-  }
-
-  .error-btn {
-    padding: 10px 20px;
-    border-radius: 8px;
-    font-size: 0.875rem;
-    font-weight: 500;
-    cursor: pointer;
-    border: none;
-    background: var(--color-accent, #0d9488);
-    color: white;
-    min-height: 44px;
-  }
-
-  .error-btn-secondary {
-    background: transparent;
-    border: 1px solid var(--border, #333);
-    color: var(--color-text-secondary, #888);
   }
 </style>

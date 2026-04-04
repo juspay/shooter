@@ -2,17 +2,18 @@
   import type { DashboardCard, ProjectGroup, ShooterConfig } from '$lib/types';
 
   import { goto } from '$app/navigation';
+  import BellSvg from '$lib/assets/icons/bell.svg?raw';
+  import RefreshSvg from '$lib/assets/icons/refresh.svg?raw';
+  import SettingsSvg from '$lib/assets/icons/settings.svg?raw';
   import {
     clearCache,
-    EmptyState,
     formatRelativeTime,
     getCached,
-    Icon,
     isShooterConfig,
     setCache,
   } from '$lib/modules/client/common';
   import { connect, DashboardView, disconnect, getCards } from '$lib/modules/client/dashboard';
-  import { Banner, Button, Pill, Shimmer } from '@juspay/svelte-ui-components';
+  import { Banner, Button, EmptyState, Icon, Pill, Shimmer } from '@juspay/svelte-ui-components';
   import { onDestroy, onMount } from 'svelte';
 
   const POLL_INTERVAL_MS = 10_000;
@@ -158,7 +159,7 @@
       </div>
       <div class="page-actions">
         <Button classes="btn-secondary" onclick={forceRefresh} disabled={loading}>
-          <Icon name="refresh" size={14} />
+          <Icon svg={RefreshSvg} classes="icon-14" />
           Refresh
         </Button>
       </div>
@@ -195,10 +196,10 @@
     </div>
   {:else if !config?.apiKey}
     <EmptyState
-      icon="settings"
       title="Configuration Required"
       description="Set up your API credentials to start tracking sessions"
     >
+      {#snippet icon()}<Icon svg={SettingsSvg} classes="icon-24" />{/snippet}
       <Button classes="btn-primary" onclick={navigateToConfig} text="Configure Settings" />
     </EmptyState>
   {:else}
@@ -223,10 +224,11 @@
       </div>
     {:else if totalSessionCount() === 0 && cards.length === 0}
       <EmptyState
-        icon="bell"
         title="No sessions yet"
         description="Claude Code sessions will appear here once JSONL files are found"
-      />
+      >
+        {#snippet icon()}<Icon svg={BellSvg} classes="icon-24" />{/snippet}
+      </EmptyState>
     {:else if projects.length > 0}
       {#if cards.length > 0}
         <h3 class="section-label">Sessions</h3>
@@ -263,36 +265,6 @@
 </main>
 
 <style>
-  .page-header {
-    margin-bottom: var(--space-6);
-  }
-
-  .page-header-content {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: var(--space-4);
-  }
-
-  .page-title {
-    font-size: var(--text-2xl);
-    font-weight: 700;
-    letter-spacing: -0.03em;
-    color: var(--text-primary);
-    margin-bottom: var(--space-1);
-  }
-
-  .page-description {
-    font-size: var(--text-sm);
-    color: var(--text-secondary);
-  }
-
-  .page-actions {
-    display: flex;
-    gap: var(--space-2);
-    flex-shrink: 0;
-  }
-
   .stats-bar {
     display: flex;
     gap: 10px;
@@ -310,8 +282,8 @@
   }
 
   .stat-chip-active {
-    background: rgba(34, 197, 94, 0.1);
-    border-color: rgba(34, 197, 94, 0.25);
+    background: var(--ds-green-alpha-200);
+    border-color: var(--ds-green-alpha-400);
   }
 
   .stat-value {
@@ -321,7 +293,7 @@
   }
 
   .stat-chip-active .stat-value {
-    color: #22c55e;
+    color: var(--ds-green-500);
   }
 
   .stat-label {
@@ -350,23 +322,8 @@
   }
 
   @media (max-width: 768px) {
-    .page-header-content {
-      flex-direction: column;
-      gap: var(--space-4);
-    }
-
     .stats-bar {
       flex-wrap: wrap;
-    }
-  }
-
-  @media (max-width: 480px) {
-    .page-actions {
-      width: 100%;
-    }
-
-    .page-actions :global(button) {
-      flex: 1;
     }
   }
 </style>

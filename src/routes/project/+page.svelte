@@ -3,16 +3,17 @@
 
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
+  import AlertTriangleSvg from '$lib/assets/icons/alert-triangle.svg?raw';
+  import BellSvg from '$lib/assets/icons/bell.svg?raw';
+  import RefreshSvg from '$lib/assets/icons/refresh.svg?raw';
   import {
     clearCache,
-    EmptyState,
     formatRelativeTime,
     getCached,
-    Icon,
     isShooterConfig,
     setCache,
   } from '$lib/modules/client/common';
-  import { Banner, Button, Pill, Shimmer } from '@juspay/svelte-ui-components';
+  import { Banner, Button, EmptyState, Icon, Pill, Shimmer } from '@juspay/svelte-ui-components';
   import { onDestroy, onMount } from 'svelte';
 
   const POLL_INTERVAL_MS = 15_000;
@@ -246,16 +247,17 @@
       </a>
     </div>
     <EmptyState
-      icon="alert-triangle"
       title="Project Not Found"
       description="The requested project could not be found."
-    />
+    >
+      {#snippet icon()}<Icon svg={AlertTriangleSvg} classes="icon-24" />{/snippet}
+    </EmptyState>
   {:else}
     <div class="chat-session-header">
       <div class="chat-session-header-top">
         <a href="/" class="back-link">&#8592; Back to Projects</a>
         <Button classes="btn-secondary" onclick={forceRefresh} disabled={loading}>
-          <Icon name="refresh" size={14} />
+          <Icon svg={RefreshSvg} classes="icon-14" />
           Refresh
         </Button>
       </div>
@@ -268,10 +270,11 @@
 
     {#if project.sessions.length === 0}
       <EmptyState
-        icon="bell"
         title="No sessions yet"
         description="Sessions for this project will appear here"
-      />
+      >
+        {#snippet icon()}<Icon svg={BellSvg} classes="icon-24" />{/snippet}
+      </EmptyState>
     {:else}
       <div class="sessions-container">
         {#each visibleSessions as session (session.id)}
@@ -377,7 +380,7 @@
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: #4ade80;
+    background: var(--ds-green-500);
     margin-right: 2px;
     flex-shrink: 0;
   }

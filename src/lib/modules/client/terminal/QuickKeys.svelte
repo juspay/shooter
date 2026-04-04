@@ -44,11 +44,11 @@
   }
 
   :global(.btn-quick-key) {
-    --button-color: #1e293b;
-    --button-text-color: #94a3b8;
+    --button-color: var(--ds-gray-200);
+    --button-text-color: var(--ds-gray-700);
     --button-border: 1px solid var(--ds-gray-400);
-    --button-hover-color: #334155;
-    --button-hover-text-color: #e2e8f0;
+    --button-hover-color: var(--ds-gray-300);
+    --button-hover-text-color: var(--text-primary);
     --button-hover-border: 1px solid var(--ds-gray-400);
     --button-height: 44px;
     --button-padding: 0 var(--space-3);

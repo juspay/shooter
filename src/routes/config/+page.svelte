@@ -2,16 +2,18 @@
   import type { ConfigPageData, NativeBridgeConfig, ShooterConfig } from '$lib/types';
 
   import { browser } from '$app/environment';
+  import AlertTriangleSvg from '$lib/assets/icons/alert-triangle.svg?raw';
+  import CheckCircleSvg from '$lib/assets/icons/check-circle.svg?raw';
+  import PlaySvg from '$lib/assets/icons/play.svg?raw';
+  import XCircleSvg from '$lib/assets/icons/x-circle.svg?raw';
   import {
-    Card,
     hasScanner,
-    Icon,
     isShooterConfig,
     scanQR,
     toErrorMessage,
   } from '$lib/modules/client/common';
   import { PROVIDERS } from '$lib/modules/client/neurolink/provider-config';
-  import { Banner, Button, Input, Stepper } from '@juspay/svelte-ui-components';
+  import { Banner, Button, Card, Icon, Input, Stepper } from '@juspay/svelte-ui-components';
   import { onMount } from 'svelte';
 
   const { data }: { data: ConfigPageData } = $props();
@@ -398,15 +400,15 @@
         </Card>
 
         {#if result}
-          {@const bannerIcon =
+          {@const bannerSvg =
             statusType === 'success'
-              ? 'check-circle'
+              ? CheckCircleSvg
               : statusType === 'error'
-                ? 'x-circle'
-                : 'alert-triangle'}
+                ? XCircleSvg
+                : AlertTriangleSvg}
           <Banner text={result} classes="banner-{statusType || 'info'}">
             {#snippet icon()}
-              <Icon name={bannerIcon} size={16} />
+              <Icon svg={bannerSvg} classes="icon-16" />
             {/snippet}
           </Banner>
         {/if}
@@ -418,7 +420,7 @@
             disabled={loading || !apiKey.trim()}
           >
             {#if !loading}
-              <Icon name="play" size={14} />
+              <Icon svg={PlaySvg} classes="icon-14" />
             {/if}
             Test Connection
           </Button>
@@ -501,8 +503,8 @@
             {#each PROVIDERS as provider (provider.id)}
               <div class="provider-row">
                 <Icon
-                  name={data.aiProviders[provider.id] ? 'check-circle' : 'x-circle'}
-                  size={14}
+                  svg={data.aiProviders[provider.id] ? CheckCircleSvg : XCircleSvg}
+                  classes="icon-14"
                 />
                 <span class="provider-label">{provider.label}</span>
                 <span class="provider-status" class:configured={data.aiProviders[provider.id]}>
@@ -543,23 +545,6 @@
     max-width: 900px;
     margin: 0 auto;
     padding-bottom: var(--space-6);
-  }
-
-  .page-header {
-    margin-bottom: var(--space-8);
-  }
-
-  .page-title {
-    font-size: var(--text-2xl);
-    font-weight: 600;
-    letter-spacing: -0.03em;
-    color: var(--text-primary);
-    margin-bottom: var(--space-1);
-  }
-
-  .page-description {
-    font-size: var(--text-sm);
-    color: var(--text-secondary);
   }
 
   .settings-grid {
