@@ -12,16 +12,17 @@
  */
 
 import type {
+  ConversationMessage,
+  MessagePart,
   OpenCodeMessage,
   OpenCodePart,
   OpenCodePartData,
   OpenCodeSession,
-} from '$generated/types';
+  OpenCodeWatchState as WatchState,
+} from '$lib/types';
 
 import Database from 'better-sqlite3';
 import * as fs from 'fs';
-
-import type { ConversationMessage, MessagePart } from '../sessions/types';
 
 import { resolveOpenCodeDbPath } from '../sessions/opencode-db-path';
 
@@ -34,24 +35,6 @@ const POLL_INTERVAL_MS = 2000;
 
 /** Maximum parameters per SQLite IN clause (SQLite limit is 999). */
 const SQLITE_MAX_PARAMS = 500;
-
-// ── Per-session Watcher State ────────────────────────────────────────
-// WatchState is a runtime/behavioral type (callbacks, emittedSets,
-// intervalHandle) and stays local.
-
-interface WatchState {
-  callbacks: Set<(messages: ConversationMessage[]) => void>;
-  /** Set of message IDs we have already emitted, to avoid duplicates. */
-  emittedMessageIds: Set<string>;
-  /** Map of part ID to last-seen time_updated, to detect in-place updates. */
-  emittedPartUpdatedAt: Map<string, number>;
-  intervalHandle: ReturnType<typeof setInterval>;
-  /** Highest time_created we have seen for messages (milliseconds). */
-  lastMessageTime: number;
-  /** Highest time_updated we have seen for parts (milliseconds). */
-  lastPartTime: number;
-  sessionId: string;
-}
 
 class OpenCodeWatcher {
   private watchers = new Map<string, WatchState>();
@@ -156,7 +139,10 @@ class OpenCodeWatcher {
         if (!partsByMessage.has(part.message_id)) {
           partsByMessage.set(part.message_id, []);
         }
-        partsByMessage.get(part.message_id)!.push(part);
+        const bucket = partsByMessage.get(part.message_id);
+        if (bucket) {
+          bucket.push(part);
+        }
       }
 
       return this.buildMessages(messages, partsByMessage);
@@ -449,7 +435,10 @@ class OpenCodeWatcher {
             if (!partsByMessage.has(part.message_id)) {
               partsByMessage.set(part.message_id, []);
             }
-            partsByMessage.get(part.message_id)!.push(part);
+            const bucket = partsByMessage.get(part.message_id);
+            if (bucket) {
+              bucket.push(part);
+            }
           }
 
           const newEntries = this.buildMessages(dedupedMessages, partsByMessage);
@@ -510,7 +499,10 @@ class OpenCodeWatcher {
             if (!partsByMessage.has(part.message_id)) {
               partsByMessage.set(part.message_id, []);
             }
-            partsByMessage.get(part.message_id)!.push(part);
+            const bucket = partsByMessage.get(part.message_id);
+            if (bucket) {
+              bucket.push(part);
+            }
           }
 
           // Fetch the parent messages for context (batched to avoid SQLite param limit).

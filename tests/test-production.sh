@@ -64,7 +64,7 @@ elif echo "$AUTH_RESPONSE" | grep -q '"success":true'; then
     echo "✅ API Authentication: PASSED"
 elif echo "$AUTH_RESPONSE" | grep -q 'JSON.*position'; then
     echo "⚠️  JSON parsing error detected (APNs key issue)"
-    echo "Check APNS_KEY_BASE64 environment variable"
+    echo "Check APNS_KEY environment variable"
     exit 1
 else
     echo "⚠️  Unexpected response - check logs"
@@ -115,7 +115,7 @@ else
     if echo "$NOTIFY_RESPONSE" | grep -q 'JSON.*position'; then
         echo ""
         echo "💡 JSON parsing error detected:"
-        echo "   - Check APNS_KEY_BASE64 environment variable"
+        echo "   - Check APNS_KEY environment variable"
         echo "   - Ensure no extra characters or formatting issues"
         echo "   - Verify base64 content is exactly as provided"
     fi

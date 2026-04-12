@@ -1,10 +1,11 @@
 <script lang="ts">
-  import type { ShooterConfig, TerminalDetailView } from '$generated/types';
   import type {
     ConversationMessage,
     MessagePart,
+    ShooterConfig,
+    TerminalDetailView,
     ToolUsePart,
-  } from '$lib/modules/server/sessions/types';
+  } from '$lib/types';
 
   import { browser } from '$app/environment';
   import { goto } from '$app/navigation';
@@ -72,20 +73,20 @@
   );
   const tabActiveIndex = $derived(viewMode === 'raw' ? 0 : 1);
   const displayCwd = $derived(shortenPath(currentCwd || terminal?.cwd || ''));
-  const paletteCommands = $derived.by(() => {
-    const cmds = [
-      { action: () => void goto('/'), label: 'Go to Home' },
-      { action: () => void goto('/terminals'), label: 'Go to Terminals' },
-      { action: () => void goto('/config'), label: 'Go to Settings' },
+  const paletteCommands = $derived.by((): { action: () => void; label: string }[] => {
+    const cmds: { action: () => void; label: string }[] = [
+      { action: (): void => void goto('/'), label: 'Go to Home' },
+      { action: (): void => void goto('/terminals'), label: 'Go to Terminals' },
+      { action: (): void => void goto('/config'), label: 'Go to Settings' },
       {
-        action: () => {
+        action: (): void => {
           showShortcutsHelp = true;
         },
         label: 'Show keyboard shortcuts',
       },
     ];
     if (isRunning) {
-      cmds.push({ action: () => void killTerminal(), label: 'Kill terminal' });
+      cmds.push({ action: (): void => void killTerminal(), label: 'Kill terminal' });
     }
     return cmds;
   });
@@ -157,7 +158,7 @@
         loading = false;
         return;
       }
-      terminal = await res.json();
+      terminal = (await res.json()) as TerminalDetailView;
     } catch {
       error = 'Failed to connect to server';
     }
@@ -177,7 +178,7 @@
       if (!res.ok) {
         return null;
       }
-      const data: { ticket: string } = await res.json();
+      const data = (await res.json()) as { ticket: string };
       return data.ticket;
     } catch {
       return null;
@@ -346,26 +347,26 @@
 
     sessionWs = new WebSocket(wsUrl);
 
-    sessionWs.onopen = () => {
+    sessionWs.onopen = (): void => {
       if (!disposed) {
         chatConnectionStatus = 'connected';
         sessionWs?.send(JSON.stringify({ sessionId: terminalId, type: 'subscribe' }));
       }
     };
 
-    sessionWs.onmessage = (event) => {
+    sessionWs.onmessage = (event: MessageEvent): void => {
       if (disposed) {
         return;
       }
       try {
-        const msg = JSON.parse(event.data);
+        const msg = JSON.parse(event.data as string) as Record<string, unknown>;
         handleSessionMessage(msg);
       } catch {
         // Ignore malformed messages
       }
     };
 
-    sessionWs.onclose = () => {
+    sessionWs.onclose = (): void => {
       if (!disposed && terminal?.status === 'running') {
         chatConnectionStatus = 'reconnecting';
         // Clear any existing reconnect timer to avoid stacking
@@ -382,11 +383,16 @@
       }
     };
 
-    sessionWs.onerror = () => {
+    sessionWs.onerror = (): void => {
       if (!disposed) {
         chatConnectionStatus = 'disconnected';
       }
     };
+  }
+
+  /** Get a typed snapshot of chatMessages. */
+  function getChatMessages(): ConversationMessage[] {
+    return chatMessages;
   }
 
   function handleSessionMessage(msg: Record<string, unknown>): void {
@@ -405,86 +411,85 @@
         timestamp: m.timestamp,
       }));
     } else if (msg.type === 'message') {
-      chatMessages = [
-        ...chatMessages,
-        {
-          id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          parts: (msg.content as MessagePart[]) || [],
-          role: (msg.role as ConversationMessage['role']) || 'assistant',
-          timestamp: (msg.timestamp as string) || new Date().toISOString(),
-        },
-      ];
+      const roleStr = typeof msg.role === 'string' ? msg.role : 'assistant';
+      const role: ConversationMessage['role'] =
+        roleStr === 'user' ? 'user' : roleStr === 'system' ? 'system' : 'assistant';
+      const newMsg: ConversationMessage = {
+        id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        parts: (msg.content as MessagePart[]) || [],
+        role,
+        timestamp:
+          (typeof msg.timestamp === 'string' ? msg.timestamp : '') || new Date().toISOString(),
+      };
+      chatMessages = getChatMessages().concat(newMsg);
     } else if (msg.type === 'tool-use') {
       // Append tool use as an assistant message fragment
-      chatMessages = [
-        ...chatMessages,
-        {
-          id: `tool-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          parts: [
-            {
-              id: (msg.id as string) || `tool-${Date.now()}`,
-              input: (msg.input as Record<string, unknown>) || {},
-              toolName: msg.name as string,
-              type: 'tool_use',
-            } as ToolUsePart,
-          ],
-          role: 'assistant',
-          timestamp: new Date().toISOString(),
-        },
-      ];
+      const toolPart: ToolUsePart = {
+        id: (msg.id as string) || `tool-${Date.now()}`,
+        input: (msg.input as Record<string, unknown>) || {},
+        toolName: msg.name as string,
+        type: 'tool_use',
+      };
+      const newMsg: ConversationMessage = {
+        id: `tool-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        parts: [toolPart],
+        role: 'assistant',
+        timestamp: new Date().toISOString(),
+      };
+      chatMessages = getChatMessages().concat(newMsg);
     } else if (msg.type === 'tool-result') {
-      chatMessages = [
-        ...chatMessages,
-        {
-          id: `result-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          parts: [
-            {
-              isError: msg.isError || false,
-              output: (msg.output as string) || '',
-              toolUseId: msg.id as string,
-              type: 'tool_result',
-            } as MessagePart,
-          ],
-          role: 'system',
-          timestamp: new Date().toISOString(),
-        },
-      ];
+      const resultPart: MessagePart = {
+        isError: (msg.isError as boolean) || false,
+        output: (msg.output as string) || '',
+        toolUseId: msg.id as string,
+        type: 'tool_result',
+      };
+      const newMsg: ConversationMessage = {
+        id: `result-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        parts: [resultPart],
+        role: 'system',
+        timestamp: new Date().toISOString(),
+      };
+      chatMessages = getChatMessages().concat(newMsg);
     } else if (msg.type === 'thinking') {
       // Append thinking block to the last assistant message
       const thinkPart: MessagePart = {
         content: (msg.text as string) || '',
         type: 'thinking',
       };
-      const lastMsg = chatMessages.length > 0 ? chatMessages[chatMessages.length - 1] : null;
-      if (lastMsg?.role === 'assistant') {
-        chatMessages = [
-          ...chatMessages.slice(0, -1),
-          { ...lastMsg, parts: [...lastMsg.parts, thinkPart] },
-        ];
+      const current: ConversationMessage[] = getChatMessages();
+      const lastIdx = current.length - 1;
+      if (lastIdx >= 0 && current[lastIdx].role === 'assistant') {
+        const prev = current[lastIdx];
+        const updated: ConversationMessage = {
+          id: prev.id,
+          parts: prev.parts.concat(thinkPart),
+          role: prev.role,
+          timestamp: prev.timestamp,
+        };
+        chatMessages = [...current.slice(0, lastIdx), updated];
       } else {
-        chatMessages = [
-          ...chatMessages,
-          {
-            id: `think-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-            parts: [thinkPart],
-            role: 'assistant',
-            timestamp: new Date().toISOString(),
-          },
-        ];
+        const newMsg: ConversationMessage = {
+          id: `think-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          parts: [thinkPart],
+          role: 'assistant',
+          timestamp: new Date().toISOString(),
+        };
+        chatMessages = current.concat(newMsg);
       }
     } else if (msg.type === 'error') {
       // Server-sent error — display as a system message
-      chatMessages = [
-        ...chatMessages,
-        {
-          id: `err-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          parts: [
-            { content: (msg.message as string) || 'Unknown error', type: 'text' } as MessagePart,
-          ],
-          role: 'system',
-          timestamp: new Date().toISOString(),
-        },
-      ];
+      const errorPart: MessagePart = {
+        content: (msg.message as string) || 'Unknown error',
+        type: 'text',
+      };
+      const newMsg: ConversationMessage = {
+        id: `err-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        parts: [errorPart],
+        role: 'system',
+        timestamp: new Date().toISOString(),
+      };
+      chatMessages = getChatMessages().concat(newMsg);
     } else if (msg.type === 'session-end') {
       chatSessionEnded = true;
       if (terminal) {
@@ -682,7 +687,13 @@
         {/if}
         <ConnectionStatus status={connectionStatus} onretry={handleRetry} />
         {#if isAI && (terminal as TerminalDetailView & { sessionFile?: string })?.sessionFile}
-          <a href="/session/{(terminal as TerminalDetailView & { sessionFile?: string }).sessionFile!.split(/[\\/]/).pop()?.replace('.jsonl', '') || ''}" class="term-session-link" title="View session history">
+          {@const sessionFile =
+            (terminal as TerminalDetailView & { sessionFile?: string }).sessionFile ?? ''}
+          <a
+            href="/session/{sessionFile.split(/[\\/]/).pop()?.replace('.jsonl', '') || ''}"
+            class="term-session-link"
+            title="View session history"
+          >
             Session
           </a>
         {/if}
@@ -693,7 +704,7 @@
           <Tabs
             items={tabItems}
             activeIndex={tabActiveIndex}
-            onchange={(index) => {
+            onchange={(index: number): void => {
               setViewMode(index === 0 ? 'raw' : 'chat');
             }}
             classes="term-tabs"
@@ -702,7 +713,7 @@
 
         <button
           class="term-shortcuts-btn"
-          onclick={() => {
+          onclick={(): void => {
             showShortcutsHelp = !showShortcutsHelp;
           }}
           type="button"
@@ -792,14 +803,14 @@
 
 <ShortcutsHelp
   open={showShortcutsHelp}
-  onClose={() => {
+  onClose={(): void => {
     showShortcutsHelp = false;
   }}
 />
 <CommandPalette
   bind:open={showCommandPalette}
   commands={paletteCommands}
-  onClose={() => {
+  onClose={(): void => {
     showCommandPalette = false;
   }}
 />

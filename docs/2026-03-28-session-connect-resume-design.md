@@ -7,6 +7,7 @@
 ## Problem
 
 Shooter can spawn new terminals and view Claude Code sessions, but:
+
 1. **Existing sessions are read-only** — no way to send messages from phone
 2. **Session viewer shows raw tool noise** — tool_use, tool_result, thinking blocks clutter the conversation
 3. **No way to "take over" a running session** — can't connect to Claude Code already running on the machine
@@ -29,6 +30,7 @@ Unify the session experience with Connect/Resume and clean conversation renderin
 Detect running Claude Code / OpenCode processes and match to sessions.
 
 **Key discovery:** Claude Code maintains a live process registry at `~/.claude/sessions/<PID>.json`. Each file contains:
+
 ```json
 {
   "pid": 56171,
@@ -54,15 +56,16 @@ Detection flow:
 No `ps aux | grep | lsof` hacks needed. Just filesystem reads.
 
 **Response shape:**
+
 ```typescript
 interface DetectedProcess {
   pid: number;
   command: 'claude' | 'opencode';
   cwd: string;
-  sessionId: string;            // from ~/.claude/sessions/<PID>.json
-  projectPath: string;          // encoded project dir path
-  startedAt: number;            // epoch ms
-  kind: string;                 // 'interactive' | 'cli'
+  sessionId: string; // from ~/.claude/sessions/<PID>.json
+  projectPath: string; // encoded project dir path
+  startedAt: number; // epoch ms
+  kind: string; // 'interactive' | 'cli'
 }
 ```
 
@@ -73,9 +76,9 @@ interface DetectedProcess {
 ```typescript
 // Request
 {
-  command: string;         // e.g. 'claude' or 'opencode'
-  cwd: string;             // working directory for the terminal
-  sessionId: string;       // JSONL filename (without .jsonl)
+  command: string; // e.g. 'claude' or 'opencode'
+  cwd: string; // working directory for the terminal
+  sessionId: string; // JSONL filename (without .jsonl)
 }
 
 // Server logic:
@@ -88,8 +91,8 @@ interface DetectedProcess {
 // Response
 {
   terminalId: string;
-  ws: string;              // /ws/terminal/:id
-  sessionWs: string;       // /ws/session/:id
+  ws: string; // /ws/terminal/:id
+  sessionWs: string; // /ws/session/:id
 }
 ```
 
@@ -104,19 +107,19 @@ interface SessionInfo {
   // ... existing fields ...
 
   // NEW: process status
-  detectedProcess: DetectedProcess | null;  // non-null if live process found
-  shooterTerminalId: string | null;         // non-null if already connected via Shooter
+  detectedProcess: DetectedProcess | null; // non-null if live process found
+  shooterTerminalId: string | null; // non-null if already connected via Shooter
 }
 ```
 
 **UI states per session:**
 
-| State | Indicator | Button |
-|-------|-----------|--------|
-| Running + Shooter-connected | Green "Live" badge | "Open" → `/terminals/<id>` |
-| Running + NOT connected | Yellow "Running" badge | **"Connect"** → calls POST /api/sessions/connect |
-| Recently active (< 5 min) | Amber "Active" dot | **"Resume"** → calls POST /api/sessions/connect |
-| Inactive | Gray | **"Resume"** → calls POST /api/sessions/connect |
+| State                       | Indicator              | Button                                           |
+| --------------------------- | ---------------------- | ------------------------------------------------ |
+| Running + Shooter-connected | Green "Live" badge     | "Open" → `/terminals/<id>`                       |
+| Running + NOT connected     | Yellow "Running" badge | **"Connect"** → calls POST /api/sessions/connect |
+| Recently active (< 5 min)   | Amber "Active" dot     | **"Resume"** → calls POST /api/sessions/connect  |
+| Inactive                    | Gray                   | **"Resume"** → calls POST /api/sessions/connect  |
 
 ### 4. ChatView Cleanup
 
@@ -154,12 +157,12 @@ interface SessionInfo {
 
 **Message part rendering rules:**
 
-| Part type | Default | Expanded |
-|-----------|---------|----------|
-| `text` | Shown (markdown) | Same |
-| `thinking` | Collapsed accordion | Expanded |
-| `tool_use` | Grouped into summary line | Individual cards with JSON input |
-| `tool_result` | Hidden (part of tool group) | Card with output text |
+| Part type     | Default                     | Expanded                         |
+| ------------- | --------------------------- | -------------------------------- |
+| `text`        | Shown (markdown)            | Same                             |
+| `thinking`    | Collapsed accordion         | Expanded                         |
+| `tool_use`    | Grouped into summary line   | Individual cards with JSON input |
+| `tool_result` | Hidden (part of tool group) | Card with output text            |
 
 ### 5. Unified Session → Terminal Flow
 
@@ -185,27 +188,30 @@ The `/session/[id]` page currently fetches history and optionally streams live u
 ## File Changes
 
 ### New Files
-| File | Purpose |
-|------|---------|
-| `src/routes/api/sessions/detect/+server.ts` | Process detection endpoint |
-| `src/routes/api/sessions/connect/+server.ts` | Connect/resume endpoint |
+
+| File                                         | Purpose                    |
+| -------------------------------------------- | -------------------------- |
+| `src/routes/api/sessions/detect/+server.ts`  | Process detection endpoint |
+| `src/routes/api/sessions/connect/+server.ts` | Connect/resume endpoint    |
 
 ### Modified Files
-| File | Change |
-|------|--------|
-| `src/lib/modules/client/terminal/ChatView.svelte` | Tool grouping, collapse by default, summary line |
-| `src/routes/session/[id]/+page.svelte` | Add Connect/Resume button, enable input when terminal exists |
-| `src/routes/+page.svelte` or `src/routes/project/+page.svelte` | Add "Connect"/"Resume" buttons to session list |
-| `src/routes/api/terminals/+server.ts` | Add 'claude' resume args support, ensure --resume is allowed |
-| `src/lib/modules/server/sessions/jsonl-reader.ts` | Return process detection info alongside sessions |
+
+| File                                                           | Change                                                       |
+| -------------------------------------------------------------- | ------------------------------------------------------------ |
+| `src/lib/modules/client/terminal/ChatView.svelte`              | Tool grouping, collapse by default, summary line             |
+| `src/routes/session/[id]/+page.svelte`                         | Add Connect/Resume button, enable input when terminal exists |
+| `src/routes/+page.svelte` or `src/routes/project/+page.svelte` | Add "Connect"/"Resume" buttons to session list               |
+| `src/routes/api/terminals/+server.ts`                          | Add 'claude' resume args support, ensure --resume is allowed |
+| `src/lib/modules/server/sessions/jsonl-reader.ts`              | Return process detection info alongside sessions             |
 
 ### Unchanged
-| File | Why |
-|------|-----|
-| `ChatView.svelte` input mechanism | Already exists, just needs `showInput={true}` |
-| `session-handler.ts` send-input | Already routes input to terminal PTY |
-| `terminal-handler.ts` | No changes needed |
-| `pty-manager.ts` | Terminal creation already handles arbitrary commands |
+
+| File                              | Why                                                  |
+| --------------------------------- | ---------------------------------------------------- |
+| `ChatView.svelte` input mechanism | Already exists, just needs `showInput={true}`        |
+| `session-handler.ts` send-input   | Already routes input to terminal PTY                 |
+| `terminal-handler.ts`             | No changes needed                                    |
+| `pty-manager.ts`                  | Terminal creation already handles arbitrary commands |
 
 ## Process Detection Implementation
 
@@ -231,16 +237,18 @@ function detectRunningAISessions(): DetectedProcess[] {
   const processes: DetectedProcess[] = [];
 
   try {
-    const files = readdirSync(sessionsDir).filter(f => f.endsWith('.json'));
+    const files = readdirSync(sessionsDir).filter((f) => f.endsWith('.json'));
 
     for (const file of files) {
       try {
-        const data: ClaudeSessionFile = JSON.parse(
-          readFileSync(join(sessionsDir, file), 'utf8')
-        );
+        const data: ClaudeSessionFile = JSON.parse(readFileSync(join(sessionsDir, file), 'utf8'));
 
         // Verify PID is still alive
-        try { process.kill(data.pid, 0); } catch { continue; }
+        try {
+          process.kill(data.pid, 0);
+        } catch {
+          continue;
+        }
 
         // Encode cwd to match ~/.claude/projects/ directory naming
         const encodedCwd = data.cwd.replace(/\//g, '-');
@@ -276,18 +284,19 @@ export async function POST({ request }) {
   const { command, cwd, sessionId } = await request.json();
 
   // Build resume command
-  const args = command === 'claude'
-    ? ['--resume', sessionId]
-    : ['--session', sessionId]; // OpenCode uses --session <id>
+  const args = command === 'claude' ? ['--resume', sessionId] : ['--session', sessionId]; // OpenCode uses --session <id>
 
   // Create terminal via ptyManager
   const terminal = await ptyManager.create(command, args, cwd, 120, 40);
 
-  return json({
-    terminalId: terminal.id,
-    ws: `/ws/terminal/${terminal.id}`,
-    sessionWs: `/ws/session/${terminal.id}`,
-  }, { status: 201 });
+  return json(
+    {
+      terminalId: terminal.id,
+      ws: `/ws/terminal/${terminal.id}`,
+      sessionWs: `/ws/session/${terminal.id}`,
+    },
+    { status: 201 }
+  );
 }
 ```
 
@@ -308,7 +317,7 @@ function groupMessageParts(parts: MessagePart[]): DisplayPart[] {
         groups.push({
           type: 'tool_group',
           tools: currentToolGroup,
-          summary: `Used ${currentToolGroup.length} tool${currentToolGroup.length > 1 ? 's' : ''}: ${currentToolGroup.map(t => t.toolName || t.name).join(', ')}`
+          summary: `Used ${currentToolGroup.length} tool${currentToolGroup.length > 1 ? 's' : ''}: ${currentToolGroup.map((t) => t.toolName || t.name).join(', ')}`,
         });
         currentToolGroup = [];
       }
@@ -321,7 +330,7 @@ function groupMessageParts(parts: MessagePart[]): DisplayPart[] {
     groups.push({
       type: 'tool_group',
       tools: currentToolGroup,
-      summary: `Used ${currentToolGroup.length} tool${currentToolGroup.length > 1 ? 's' : ''}: ${currentToolGroup.map(t => t.toolName || t.name).join(', ')}`
+      summary: `Used ${currentToolGroup.length} tool${currentToolGroup.length > 1 ? 's' : ''}: ${currentToolGroup.map((t) => t.toolName || t.name).join(', ')}`,
     });
   }
 

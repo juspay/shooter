@@ -61,7 +61,7 @@ export default tseslint.config(
       ],
       '@typescript-eslint/explicit-function-return-type': 'warn',
       '@typescript-eslint/explicit-module-boundary-types': 'warn',
-      '@typescript-eslint/no-explicit-any': 'warn',
+      '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/no-floating-promises': 'error',
       '@typescript-eslint/no-misused-promises': 'error',
       '@typescript-eslint/no-non-null-assertion': 'warn',
@@ -89,19 +89,63 @@ export default tseslint.config(
 
       curly: ['error', 'all'],
       eqeqeq: ['error', 'always'],
+
+      // Complexity guards
+      'max-depth': ['error', 6],
+      'max-lines-per-function': ['warn', 300],
+      'max-params': ['error', 6],
+
       // General strict rules - allow console.log for server-side debugging
       'no-console': 'off',
       'no-duplicate-imports': 'error',
+      'no-eval': 'error',
+      'no-implied-eval': 'error',
+      // Type governance: all types must live in src/lib/types/
+      // Ban type imports from anywhere except: $lib/types, ./$types (SvelteKit),
+      // svelte/*, @sveltejs/*, @juspay/* (component libraries)
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['$lib/types/generated/*'],
+              message: 'Import types from $lib/types (barrel) instead of $lib/types/generated/*.',
+            },
+          ],
+        },
+      ],
       'no-var': 'error',
       'object-shorthand': 'error',
       'prefer-arrow-callback': 'error',
       'prefer-const': 'error',
+
       'prefer-template': 'error',
 
       // Svelte specific rules
       'svelte/no-navigation-without-resolve': 'off',
 
       // Perfectionist uses recommended-natural config defaults
+    },
+  },
+
+  // Ban type/interface definitions outside src/lib/types/
+  {
+    files: ['src/**/*.ts', 'src/**/*.svelte'],
+    ignores: ['src/lib/types/**', 'src/app.d.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          message:
+            'Define types in src/lib/types/ only. Use specs/types/*.yaml for generated types or src/lib/types/<module>.ts for hand-written types.',
+          selector: 'TSInterfaceDeclaration',
+        },
+        {
+          message:
+            'Define types in src/lib/types/ only. Use specs/types/*.yaml for generated types or src/lib/types/<module>.ts for hand-written types.',
+          selector: 'TSTypeAliasDeclaration',
+        },
+      ],
     },
   },
 
@@ -145,10 +189,13 @@ export default tseslint.config(
       'scripts/',
       'test/',
       'vite.config.js.timestamp-*',
-      'src/generated/',
+      'src/lib/types/generated/',
       'android/',
       'bin/',
       'src/lib/modules/server/terminal/pty-holder.cjs',
+      'wasm-poc/',
+      'static/',
+      'test-browser.cjs',
     ],
   }
 );

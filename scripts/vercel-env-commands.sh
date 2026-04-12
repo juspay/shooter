@@ -29,9 +29,9 @@ echo "vercel env add APNS_BUNDLE_ID"
 echo "# Enter: YOUR_BUNDLE_ID_HERE (from .env file)"
 echo ""
 
-echo "# 5. APNs Private Key (Base64)"
-echo "vercel env add APNS_KEY_BASE64"
-echo "# Enter: YOUR_BASE64_APNS_KEY_HERE (extract from .env between BEGIN/END PRIVATE KEY)"
+echo "# 5. APNs Private Key"
+echo "vercel env add APNS_KEY"
+echo "# Enter: YOUR_APNS_KEY_HERE (.p8 file contents, including BEGIN/END PRIVATE KEY lines)"
 echo ""
 
 echo "# 6. Device Token (Optional)"

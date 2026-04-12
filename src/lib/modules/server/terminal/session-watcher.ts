@@ -1,22 +1,15 @@
-import { watch as chokidarWatch, type FSWatcher } from 'chokidar';
+import type {
+  ConversationMessage,
+  MessagePart,
+  OnNewEntries,
+  SessionWatchedFile as WatchedFile,
+} from '$lib/types';
+
+import { watch as chokidarWatch } from 'chokidar';
 import * as fs from 'fs';
 import * as path from 'path';
 
-import type { ConversationMessage, MessagePart } from '../sessions/types';
-
 import { parseJsonlText } from '../sessions/jsonl-parser';
-
-/**
- * Callback invoked when new JSONL entries are parsed from a watched file.
- */
-type OnNewEntries = (entries: ConversationMessage[]) => void;
-
-interface WatchedFile {
-  callbacks: Set<OnNewEntries>;
-  filePath: string;
-  offset: number;
-  watcher: FSWatcher;
-}
 
 // Path to Claude Code's project session data
 const CLAUDE_PROJECTS_DIR = path.join(process.env.HOME || '', '.claude', 'projects');
@@ -89,7 +82,10 @@ class SessionWatcher {
           continue;
         }
         try {
-          entries.push(JSON.parse(trimmed));
+          const parsed: unknown = JSON.parse(trimmed);
+          if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+            entries.push(parsed as Record<string, unknown>);
+          }
         } catch {
           // skip malformed lines
         }
@@ -274,7 +270,9 @@ class SessionWatcher {
       }
 
       // Parse the new lines using the file's accumulated assistant turn state
-      const assistantTurns = this.assistantTurnsPerFile.get(filePath) || new Map();
+      const assistantTurns: Map<string, { parts: MessagePart[]; timestamp: string }> =
+        this.assistantTurnsPerFile.get(filePath) ??
+        new Map<string, { parts: MessagePart[]; timestamp: string }>();
       const startIndex = this.messageIndexPerFile.get(filePath) || 0;
       const newText = completeLines.join('\n');
       const newMessages = parseJsonlText(newText, assistantTurns, startIndex);

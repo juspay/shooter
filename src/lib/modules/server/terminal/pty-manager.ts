@@ -1,4 +1,9 @@
-import type { TerminalRecord } from '$generated/types';
+import type {
+  ConversationMessage,
+  PtyManagedTerminal as ManagedTerminal,
+  PtyOutputBuffer as OutputBuffer,
+  TerminalRecord,
+} from '$lib/types';
 import type WebSocket from 'ws';
 
 import { type ChildProcess, fork } from 'child_process';
@@ -7,47 +12,10 @@ import { existsSync, readdirSync, readFileSync, statSync, unlinkSync } from 'fs'
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-import type { ConversationMessage } from '../sessions/types';
-
+import { broadcastEvent } from '../ws/server.js';
 import { HolderClient } from './holder-client';
 import { openCodeWatcher } from './opencode-watcher';
 import { terminalStore } from './terminal-store';
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-interface ManagedTerminal {
-  args: string[];
-  clients: Set<WebSocket>;
-  cols: number;
-  command: string;
-  createdAt: Date;
-  currentCwd: null | string;
-  cwd: string;
-  exitCode: null | number;
-  exitedAt: Date | null;
-  holderPid: number;
-  id: string;
-  isActive: boolean;
-  openCodeNoopCb: ((messages: ConversationMessage[]) => void) | null;
-  openCodeSessionId: null | string;
-  outputBuffers: Map<WebSocket, OutputBuffer>;
-  pid: number;
-  pollTimer: null | ReturnType<typeof setInterval>;
-  pty: HolderClient;
-  rows: number;
-  scrollback: string;
-  sessionFile: null | string;
-  socketPath: string;
-  status: 'exited' | 'running';
-  watcherOffset: number;
-}
-
-interface OutputBuffer {
-  data: string[];
-  size: number;
-}
 
 export type { ManagedTerminal };
 
@@ -195,7 +163,10 @@ class PtyManager {
       });
     });
 
-    const holderPid = holder.pid!;
+    if (holder.pid === undefined || holder.pid === null) {
+      throw new Error(`Holder process forked but PID unavailable for terminal ${id}`);
+    }
+    const holderPid = holder.pid;
 
     // Connect to the holder via Unix socket
     const client = new HolderClient();
@@ -255,6 +226,13 @@ class PtyManager {
     this.startSessionDiscovery(terminal);
 
     this.terminals.set(id, terminal);
+
+    broadcastEvent({
+      command: terminal.command ?? command,
+      terminalId: id,
+      type: 'terminal-created',
+    });
+
     return terminal;
   }
 
@@ -281,11 +259,14 @@ class PtyManager {
         } catch {
           // Best effort
         }
-        // Also kill the holder process directly
-        try {
-          process.kill(terminal.holderPid, 'SIGKILL');
-        } catch {
-          // Best effort — holder may already be gone
+        // Also kill the holder process directly (guard against invalid PIDs —
+        // process.kill(0) targets the current process group, -1 targets all)
+        if (terminal.holderPid > 0) {
+          try {
+            process.kill(terminal.holderPid, 'SIGKILL');
+          } catch {
+            // Best effort — holder may already be gone
+          }
         }
       }
 
@@ -397,6 +378,7 @@ class PtyManager {
       terminal.status = 'exited';
       terminal.exitedAt = new Date();
       terminalStore.markExited(id, null);
+      this.emitTerminalExited(id, null);
       return true;
     }
 
@@ -411,6 +393,7 @@ class PtyManager {
         terminal.status = 'exited';
         terminal.exitedAt = terminal.exitedAt ?? new Date();
         terminalStore.markExited(id, null);
+        this.emitTerminalExited(id, null);
       }
     }, SIGKILL_DELAY_MS);
 
@@ -576,6 +559,15 @@ class PtyManager {
   // -----------------------------------------------------------------------
   // Private: startSessionDiscovery — polling for session files
   // -----------------------------------------------------------------------
+
+  /** Broadcast a terminal-exited event to /ws/events for the activity feed. */
+  private emitTerminalExited(terminalId: string, exitCode: null | number): void {
+    broadcastEvent({
+      code: exitCode ?? null,
+      terminalId,
+      type: 'terminal-exited',
+    });
+  }
 
   /** Evict a terminal, freeing all resources. */
   private evict(id: string): void {
@@ -1003,6 +995,8 @@ class PtyManager {
       terminal.exitedAt = new Date();
       terminalStore.markExited(terminal.id, exitCode);
 
+      this.emitTerminalExited(terminal.id, exitCode);
+
       const exitMsg = JSON.stringify({
         code: exitCode,
         signal: null,
@@ -1019,6 +1013,7 @@ class PtyManager {
         terminal.status = 'exited';
         terminal.exitedAt = new Date();
         terminalStore.markOrphaned(terminal.id);
+        this.emitTerminalExited(terminal.id, null);
       }
     });
   }

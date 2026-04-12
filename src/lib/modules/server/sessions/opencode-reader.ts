@@ -6,7 +6,7 @@ function shortHash(input: string): string {
   return crypto.createHash('sha256').update(input).digest('hex').slice(0, 8);
 }
 
-import type { ConversationMessage, MessagePart, ProjectGroup, SessionInfo } from './types';
+import type { ConversationMessage, MessagePart, ProjectGroup, SessionInfo } from '$lib/types';
 
 import { resolveOpenCodeDbPath } from './opencode-db-path';
 

@@ -5,9 +5,7 @@ import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 const config = {
   kit: {
     adapter: adapter({ precompress: true }),
-    alias: {
-      $generated: './src/generated',
-    },
+    alias: {},
     serviceWorker: {
       register: false,
     },

@@ -1,10 +1,69 @@
+import type { ConversationMessage, MessagePart, ProjectGroup, SessionInfo } from '$lib/types';
+
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 
-import type { ConversationMessage, MessagePart, ProjectGroup, SessionInfo } from './types';
-
 import { parseJsonlText } from './jsonl-parser';
+
+const SYSTEM_TAG_PREFIXES = [
+  '<local-command',
+  '<command-name>',
+  '<command-message>',
+  '<command-args>',
+  '<local-command-stdout>',
+  '<local-command-caveat>',
+  '<system-reminder>',
+  '<task-notification>',
+];
+
+/** Extract plain text from message content (string or array of content blocks). */
+function extractContentText(content: unknown): string {
+  if (typeof content === 'string') {
+    return content.trim();
+  }
+  if (Array.isArray(content)) {
+    for (const b of content) {
+      if (typeof b === 'string' && b.trim()) {
+        return b.trim();
+      }
+      if (typeof b === 'object' && b !== null) {
+        const block = b as Record<string, unknown>;
+        if (block.type === 'text' && typeof block.text === 'string' && block.text.trim()) {
+          return block.text.trim();
+        }
+      }
+    }
+  }
+  return '';
+}
+
+/** Find the first real user prompt from raw JSONL content. */
+function findFirstUserPrompt(content: string): string {
+  for (const line of content.split('\n')) {
+    if (!line.trim()) {
+      continue;
+    }
+    try {
+      const entry = JSON.parse(line) as Record<string, unknown>;
+      if (entry.type !== 'user') {
+        continue;
+      }
+      const msg = entry.message as Record<string, unknown> | undefined;
+      if (!msg?.content) {
+        continue;
+      }
+      const text = extractContentText(msg.content as unknown);
+      if (!text || SYSTEM_TAG_PREFIXES.some((p) => text.startsWith(p))) {
+        continue;
+      }
+      return text;
+    } catch {
+      continue;
+    }
+  }
+  return '';
+}
 
 // Short hash for project IDs (8 chars from SHA-256)
 function shortHash(input: string): string {
@@ -235,67 +294,17 @@ function listSessionsForProject(projectDir: string): SessionInfo[] {
             const nl = content.indexOf('\n', countPos);
             const lineEnd = nl === -1 ? content.length : nl;
             const line = content.substring(countPos, lineEnd);
-            if (line.includes('"type":"user"') || line.includes('"type":"assistant"')) {messageCount++;}
-            if (nl === -1) {break;}
+            if (line.includes('"type":"user"') || line.includes('"type":"assistant"')) {
+              messageCount++;
+            }
+            if (nl === -1) {
+              break;
+            }
             countPos = nl + 1;
           }
-          // Find the first real user message (skip system caveats, commands, tool results)
-          const lines = content.split('\n');
-          for (const line of lines) {
-            if (!line.trim()) {
-              continue;
-            }
-            try {
-              const entry = JSON.parse(line);
-              if (entry.type !== 'user') {
-                continue;
-              }
-              const msg = entry.message;
-              if (!msg?.content) {
-                continue;
-              }
-
-              // Extract text from content (can be string or array of blocks)
-              let text = '';
-              if (typeof msg.content === 'string') {
-                text = msg.content.trim();
-              } else if (Array.isArray(msg.content)) {
-                for (const b of msg.content) {
-                  if (typeof b === 'string' && b.trim()) {
-                    text = b.trim();
-                    break;
-                  }
-                  if (typeof b === 'object' && b !== null && b.type === 'text' && b.text?.trim()) {
-                    text = b.text.trim();
-                    break;
-                  }
-                }
-              }
-
-              if (!text) {
-                continue;
-              }
-
-              // Skip system-injected caveats and command outputs
-              // Keep aligned with cleanTitle() tag stripping
-              if (
-                text.startsWith('<local-command') ||
-                text.startsWith('<command-name>') ||
-                text.startsWith('<command-message>') ||
-                text.startsWith('<command-args>') ||
-                text.startsWith('<local-command-stdout>') ||
-                text.startsWith('<local-command-caveat>') ||
-                text.startsWith('<system-reminder>') ||
-                text.startsWith('<task-notification>')
-              ) {
-                continue;
-              }
-
-              firstPrompt = text;
-              break;
-            } catch {
-              continue;
-            }
+          const prompt = findFirstUserPrompt(content);
+          if (prompt) {
+            firstPrompt = prompt;
           }
         } catch {
           // ignore read errors

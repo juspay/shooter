@@ -1,6 +1,6 @@
-import admin from 'firebase-admin';
+import type { NotificationPayload } from '$lib/types';
 
-import type { NotificationPayload } from '../apn/types.js';
+import admin from 'firebase-admin';
 
 let app: admin.app.App | null = null;
 

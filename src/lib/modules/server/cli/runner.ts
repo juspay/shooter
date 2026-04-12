@@ -1,19 +1,11 @@
+import type {
+  CLIRunnerConfig,
+  ExitCallback,
+  CLIRunnerInternalConfig as InternalConfig,
+  OutputCallback,
+} from '$lib/types';
+
 import pty, { type IPty } from 'node-pty';
-
-import type { CLIRunnerConfig } from './index';
-
-export type ExitCallback = (code: number, signal?: number) => void;
-export type OutputCallback = (data: string) => void;
-
-interface InternalConfig {
-  args: string[];
-  cols: number;
-  command: string;
-  cwd: string;
-  env: NodeJS.ProcessEnv;
-  rows: number;
-  useLoginShell: boolean;
-}
 
 export class CLIRunner {
   private config: InternalConfig;

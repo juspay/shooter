@@ -1,6 +1,5 @@
 <script lang="ts">
-  import type { ProjectGroup, ShooterConfig } from '$generated/types';
-  import type { DetectedProcess } from '$lib/modules/server/sessions/process-detector';
+  import type { DetectedProcess, ProjectGroup, ShooterConfig } from '$lib/types';
 
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
@@ -35,7 +34,9 @@
 
   // Build a set of session IDs that have running processes
   const runningSessionIds = $derived(
-    new Set(detectedProcesses.filter((p) => p.sessionId).map((p) => p.sessionId))
+    new Set(
+      detectedProcesses.map((p) => p.sessionId).filter((id): id is string => typeof id === 'string')
+    )
   );
 
   onMount(() => {
@@ -112,7 +113,7 @@
       }
 
       fetchError = null;
-      const result: { projects: ProjectGroup[] } = await response.json();
+      const result = (await response.json()) as { projects: ProjectGroup[] };
       const foundProject = result.projects.find((p) => p.id === projectId) || null;
       project = foundProject;
       if (foundProject) {
@@ -135,7 +136,7 @@
         headers: { Authorization: `Bearer ${config.apiKey}` },
       });
       if (response.ok) {
-        const data: { processes: DetectedProcess[] } = await response.json();
+        const data = (await response.json()) as { processes: DetectedProcess[] };
         detectedProcesses = data.processes;
       }
     } catch {
@@ -173,7 +174,7 @@
       });
 
       if (response.ok) {
-        const result: { terminalId: string } = await response.json();
+        const result = (await response.json()) as { terminalId: string };
         void goto(`/terminals/${result.terminalId}`);
       }
     } catch (error) {
@@ -197,9 +198,13 @@
   }
 
   function formatDate(ts: string): string {
-    if (!ts) {return '';}
+    if (!ts) {
+      return '';
+    }
     const d = new Date(ts);
-    if (isNaN(d.getTime())) {return '';}
+    if (isNaN(d.getTime())) {
+      return '';
+    }
     return d.toLocaleDateString('en-US', {
       day: 'numeric',
       hour: '2-digit',
@@ -283,8 +288,8 @@
                 {#if runningSessionIds.has(session.id)}
                   <Button
                     classes="btn-connect btn-xs"
-                    onclick={(e: MouseEvent) =>
-                      connectToSession(
+                    onclick={(e: MouseEvent): void =>
+                      void connectToSession(
                         e,
                         session.id,
                         session.source === 'opencode' ? 'opencode' : 'claude'
@@ -298,8 +303,8 @@
                 {:else}
                   <Button
                     classes="btn-resume btn-xs"
-                    onclick={(e: MouseEvent) =>
-                      connectToSession(
+                    onclick={(e: MouseEvent): void =>
+                      void connectToSession(
                         e,
                         session.id,
                         session.source === 'opencode' ? 'opencode' : 'claude'

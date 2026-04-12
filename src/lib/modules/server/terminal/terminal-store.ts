@@ -7,7 +7,7 @@
  * Database location: ~/.shooter/shooter.db
  */
 
-import type { TerminalRecord } from '$generated/types';
+import type { TerminalRecord } from '$lib/types';
 
 import Database from 'better-sqlite3';
 import * as fs from 'fs';

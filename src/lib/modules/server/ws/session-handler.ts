@@ -3,97 +3,30 @@
 // on connect and streams new messages (text, tool-use, tool-result,
 // thinking) as they appear.
 
-import type { MessageRole, TextContentBlock } from '$generated/types';
+import type {
+  WireSessionClientMessage as ClientMessage,
+  WsConnectionState as ConnectionState,
+  ConversationMessage,
+  WireHistoryMessage as HistoryMessage,
+  WireHistoryPart as HistoryPart,
+  SessionManagedTerminal as ManagedTerminal,
+  MessagePart,
+  SessionPtyManagerFullLike as PtyManagerFullLike,
+  SessionPtyManagerLike as PtyManagerLike,
+  WireSessionServerMessage as ServerMessage,
+  SessionWatcherLike,
+  TextContentBlock,
+} from '$lib/types';
 import type { WebSocket } from 'ws';
 
 import * as fs from 'fs';
 import * as path from 'path';
-
-import type { ConversationMessage, MessagePart } from '../sessions/types';
-
-// ── Types ────────────────────────────────────────────────────────────
-
-/** Inbound messages from the client. */
-type ClientMessage =
-  | { sessionId: string; type: 'subscribe' }
-  | { text: string; type: 'send-input' }
-  | { type: 'cancel' };
-
-/** A message in the history payload. */
-interface HistoryMessage {
-  content: HistoryPart[];
-  id: string;
-  role: MessageRole;
-  timestamp: string;
-}
-
-/** A single part within a history message — discriminated union. */
-type HistoryPart =
-  | { content: string; type: 'text' }
-  | { content: string; type: 'thinking' }
-  | { id: string; input: Record<string, unknown>; toolName: string; type: 'tool_use' }
-  | { isError: boolean; output: string; toolUseId: string; type: 'tool_result' };
-
-interface ManagedTerminal {
-  id: string;
-  openCodeSessionId: null | string;
-  pty: {
-    pid: number;
-    write: (data: string) => void;
-  };
-  sessionFile: null | string;
-  status: 'exited' | 'running';
-}
-
-/** Extended PTY manager interface with list() for UUID-based terminal search. */
-interface PtyManagerFullLike extends PtyManagerLike {
-  list: () => ManagedTerminal[];
-}
-
-interface PtyManagerLike {
-  getTerminal: (id: string) => ManagedTerminal | undefined;
-}
-
-// ── PTY Manager type ─────────────────────────────────────────────────
-
-/** Outbound messages to the client. */
-type ServerMessage =
-  | { content: TextContentBlock[]; role: MessageRole; timestamp: string; type: 'message' }
-  | {
-      id: string;
-      input: Record<string, unknown>;
-      name: string;
-      status: 'running';
-      type: 'tool-use';
-    }
-  | { id: string; isError: boolean; output: string; status: 'done'; type: 'tool-result' }
-  | { message: string; type: 'error' }
-  | { messages: HistoryMessage[]; type: 'history' }
-  | { text: string; type: 'thinking' }
-  | { type: 'session-end' };
-
-interface SessionWatcherLike {
-  getHistory: (sessionFile: string) => ConversationMessage[];
-  subscribe: (
-    sessionFile: string,
-    callback: (messages: ConversationMessage[]) => void
-  ) => () => void;
-}
 
 // ── Module-level references ──────────────────────────────────────────
 
 let _ptyManager: null | PtyManagerLike = null;
 let _ptyManagerFull: null | PtyManagerFullLike = null;
 let _sessionWatcher: null | SessionWatcherLike = null;
-
-/** Per-connection state tracked for cleanup. */
-interface ConnectionState {
-  /** True when the session is file-only (no terminal backing it). */
-  isExternalSession: boolean;
-  retryInterval: null | ReturnType<typeof setInterval>;
-  terminalId: string;
-  unsubscribe: (() => void) | null;
-}
 
 /**
  * Handle a new WebSocket connection on the `/ws/session/:id` channel.
@@ -285,7 +218,7 @@ function findTerminalBySessionUuid(uuid: string): ManagedTerminal | undefined {
   // module-level _ptyManagerFull reference if available.
   if (_ptyManagerFull) {
     for (const t of _ptyManagerFull.list()) {
-      if (t.sessionFile && t.sessionFile.includes(`${uuid}.jsonl`)) {
+      if (t.sessionFile?.includes(`${uuid}.jsonl`)) {
         return _ptyManager.getTerminal(t.id);
       }
     }
@@ -296,7 +229,7 @@ function findTerminalBySessionUuid(uuid: string): ManagedTerminal | undefined {
 /** Parse and validate an inbound client message. */
 function parseClientMessage(raw: string): ClientMessage | null {
   try {
-    const msg = JSON.parse(raw);
+    const msg = JSON.parse(raw) as Record<string, unknown>;
     if (!msg || typeof msg !== 'object' || typeof msg.type !== 'string') {
       return null;
     }
@@ -589,7 +522,8 @@ function wireClientMessages(ws: WebSocket, state: ConnectionState): void {
         case 'send-input': {
           if (state.isExternalSession) {
             safeSend(ws, {
-              message: 'Cannot send input — this is a read-only session. Connect to a terminal first.',
+              message:
+                'Cannot send input — this is a read-only session. Connect to a terminal first.',
               type: 'error',
             });
             return;
@@ -615,8 +549,8 @@ function wireClientMessages(ws: WebSocket, state: ConnectionState): void {
           }
 
           // Try terminal first, then external
-          const newTerminal = _ptyManager?.getTerminal(msg.sessionId)
-            ?? findTerminalBySessionUuid(msg.sessionId);
+          const newTerminal =
+            _ptyManager?.getTerminal(msg.sessionId) ?? findTerminalBySessionUuid(msg.sessionId);
 
           if (newTerminal) {
             state.terminalId = newTerminal.id;

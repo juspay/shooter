@@ -20,6 +20,169 @@
     %sveltekit.head%
   </head>
   <body data-sveltekit-preload-data="hover">
+    <script>
+      // Global shims for NeuroLink browser SDK — must run before any module code
+      (function () {
+        var noop = function () {};
+        if (typeof globalThis.process === 'undefined') {
+          var p = {
+            env: {},
+            version: 'v24.0.0',
+            platform: 'browser',
+            argv: [],
+            pid: 1,
+            cwd: function () {
+              return '/';
+            },
+            exit: noop,
+            on: function () {
+              return p;
+            },
+            off: function () {
+              return p;
+            },
+            once: function () {
+              return p;
+            },
+            emit: function () {
+              return false;
+            },
+            removeListener: function () {
+              return p;
+            },
+            addListener: function () {
+              return p;
+            },
+            stdout: {
+              write: function () {
+                return true;
+              },
+              on: noop,
+            },
+            stderr: {
+              write: function () {
+                return true;
+              },
+              on: noop,
+            },
+            stdin: { on: noop },
+            nextTick: function (fn) {
+              setTimeout(fn, 0);
+            },
+            hrtime: Object.assign(
+              function (t) {
+                var n = performance.now() * 1e6;
+                var s = Math.floor(n / 1e9);
+                var ns = Math.floor(n % 1e9);
+                if (!t) return [s, ns];
+                var ds = s - t[0];
+                var dns = ns - t[1];
+                if (dns < 0) {
+                  ds -= 1;
+                  dns += 1e9;
+                }
+                return [ds, dns];
+              },
+              {
+                bigint: function () {
+                  return BigInt(Math.floor(performance.now() * 1e6));
+                },
+              }
+            ),
+            memoryUsage: function () {
+              return { rss: 0, heapTotal: 0, heapUsed: 0, external: 0, arrayBuffers: 0 };
+            },
+            cpuUsage: function () {
+              return { user: 0, system: 0 };
+            },
+            versions: { browser: '1.0.0', node: '24.0.0', v8: '0', modules: '0' },
+            release: { name: 'browser' },
+            uptime: function () {
+              return performance.now() / 1000;
+            },
+            title: 'browser',
+            execPath: '/',
+            execArgv: [],
+            features: {},
+            config: {},
+            kill: noop,
+            abort: noop,
+          };
+          globalThis.process = new Proxy(p, {
+            get: function (t, k) {
+              return k in t ? t[k] : noop;
+            },
+          });
+        }
+        if (typeof globalThis.Buffer === 'undefined') {
+          function B() {}
+          B.from = function (d, e) {
+            if (typeof d === 'string') {
+              if (e === 'base64') {
+                var b = atob(d);
+                var u = new Uint8Array(b.length);
+                for (var i = 0; i < b.length; i++) u[i] = b.charCodeAt(i);
+                return u;
+              }
+              return new TextEncoder().encode(d);
+            }
+            return new Uint8Array(d);
+          };
+          B.alloc = function (n) {
+            return new Uint8Array(n);
+          };
+          B.isBuffer = function (o) {
+            return o instanceof Uint8Array;
+          };
+          B.concat = function (l) {
+            var t = 0;
+            for (var i = 0; i < l.length; i++) t += l[i].length;
+            var r = new Uint8Array(t);
+            var o = 0;
+            for (var i = 0; i < l.length; i++) {
+              r.set(l[i], o);
+              o += l[i].length;
+            }
+            return r;
+          };
+          B.byteLength = function (s) {
+            return new TextEncoder().encode(s).length;
+          };
+          globalThis.Buffer = B;
+        }
+        if (typeof globalThis.global === 'undefined') globalThis.global = globalThis;
+        var oST = globalThis.setTimeout.bind(globalThis),
+          oSI = globalThis.setInterval.bind(globalThis),
+          oCT = globalThis.clearTimeout.bind(globalThis),
+          oCI = globalThis.clearInterval.bind(globalThis);
+        function wT(id) {
+          return {
+            valueOf: function () {
+              return id;
+            },
+            ref: function () {
+              return this;
+            },
+            unref: function () {
+              return this;
+            },
+            _id: id,
+          };
+        }
+        globalThis.setTimeout = function () {
+          return wT(oST.apply(null, arguments));
+        };
+        globalThis.setInterval = function () {
+          return wT(oSI.apply(null, arguments));
+        };
+        globalThis.clearTimeout = function (t) {
+          oCT(t && t._id !== undefined ? t._id : t);
+        };
+        globalThis.clearInterval = function (t) {
+          oCI(t && t._id !== undefined ? t._id : t);
+        };
+      })();
+    </script>
     <div style="display: contents">%sveltekit.body%</div>
   </body>
 </html>

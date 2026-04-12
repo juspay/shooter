@@ -36,12 +36,15 @@ shooter/
 │       ├── apn.yaml           # APNs notification types
 │       └── terminal.yaml      # Terminal/PTY types
 ├── src/
-│   ├── generated/
-│   │   └── types/             # Auto-generated TypeScript types (DO NOT EDIT)
 │   ├── lib/
+│   │   ├── types/
+│   │   │   └── generated/     # Auto-generated TypeScript types (DO NOT EDIT)
 │   │   ├── modules/
 │   │   │   ├── client/        # Client-side code
 │   │   │   │   ├── common/    # Reusable UI components
+│   │   │   │   ├── activity/  # Activity feed components
+│   │   │   │   ├── dashboard/ # Dashboard components
+│   │   │   │   ├── neurolink/ # Neurolink integration components
 │   │   │   │   └── terminal/  # Terminal UI components
 │   │   │   │       ├── ChatView.svelte
 │   │   │   │       ├── LaunchSheet.svelte
@@ -91,16 +94,15 @@ shooter/
 
 ## Type System
 
-### 🔴 CRITICAL: Auto-Generated Types
+### 🔴 CRITICAL: Type Files
 
-**ALL types are auto-generated from YAML specifications. NEVER manually edit generated TypeScript files.**
+Types are **either** auto-generated from YAML specifications (in `src/lib/types/generated/`) **or** hand-written in `src/lib/types/` for types that YAML cannot express (unions, discriminated unions, runtime-derived types, component Props). **NEVER manually edit generated TypeScript files** in the `generated/` directory.
 
 ### Type-Crafter Workflow
 
 1. **Define types in YAML specs** (`specs/types/`)
-2. **Validate specs**: `pnpm run types:validate`
-3. **Generate TypeScript**: `pnpm run types:generate`
-4. **Import and use** in your code
+2. **Validate and generate TypeScript**: `pnpm run gen:types`
+3. **Import and use** in your code
 
 ### YAML Specification Files
 
@@ -134,13 +136,30 @@ shooter/
 
 ### Generated TypeScript Files
 
-**Location**: `src/generated/types/` (DO NOT EDIT THESE FILES)
+**Location**: `src/lib/types/generated/` (DO NOT EDIT THESE FILES)
 
 - `index.ts` - Re-exports all types
 - `JWT.ts` - Generated JWT types
 - `APN.ts` - Generated APNs types
 - `CLI.ts` - Generated CLI types
 - `Terminal.ts` - Generated Terminal types
+
+### Hand-Written Type Files
+
+**Location**: `src/lib/types/` (alongside the `generated/` directory)
+
+Some types cannot be expressed in YAML specifications -- unions, discriminated unions, runtime-derived types, and component Props. These live as hand-written TypeScript files:
+
+- `activity.ts` - Activity feed types
+- `dashboard.ts` - Dashboard view types
+- `neurolink.ts` - Neurolink integration types
+- `sessions.ts` - Session data types
+- `terminal-client.ts` - Terminal client-side types
+- `common.ts` - Shared common types
+- `ws.ts` - WebSocket message types
+- `server.ts` - Server-side types
+
+These files are **manually maintained** (not generated). Edit them directly when you need types that the YAML type-crafter pipeline cannot express.
 
 ### Type Usage Examples
 
@@ -185,19 +204,13 @@ const badPayload = {
            type: string
    ```
 
-2. **Validate** your changes
+2. **Validate and regenerate TypeScript**
 
    ```bash
-   pnpm run types:validate
+   pnpm run gen:types
    ```
 
-3. **Regenerate TypeScript**
-
-   ```bash
-   pnpm run types:generate
-   ```
-
-4. **Use in code**
+3. **Use in code**
    ```typescript
    import type { MyNewType } from '$lib/types';
    ```
@@ -473,8 +486,7 @@ pnpm run build             # Build for production
 pnpm run preview           # Preview production build
 
 # Type System
-pnpm run types:validate    # Validate YAML specs
-pnpm run types:generate    # Generate TypeScript from YAML
+pnpm run gen:types         # Validate YAML specs and generate TypeScript
 
 # Code Quality
 pnpm run lint              # Run ESLint

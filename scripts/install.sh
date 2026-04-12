@@ -558,11 +558,19 @@ print_success() {
     printf '  ================================================\n'
     printf '%s' "$RESET"
     printf '\n'
-    printf '  %sLocal:%s   http://localhost:%s\n' "$BOLD" "$RESET" "$DEFAULT_PORT"
+    printf '  %sLocal:%s    http://localhost:%s\n' "$BOLD" "$RESET" "$DEFAULT_PORT"
     if [ -n "$TUNNEL_URL" ]; then
-        printf '  %sRemote:%s  %s\n' "$BOLD" "$RESET" "$TUNNEL_URL"
+        printf '  %sRemote:%s   %s\n' "$BOLD" "$RESET" "$TUNNEL_URL"
     fi
-    printf '  %sStatus:%s  shooter status\n' "$BOLD" "$RESET"
+    # Read API key from ~/.shooter/.env for display
+    _api_key=""
+    if [ -f "$SHOOTER_HOME/.env" ]; then
+        _api_key="$(grep -m1 '^API_KEY=' "$SHOOTER_HOME/.env" 2>/dev/null | cut -d= -f2-)"
+    fi
+    if [ -n "$_api_key" ]; then
+        printf '  %sAPI key:%s  (configured in %s/.env)\n' "$BOLD" "$RESET" "$SHOOTER_HOME"
+    fi
+    printf '  %sStatus:%s   shooter status\n' "$BOLD" "$RESET"
     printf '  %sLogs:%s    shooter logs\n' "$BOLD" "$RESET"
     printf '\n'
     printf '  %sCommands:%s\n' "$BOLD" "$RESET"

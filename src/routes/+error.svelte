@@ -27,8 +27,13 @@
       {/if}
     </p>
     <div class="error-actions">
-      <button class="error-btn" onclick={() => goto('/')}>Go Home</button>
-      <button class="error-btn error-btn-secondary" onclick={() => { history.back(); }}>Go Back</button>
+      <button class="error-btn" onclick={(): void => void goto('/')}>Go Home</button>
+      <button
+        class="error-btn error-btn-secondary"
+        onclick={(): void => {
+          history.back();
+        }}>Go Back</button
+      >
     </div>
   </div>
 </main>

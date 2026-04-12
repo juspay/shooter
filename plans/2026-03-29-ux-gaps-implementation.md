@@ -14,14 +14,15 @@
 
 ### New Files
 
-| File | Purpose |
-|------|---------|
-| `static/manifest.json` | PWA manifest for home screen install |
-| `src/lib/modules/server/sessions/opencode-db-path.ts` | Shared OpenCode DB path resolver |
+| File                                                  | Purpose                              |
+| ----------------------------------------------------- | ------------------------------------ |
+| `static/manifest.json`                                | PWA manifest for home screen install |
+| `src/lib/modules/server/sessions/opencode-db-path.ts` | Shared OpenCode DB path resolver     |
 
 ### Modified Files (by workstream)
 
 **Workstream A (Quick Wins):**
+
 - `src/routes/api/health/+server.ts` — dynamic version
 - `src/routes/api/sessions/connect/+server.ts` — createdAt format
 - `src/routes/+page.svelte` — error state, poll guard
@@ -33,19 +34,23 @@
 - `src/lib/modules/server/sessions/jsonl-reader.ts` — readCwdFromProjectDir
 
 **Workstream B (UX/Onboarding):**
+
 - `src/routes/config/+page.svelte` — help text, back button, test connection
 
 **Workstream C (Navigation):**
+
 - `src/routes/terminals/[id]/+page.svelte` — session cross-link
 - `src/routes/session/[id]/+page.svelte` — resilient deep links
 - `src/routes/config/+page.svelte` — back button
 
 **Workstream D (Mobile):**
+
 - `src/app.html` — PWA meta tags
 - `src/lib/theme.css` — touch target overrides
 - `src/lib/modules/client/terminal/ConnectionStatus.svelte` — aria-label
 
 **Workstream E (Performance):**
+
 - `src/lib/modules/server/sessions/jsonl-reader.ts` — partial reads
 - `src/lib/modules/client/common/markdown.ts` — memoization
 
@@ -56,6 +61,7 @@
 ### Task A1: Dynamic version in health endpoint
 
 **Files:**
+
 - Modify: `src/routes/api/health/+server.ts:81`
 
 - [ ] **Step 1: Read package.json for version**
@@ -78,10 +84,13 @@ const PKG_VERSION = (() => {
 - [ ] **Step 2: Replace hardcoded version**
 
 Change line 81 from:
+
 ```typescript
 version: '1.1.0',
 ```
+
 To:
+
 ```typescript
 version: PKG_VERSION,
 ```
@@ -104,15 +113,19 @@ git commit -m "fix(health): read version from package.json instead of hardcoding
 ### Task A2: Fix createdAt format inconsistency
 
 **Files:**
+
 - Modify: `src/routes/api/sessions/connect/+server.ts:70`
 
 - [ ] **Step 1: Fix Date serialization**
 
 Change line 70 from:
+
 ```typescript
 createdAt: terminal.createdAt,
 ```
+
 To:
+
 ```typescript
 createdAt: terminal.createdAt instanceof Date ? terminal.createdAt.toISOString() : terminal.createdAt,
 ```
@@ -129,6 +142,7 @@ git commit -m "fix(api): serialize createdAt as ISO string consistently"
 ### Task A3: Show error states on client pages
 
 **Files:**
+
 - Modify: `src/routes/+page.svelte:144-145`
 - Modify: `src/routes/project/+page.svelte:117-119`
 - Modify: `src/routes/terminals/+page.svelte:94-95`
@@ -136,29 +150,36 @@ git commit -m "fix(api): serialize createdAt as ISO string consistently"
 - [ ] **Step 1: Add error state to home page**
 
 In `src/routes/+page.svelte`, add reactive state:
+
 ```typescript
 let fetchError = $state<string | null>(null);
 ```
 
 Change the silent return:
+
 ```typescript
 // Before:
-if (!response.ok) { return; }
+if (!response.ok) {
+  return;
+}
 
 // After:
 if (!response.ok) {
-  fetchError = response.status === 401 ? 'Invalid API key. Check Settings.' : 'Failed to load projects.';
+  fetchError =
+    response.status === 401 ? 'Invalid API key. Check Settings.' : 'Failed to load projects.';
   return;
 }
 ```
 
 Clear error on success:
+
 ```typescript
 // After successful fetch:
 fetchError = null;
 ```
 
 Add Banner to template (after the shimmer/loading block):
+
 ```svelte
 {#if fetchError}
   <Banner text={fetchError} classes="banner-error" />
@@ -190,11 +211,13 @@ git commit -m "fix(ui): show error banners when API calls fail instead of silent
 ### Task A4: WebSocket exponential backoff
 
 **Files:**
+
 - Modify: `src/routes/session/[id]/+page.svelte:192-197,228-234`
 
 - [ ] **Step 1: Replace fixed delay with exponential backoff**
 
 Find both places where `2000` is used as the reconnect delay. Replace with:
+
 ```typescript
 const backoffMs = Math.min(1000 * Math.pow(2, wsReconnectAttempts), 30000);
 ```
@@ -213,11 +236,13 @@ git commit -m "fix(ws): exponential backoff for WebSocket reconnection (1s→30s
 ### Task A5: Prevent polling from clobbering pagination
 
 **Files:**
+
 - Modify: `src/routes/+page.svelte:64-68`
 
 - [ ] **Step 1: Skip poll when user has paginated**
 
 Change the poll timer callback:
+
 ```typescript
 pollTimer = setInterval(() => {
   if (config?.apiKey && currentOffset <= PAGE_SIZE) {
@@ -239,11 +264,13 @@ git commit -m "fix(home): skip polling when user has paginated past first page"
 ### Task A6: Session page metadata polling
 
 **Files:**
+
 - Modify: `src/routes/session/[id]/+page.svelte`
 
 - [ ] **Step 1: Add metadata refresh interval**
 
 In the `onMount` block (or after initial fetch), add:
+
 ```typescript
 const metadataPollTimer = setInterval(() => {
   if (isSessionActive && !disposed) {
@@ -256,6 +283,7 @@ const metadataPollTimer = setInterval(() => {
 Add cleanup in `onDestroy` or `disposed` logic.
 
 Add `refreshSessionMetadata()`:
+
 ```typescript
 async function refreshSessionMetadata(): Promise<void> {
   // Lightweight: just re-fetch session info, not messages
@@ -275,6 +303,7 @@ git commit -m "fix(session): poll metadata every 30s to update LIVE badge accura
 ### Task A7: Shared OpenCode DB path resolver
 
 **Files:**
+
 - Create: `src/lib/modules/server/sessions/opencode-db-path.ts`
 - Modify: `src/lib/modules/server/sessions/opencode-reader.ts:12-18`
 - Modify: `src/lib/modules/server/terminal/opencode-watcher.ts:29-45`
@@ -292,11 +321,15 @@ export function resolveOpenCodeDbPath(): string {
   const xdgData = process.env.XDG_DATA_HOME || join(home, '.local', 'share');
   const xdgPath = join(xdgData, 'opencode', 'opencode.db');
 
-  if (existsSync(xdgPath)) { return xdgPath; }
+  if (existsSync(xdgPath)) {
+    return xdgPath;
+  }
 
   if (process.platform === 'darwin') {
     const legacyPath = join(home, 'Library', 'Application Support', 'opencode', 'opencode.db');
-    if (existsSync(legacyPath)) { return legacyPath; }
+    if (existsSync(legacyPath)) {
+      return legacyPath;
+    }
   }
 
   return xdgPath;
@@ -306,6 +339,7 @@ export function resolveOpenCodeDbPath(): string {
 - [ ] **Step 2: Use in opencode-reader.ts**
 
 Replace lines 12-18 with:
+
 ```typescript
 import { resolveOpenCodeDbPath } from './opencode-db-path';
 const OPENCODE_DB_PATH = resolveOpenCodeDbPath();
@@ -314,6 +348,7 @@ const OPENCODE_DB_PATH = resolveOpenCodeDbPath();
 - [ ] **Step 3: Use in opencode-watcher.ts**
 
 Replace the IIFE at lines 29-45 with:
+
 ```typescript
 import { resolveOpenCodeDbPath } from '../sessions/opencode-db-path';
 const OPENCODE_DB_PATH = resolveOpenCodeDbPath();
@@ -335,15 +370,17 @@ git commit -m "refactor(opencode): shared DB path resolver for reader and watche
 ### Task A8: readCwdFromProjectDir — read only first line
 
 **Files:**
+
 - Modify: `src/lib/modules/server/sessions/jsonl-reader.ts:363-389`
 
 - [ ] **Step 1: Replace full file read with partial read**
 
 Replace the function body with:
+
 ```typescript
 function readCwdFromProjectDir(projectDir: string): string {
   try {
-    const files = fs.readdirSync(projectDir).filter(f => f.endsWith('.jsonl'));
+    const files = fs.readdirSync(projectDir).filter((f) => f.endsWith('.jsonl'));
     for (const file of files) {
       const filePath = path.join(projectDir, file);
       // Read only first 4KB instead of entire file
@@ -353,13 +390,21 @@ function readCwdFromProjectDir(projectDir: string): string {
       fs.closeSync(fd);
       const firstChunk = buf.toString('utf-8', 0, bytesRead);
       const firstLine = firstChunk.split('\n')[0];
-      if (!firstLine) { continue; }
+      if (!firstLine) {
+        continue;
+      }
       try {
         const entry = JSON.parse(firstLine);
-        if (entry.cwd) { return entry.cwd; }
-      } catch { /* skip */ }
+        if (entry.cwd) {
+          return entry.cwd;
+        }
+      } catch {
+        /* skip */
+      }
     }
-  } catch { /* skip */ }
+  } catch {
+    /* skip */
+  }
   return '';
 }
 ```
@@ -378,19 +423,22 @@ git commit -m "perf(sessions): read only first 4KB for CWD extraction instead of
 ### Task B1: Config page — API key help text + back button
 
 **Files:**
+
 - Modify: `src/routes/config/+page.svelte`
 
 - [ ] **Step 1: Add help text below API key input**
 
 Find the API key `<Input>` component. After it, add:
+
 ```svelte
 <p class="input-help">
-  Find this in your <code>~/.shooter/.env</code> file (generated during setup).
-  Run <code>shooter setup</code> to create one.
+  Find this in your <code>~/.shooter/.env</code> file (generated during setup). Run
+  <code>shooter setup</code> to create one.
 </p>
 ```
 
 Style:
+
 ```css
 .input-help {
   font-size: var(--text-xs);
@@ -408,6 +456,7 @@ Style:
 - [ ] **Step 2: Add back button at top**
 
 Add at the top of the page template:
+
 ```svelte
 <div class="config-back-row">
   <a href="/" class="back-link">
@@ -436,11 +485,13 @@ git commit -m "feat(config): add API key help text, back button, mark device tok
 ### Task C1: Terminal → Session cross-link
 
 **Files:**
+
 - Modify: `src/routes/terminals/[id]/+page.svelte`
 
 - [ ] **Step 1: Add "View Session" link for AI terminals**
 
 Find the terminal top bar. For AI terminals (`isAI` is true), add a link:
+
 ```svelte
 {#if terminal.sessionFile}
   {@const sessionId = terminal.sessionFile.split('/').pop()?.replace('.jsonl', '') || ''}
@@ -462,11 +513,13 @@ git commit -m "feat(terminal): add link to view associated session history"
 ### Task C2: Resilient session deep links
 
 **Files:**
+
 - Modify: `src/routes/session/[id]/+page.svelte`
 
 - [ ] **Step 1: Search all projects when projectId is missing**
 
 In `fetchSession()`, after the current fetch logic, add a fallback:
+
 ```typescript
 // If projectId is missing, search all projects for this session
 if (!pid && !session) {
@@ -501,6 +554,7 @@ git commit -m "fix(session): search all projects when deep link has no project p
 ### Task D1: PWA manifest
 
 **Files:**
+
 - Create: `static/manifest.json`
 - Modify: `src/app.html`
 
@@ -525,6 +579,7 @@ git commit -m "fix(session): search all projects when deep link has no project p
 - [ ] **Step 2: Add meta tags to app.html**
 
 In `<head>`:
+
 ```html
 <link rel="manifest" href="%sveltekit.assets%/manifest.json" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -547,11 +602,13 @@ git commit -m "feat(pwa): add web app manifest for home screen install"
 ### Task D2: Fix undersized touch targets
 
 **Files:**
+
 - Modify: `src/lib/theme.css`
 
 - [ ] **Step 1: Add mobile touch target overrides**
 
 At the end of `theme.css`, add:
+
 ```css
 /* Mobile touch target enforcement (44px minimum) */
 @media (max-width: 768px) {
@@ -580,11 +637,13 @@ git commit -m "fix(mobile): increase undersized touch targets for phone usabilit
 ### Task D3: ConnectionStatus aria-label
 
 **Files:**
+
 - Modify: `src/lib/modules/client/terminal/ConnectionStatus.svelte`
 
 - [ ] **Step 1: Add aria-label**
 
 Find the wrapper div. Add:
+
 ```svelte
 <div class="connection-status" aria-label="Connection: {label}">
 ```
@@ -605,6 +664,7 @@ git commit -m "fix(a11y): add aria-label to ConnectionStatus for mobile screen r
 ### Task E1: Memoize markdown rendering
 
 **Files:**
+
 - Modify: `src/lib/modules/client/common/markdown.ts`
 
 - [ ] **Step 1: Add simple cache**
@@ -615,14 +675,18 @@ const MAX_CACHE_SIZE = 500;
 
 export function renderMarkdown(text: string): string {
   const cached = markdownCache.get(text);
-  if (cached) { return cached; }
+  if (cached) {
+    return cached;
+  }
 
   const result = DOMPurify.sanitize(marked.parse(text) as string);
 
   if (markdownCache.size >= MAX_CACHE_SIZE) {
     // Evict oldest entry
     const firstKey = markdownCache.keys().next().value;
-    if (firstKey) { markdownCache.delete(firstKey); }
+    if (firstKey) {
+      markdownCache.delete(firstKey);
+    }
   }
   markdownCache.set(text, result);
   return result;
@@ -641,11 +705,13 @@ git commit -m "perf(markdown): memoize rendered output to avoid re-parsing ident
 ### Task E2: Partial file read for active session message counting
 
 **Files:**
+
 - Modify: `src/lib/modules/server/sessions/jsonl-reader.ts:220-231`
 
 - [ ] **Step 1: Count newlines instead of parsing JSON**
 
 Replace the full-file JSON parse loop with a byte-level newline count:
+
 ```typescript
 // For recently active sessions (< 10 min), count message lines efficiently
 if (Date.now() - stat.mtime.getTime() < 10 * 60 * 1000) {
@@ -657,13 +723,21 @@ if (Date.now() - stat.mtime.getTime() < 10 * 60 * 1000) {
     let pos = 0;
     while (pos < content.length) {
       const nl = content.indexOf('\n', pos);
-      if (nl === -1) { break; }
+      if (nl === -1) {
+        break;
+      }
       const line = content.substring(pos, Math.min(pos + 30, nl));
-      if (line.includes('"user"') || line.includes('"assistant"')) { count++; }
+      if (line.includes('"user"') || line.includes('"assistant"')) {
+        count++;
+      }
       pos = nl + 1;
     }
-    if (count > 0) { messageCount = count; }
-  } catch { /* keep index count */ }
+    if (count > 0) {
+      messageCount = count;
+    }
+  } catch {
+    /* keep index count */
+  }
 }
 ```
 

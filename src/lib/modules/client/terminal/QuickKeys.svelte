@@ -1,16 +1,9 @@
 <script lang="ts">
+  import type { QuickKey, QuickKeysProps } from '$lib/types';
+
   import { Button } from '@juspay/svelte-ui-components';
 
-  interface Props {
-    onKey: (key: string) => void;
-  }
-
-  interface QuickKey {
-    escape: string;
-    label: string;
-  }
-
-  const { onKey }: Props = $props();
+  const { onKey }: QuickKeysProps = $props();
 
   const keys: QuickKey[] = [
     { escape: '\x03', label: 'Ctrl+C' },
@@ -27,7 +20,7 @@
   {#each keys as k (k.label)}
     <Button
       classes="btn-quick-key"
-      onclick={() => {
+      onclick={(): void => {
         onKey(k.escape);
       }}
       text={k.label}

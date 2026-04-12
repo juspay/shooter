@@ -16,7 +16,7 @@ import {
 } from './events-handler.js';
 import { handleSessionConnection } from './session-handler.js';
 import { handleTerminalConnection } from './terminal-handler.js';
-export type { ShooterEvent } from './events-handler.js';
+export type { WireShooterEvent as ShooterEvent } from '$lib/types';
 
 // ── Connection tracking ──────────────────────────────────────────────
 

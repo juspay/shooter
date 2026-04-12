@@ -39,6 +39,9 @@ This repository contains a **WORKING** bidirectional communication system betwee
   - `server/ws/` - WebSocket server, handlers, ticket-store, keepalive
   - `server/sessions/` - JSONL reader, OpenCode reader, types
   - `server/auth.ts` - Shared authentication
+  - `client/activity/` - Live activity feed (store, summarizer, ActivityFeed component)
+  - `client/dashboard/` - Live session dashboard (store, summarizer, DashboardCard, DashboardView)
+  - `client/neurolink/` - NeuroLink AI integration (provider-config, fetch-proxy for CORS)
   - `client/common/` - Reusable UI components (Button, Card, Alert, EmptyState, StatusBadge, Tag, Icon, Input) and shared utilities (markdown, cache, time, tool-title, config-guard)
   - `client/terminal/` - ChatView (shared rendering component), LaunchSheet, QuickKeys, ConnectionStatus, xterm-wrapper
 - `server.ts` - Custom server entry point (Node.js with WebSocket upgrade handling)
@@ -47,15 +50,45 @@ This repository contains a **WORKING** bidirectional communication system betwee
 - `bin/shooter.cjs` - CLI entry point with commands: start, stop, status, autostart on/off, logs, setup, version, help
 - `Dockerfile` + `docker-compose.yml` - Docker deployment
 - `Dockerfile.test` - Test image for verifying fresh-user install experience
-- `src/lib/types/` - Auto-generated TypeScript types (DO NOT EDIT)
+- `src/lib/types/` - **All types live here** (see Type System below)
+  - `generated/` - Auto-generated from YAML (cleaned on regen — DO NOT EDIT)
+  - `activity.ts`, `dashboard.ts`, `neurolink.ts` - Hand-written types (unions, generics not expressible in YAML)
+  - `index.ts` - **Barrel export — the ONLY import source** (`import type { Foo } from '$lib/types'`)
 - `specs/types/` - Type-crafter YAML specifications (EDIT HERE for types)
   - `index.yaml` - Main spec file (top file with references)
   - `jwt.yaml` - JWT authentication types
   - `apn.yaml` - APNs notification types
   - `cli.yaml` - CLI module types
   - `terminal.yaml` - Terminal and WebSocket types
+  - `client.yaml` - Client-side types (dashboard, activity, AI)
+  - `ws-protocol.yaml` - WebSocket protocol types
 - `ios/` - Swift iOS app (working, receiving notifications + interactive permission responses)
 - `android/` - Android app scaffold (Kotlin, WebView + FCM push notifications)
+
+## Type System
+
+**All types must live in `src/lib/types/`.** This is enforced by ESLint rules.
+
+### Where types are defined
+
+| Category                     | Location                    | How to edit                                                        |
+| ---------------------------- | --------------------------- | ------------------------------------------------------------------ |
+| Generated types              | `src/lib/types/generated/`  | Edit `specs/types/*.yaml`, run `pnpm gen:types`                    |
+| Hand-written types           | `src/lib/types/<module>.ts` | Edit directly — for unions, generics, or types YAML cannot express |
+| Library types (Svelte, etc.) | External packages           | Import normally — exempt from rules                                |
+
+### Rules
+
+1. **Single import source**: All source files import types from `$lib/types` barrel only: `import type { Foo } from '$lib/types'`
+2. **No type definitions outside `src/lib/types/`**: ESLint `no-restricted-syntax` warns on `type` or `interface` declarations outside the types folder. Exception: component `Props` types and the `ProviderId` type in `provider-config.ts` (circular dependency).
+3. **No direct imports from `$generated`**: The `$generated` alias is removed. ESLint `no-restricted-imports` errors on any `$generated/*` import.
+4. **Generated types are never imported directly**: Always go through the barrel, never `from '$lib/types/generated/Foo'`.
+5. **`pnpm gen:types`** regenerates `src/lib/types/generated/` from YAML specs, runs `scripts/postgen-types.sh` (fixes type-crafter bugs), then formats.
+
+### Adding a new type
+
+- **If it can be expressed in YAML** (flat interfaces, enums, simple generics): Add to `specs/types/<module>.yaml` and run `pnpm gen:types`.
+- **If it requires unions, `Record<string, unknown>`, or derives from runtime constants**: Add to a hand-written file in `src/lib/types/<module>.ts` and re-export from `index.ts`.
 
 ### Architecture Documentation (in `plans/` and `docs/`)
 
@@ -95,7 +128,7 @@ The system is designed to be built in four phases:
 
 ### SvelteKit Application
 
-- API routes: `/api/notify`, `/api/response`, `/api/webhook`, `/api/health`, `/api/debug`
+- API routes: `/api/notify`, `/api/response`, `/api/webhook` (stub, 501), `/api/health`, `/api/debug`
 - Terminal API routes: `/api/terminals`, `/api/terminals/[id]`, `/api/terminals/[id]/resize`, `/api/ws-ticket`, `/api/ws-status`
 - Session API route: `/api/sessions`
 - Device/config API routes: `/api/device-token`, `/api/qr-config`
@@ -142,20 +175,20 @@ Terminals survive server restarts via a holder-process architecture:
 
 The `shooter` CLI (via `bin/shooter.cjs`) supports the following commands:
 
-| Command           | Description                                        |
-| ----------------- | -------------------------------------------------- |
-| `start`           | Start server + tunnel (foreground, default)         |
-| `start -d`        | Start in background (daemon mode)                   |
-| `start --no-tunnel` | Start without Cloudflare Tunnel                   |
-| `stop`            | Stop server and tunnel                              |
-| `status`          | Show server status, PID, port, tunnel URL           |
-| `autostart on`    | Enable autostart on login (LaunchAgent / systemd)   |
-| `autostart off`   | Disable autostart                                   |
-| `logs`            | Tail server logs (LaunchAgent log file or journalctl) |
-| `setup`           | Quick setup — API key + build (~60s, push deferred) |
-| `setup --push`    | Add/reconfigure iOS or Android push notifications |
-| `version`         | Show version number                                 |
-| `help`            | Show help message                                   |
+| Command             | Description                                           |
+| ------------------- | ----------------------------------------------------- |
+| `start`             | Start server + tunnel (foreground, default)           |
+| `start -d`          | Start in background (daemon mode)                     |
+| `start --no-tunnel` | Start without Cloudflare Tunnel                       |
+| `stop`              | Stop server and tunnel                                |
+| `status`            | Show server status, PID, port, tunnel URL             |
+| `autostart on`      | Enable autostart on login (LaunchAgent / systemd)     |
+| `autostart off`     | Disable autostart                                     |
+| `logs`              | Tail server logs (LaunchAgent log file or journalctl) |
+| `setup`             | Quick setup — API key + build (~60s, push deferred)   |
+| `setup --push`      | Add/reconfigure iOS or Android push notifications     |
+| `version`           | Show version number                                   |
+| `help`              | Show help message                                     |
 
 PID file: `~/.shooter/shooter.pid`. Tunnel PID: `~/.shooter/tunnel.pid`. Logs: `~/.shooter/logs/shooter.log`. Tunnel logs: `~/.shooter/logs/tunnel.log`.
 

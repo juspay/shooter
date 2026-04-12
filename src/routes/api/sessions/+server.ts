@@ -1,4 +1,4 @@
-import type { ProjectGroup } from '$lib/modules/server/sessions/types';
+import type { ProjectGroup } from '$lib/types';
 
 import { validateAuth } from '$lib/modules/server/auth';
 import {

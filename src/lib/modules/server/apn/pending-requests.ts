@@ -1,7 +1,7 @@
 // Shared in-memory store for pending permission requests.
 // Used by /api/notify (creates entries) and /api/response (reads/updates).
 
-import type { PendingRequest } from '$generated/types';
+import type { PendingRequest } from '$lib/types';
 
 export type { PendingRequest };
 

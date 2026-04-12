@@ -1845,13 +1845,265 @@ export function decodeEventSessionEnded(rawInput: unknown): EventSessionEnded | 
   return null;
 }
 
+/**
+ * @type { EventToolStarted }
+ * @description A tool execution has started
+ */
+export type EventToolStarted = {
+  /**
+   * @type { string }
+   * @memberof EventToolStarted
+   */
+  type: string;
+  /**
+   * @description Name of the tool being executed
+   * @type { string }
+   * @memberof EventToolStarted
+   */
+  tool: string;
+  /**
+   * @description Command being executed (for Bash tool)
+   * @type { string }
+   * @memberof EventToolStarted
+   */
+  command: string | null;
+  /**
+   * @description File path being operated on
+   * @type { string }
+   * @memberof EventToolStarted
+   */
+  filePath: string | null;
+  /**
+   * @description Associated terminal identifier
+   * @type { string }
+   * @memberof EventToolStarted
+   */
+  terminalId: string | null;
+};
+
+export function decodeEventToolStarted(rawInput: unknown): EventToolStarted | null {
+  if (isJSON(rawInput)) {
+    const decodedType = decodeString(rawInput['type']);
+    const decodedTool = decodeString(rawInput['tool']);
+    const decodedCommand = decodeString(rawInput['command']);
+    const decodedFilePath = decodeString(rawInput['filePath']);
+    const decodedTerminalId = decodeString(rawInput['terminalId']);
+
+    if (decodedType === null || decodedTool === null) {
+      return null;
+    }
+
+    return {
+      type: decodedType,
+      tool: decodedTool,
+      command: decodedCommand,
+      filePath: decodedFilePath,
+      terminalId: decodedTerminalId,
+    };
+  }
+  return null;
+}
+
+/**
+ * @type { EventToolCompleted }
+ * @description A tool execution has completed
+ */
+export type EventToolCompleted = {
+  /**
+   * @type { string }
+   * @memberof EventToolCompleted
+   */
+  type: string;
+  /**
+   * @description Name of the tool that completed
+   * @type { string }
+   * @memberof EventToolCompleted
+   */
+  tool: string;
+  /**
+   * @description Whether the tool execution succeeded
+   * @type { boolean }
+   * @memberof EventToolCompleted
+   */
+  success: boolean;
+  /**
+   * @description Associated terminal identifier
+   * @type { string }
+   * @memberof EventToolCompleted
+   */
+  terminalId: string | null;
+};
+
+export function decodeEventToolCompleted(rawInput: unknown): EventToolCompleted | null {
+  if (isJSON(rawInput)) {
+    const decodedType = decodeString(rawInput['type']);
+    const decodedTool = decodeString(rawInput['tool']);
+    const decodedSuccess = decodeBoolean(rawInput['success']);
+    const decodedTerminalId = decodeString(rawInput['terminalId']);
+
+    if (decodedType === null || decodedTool === null || decodedSuccess === null) {
+      return null;
+    }
+
+    return {
+      type: decodedType,
+      tool: decodedTool,
+      success: decodedSuccess,
+      terminalId: decodedTerminalId,
+    };
+  }
+  return null;
+}
+
+/**
+ * @type { EventToolFailed }
+ * @description A tool execution has failed
+ */
+export type EventToolFailed = {
+  /**
+   * @type { string }
+   * @memberof EventToolFailed
+   */
+  type: string;
+  /**
+   * @description Name of the tool that failed
+   * @type { string }
+   * @memberof EventToolFailed
+   */
+  tool: string;
+  /**
+   * @description Error message
+   * @type { string }
+   * @memberof EventToolFailed
+   */
+  error: string;
+  /**
+   * @description Associated terminal identifier
+   * @type { string }
+   * @memberof EventToolFailed
+   */
+  terminalId: string | null;
+};
+
+export function decodeEventToolFailed(rawInput: unknown): EventToolFailed | null {
+  if (isJSON(rawInput)) {
+    const decodedType = decodeString(rawInput['type']);
+    const decodedTool = decodeString(rawInput['tool']);
+    const decodedError = decodeString(rawInput['error']);
+    const decodedTerminalId = decodeString(rawInput['terminalId']);
+
+    if (decodedType === null || decodedTool === null || decodedError === null) {
+      return null;
+    }
+
+    return {
+      type: decodedType,
+      tool: decodedTool,
+      error: decodedError,
+      terminalId: decodedTerminalId,
+    };
+  }
+  return null;
+}
+
+/**
+ * @type { EventAgentIdle }
+ * @description The AI agent is idle and waiting
+ */
+export type EventAgentIdle = {
+  /**
+   * @type { string }
+   * @memberof EventAgentIdle
+   */
+  type: string;
+  /**
+   * @description Optional idle message
+   * @type { string }
+   * @memberof EventAgentIdle
+   */
+  message: string | null;
+  /**
+   * @description Associated terminal identifier
+   * @type { string }
+   * @memberof EventAgentIdle
+   */
+  terminalId: string | null;
+};
+
+export function decodeEventAgentIdle(rawInput: unknown): EventAgentIdle | null {
+  if (isJSON(rawInput)) {
+    const decodedType = decodeString(rawInput['type']);
+    const decodedMessage = decodeString(rawInput['message']);
+    const decodedTerminalId = decodeString(rawInput['terminalId']);
+
+    if (decodedType === null) {
+      return null;
+    }
+
+    return {
+      type: decodedType,
+      message: decodedMessage,
+      terminalId: decodedTerminalId,
+    };
+  }
+  return null;
+}
+
+/**
+ * @type { EventAgentQuestion }
+ * @description The AI agent has a question for the user
+ */
+export type EventAgentQuestion = {
+  /**
+   * @type { string }
+   * @memberof EventAgentQuestion
+   */
+  type: string;
+  /**
+   * @description The question being asked
+   * @type { string }
+   * @memberof EventAgentQuestion
+   */
+  message: string;
+  /**
+   * @description Associated terminal identifier
+   * @type { string }
+   * @memberof EventAgentQuestion
+   */
+  terminalId: string | null;
+};
+
+export function decodeEventAgentQuestion(rawInput: unknown): EventAgentQuestion | null {
+  if (isJSON(rawInput)) {
+    const decodedType = decodeString(rawInput['type']);
+    const decodedMessage = decodeString(rawInput['message']);
+    const decodedTerminalId = decodeString(rawInput['terminalId']);
+
+    if (decodedType === null || decodedMessage === null) {
+      return null;
+    }
+
+    return {
+      type: decodedType,
+      message: decodedMessage,
+      terminalId: decodedTerminalId,
+    };
+  }
+  return null;
+}
+
 export type ShooterEvent =
   | CShooterEventEventTerminalCreated
   | CShooterEventEventTerminalExited
   | CShooterEventEventPermissionRequested
   | CShooterEventEventPermissionResolved
   | CShooterEventEventSessionStarted
-  | CShooterEventEventSessionEnded;
+  | CShooterEventEventSessionEnded
+  | CShooterEventEventToolStarted
+  | CShooterEventEventToolCompleted
+  | CShooterEventEventToolFailed
+  | CShooterEventEventAgentIdle
+  | CShooterEventEventAgentQuestion;
 
 export function decodeShooterEvent(rawInput: unknown): ShooterEvent | null {
   const result: ShooterEvent | null =
@@ -1860,7 +2112,12 @@ export function decodeShooterEvent(rawInput: unknown): ShooterEvent | null {
     decodeCShooterEventEventPermissionRequested(rawInput) ??
     decodeCShooterEventEventPermissionResolved(rawInput) ??
     decodeCShooterEventEventSessionStarted(rawInput) ??
-    decodeCShooterEventEventSessionEnded(rawInput);
+    decodeCShooterEventEventSessionEnded(rawInput) ??
+    decodeCShooterEventEventToolStarted(rawInput) ??
+    decodeCShooterEventEventToolCompleted(rawInput) ??
+    decodeCShooterEventEventToolFailed(rawInput) ??
+    decodeCShooterEventEventAgentIdle(rawInput) ??
+    decodeCShooterEventEventAgentQuestion(rawInput);
 
   return result;
 }
@@ -1965,6 +2222,91 @@ export function decodeCShooterEventEventSessionEnded(
     return null;
   }
   return new CShooterEventEventSessionEnded(result);
+}
+
+export class CShooterEventEventToolStarted {
+  data: EventToolStarted;
+  constructor(data: EventToolStarted) {
+    this.data = data;
+  }
+}
+
+export function decodeCShooterEventEventToolStarted(
+  rawInput: unknown
+): CShooterEventEventToolStarted | null {
+  const result = decodeEventToolStarted(rawInput);
+  if (result === null) {
+    return null;
+  }
+  return new CShooterEventEventToolStarted(result);
+}
+
+export class CShooterEventEventToolCompleted {
+  data: EventToolCompleted;
+  constructor(data: EventToolCompleted) {
+    this.data = data;
+  }
+}
+
+export function decodeCShooterEventEventToolCompleted(
+  rawInput: unknown
+): CShooterEventEventToolCompleted | null {
+  const result = decodeEventToolCompleted(rawInput);
+  if (result === null) {
+    return null;
+  }
+  return new CShooterEventEventToolCompleted(result);
+}
+
+export class CShooterEventEventToolFailed {
+  data: EventToolFailed;
+  constructor(data: EventToolFailed) {
+    this.data = data;
+  }
+}
+
+export function decodeCShooterEventEventToolFailed(
+  rawInput: unknown
+): CShooterEventEventToolFailed | null {
+  const result = decodeEventToolFailed(rawInput);
+  if (result === null) {
+    return null;
+  }
+  return new CShooterEventEventToolFailed(result);
+}
+
+export class CShooterEventEventAgentIdle {
+  data: EventAgentIdle;
+  constructor(data: EventAgentIdle) {
+    this.data = data;
+  }
+}
+
+export function decodeCShooterEventEventAgentIdle(
+  rawInput: unknown
+): CShooterEventEventAgentIdle | null {
+  const result = decodeEventAgentIdle(rawInput);
+  if (result === null) {
+    return null;
+  }
+  return new CShooterEventEventAgentIdle(result);
+}
+
+export class CShooterEventEventAgentQuestion {
+  data: EventAgentQuestion;
+  constructor(data: EventAgentQuestion) {
+    this.data = data;
+  }
+}
+
+export function decodeCShooterEventEventAgentQuestion(
+  rawInput: unknown
+): CShooterEventEventAgentQuestion | null {
+  const result = decodeEventAgentQuestion(rawInput);
+  if (result === null) {
+    return null;
+  }
+  return new CShooterEventEventAgentQuestion(result);
 }
 
 /**

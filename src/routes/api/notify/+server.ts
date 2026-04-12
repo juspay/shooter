@@ -1,4 +1,4 @@
-import type { NotificationData } from '$generated/types';
+import type { NotificationData } from '$lib/types';
 
 import { env } from '$env/dynamic/private';
 import { LibraryAPNsService } from '$lib/modules/server/apn/library-apns';
@@ -7,6 +7,7 @@ import { createPendingRequest } from '$lib/modules/server/apn/pending-requests';
 import { validateAuth } from '$lib/modules/server/auth';
 import { isFCMConfigured, sendFCMNotification } from '$lib/modules/server/fcm/fcm-service.js';
 import { toErrorMessage } from '$lib/modules/server/utils/error';
+import { broadcastEvent } from '$lib/modules/server/ws/server';
 import { json } from '@sveltejs/kit';
 
 import type { RequestHandler } from './$types';
@@ -24,15 +25,118 @@ function getAPNsClient(): LibraryAPNsService {
 const notificationCache = new Map<string, number>();
 const DEDUP_WINDOW = 10000; // 10 seconds deduplication window
 
+function broadcastHookEvent(body: Record<string, unknown>): void {
+  const data = (body.data ?? {}) as Record<string, unknown>;
+  const eventType =
+    typeof data.eventType === 'string'
+      ? data.eventType
+      : typeof body.eventType === 'string'
+        ? body.eventType
+        : '';
+  const tool = typeof data.tool === 'string' ? data.tool : '';
+  const terminalId = typeof data.terminalId === 'string' ? data.terminalId : undefined;
+  const sessionId = typeof data.sessionId === 'string' ? data.sessionId : undefined;
+
+  switch (eventType) {
+    case 'error':
+      broadcastEvent({
+        error:
+          typeof data.error === 'string'
+            ? data.error
+            : typeof data.message === 'string'
+              ? data.message
+              : 'Unknown error',
+        terminalId,
+        tool,
+        type: 'tool-failed',
+      });
+      break;
+    case 'idle_input':
+    case 'session.idle':
+      broadcastEvent({
+        message: typeof data.message === 'string' ? data.message : '',
+        sessionId,
+        terminalId,
+        type: 'agent-idle',
+      });
+      break;
+    case 'permission':
+    case 'permission_notification':
+      if (data.requestId && data.toolName) {
+        broadcastEvent({
+          input:
+            typeof data.toolInput === 'object' && data.toolInput !== null
+              ? (data.toolInput as Record<string, unknown>)
+              : {},
+          requestId: data.requestId as string,
+          tool: data.toolName as string,
+          type: 'permission-requested',
+        });
+      }
+      break;
+    case 'question':
+      broadcastEvent({
+        message: typeof data.message === 'string' ? data.message : '',
+        sessionId,
+        terminalId,
+        type: 'agent-question',
+      });
+      break;
+    case 'tool.after':
+      broadcastEvent({ success: true, terminalId, tool, type: 'tool-completed' });
+      break;
+    case 'tool.before':
+      broadcastEvent({
+        command: typeof data.command === 'string' ? data.command : '',
+        filePath:
+          typeof data.filePath === 'string'
+            ? data.filePath
+            : typeof data.files === 'string'
+              ? data.files
+              : '',
+        terminalId,
+        tool,
+        type: 'tool-started',
+      });
+      break;
+    // session.status, intervention — skip or use existing types
+  }
+}
+
+/** Build a notification history record from common fields. */
+function buildNotificationRecord(
+  id: string,
+  title: string,
+  message: string,
+  status: 'failed' | 'filtered' | 'sent' | 'skipped',
+  data?: NotificationData,
+  error?: null | string
+): Parameters<typeof addNotification>[0] {
+  return {
+    category: data?.category ?? null,
+    data: (data as Record<string, unknown>) ?? null,
+    error: error ?? null,
+    id,
+    message,
+    project: data?.project ?? null,
+    source: data?.source ?? null,
+    status,
+    timestamp: new Date().toISOString(),
+    title,
+    tool: data?.tool ?? null,
+  };
+}
+
 function intelligentNotificationFilter(
   title: string,
   message: string,
-  data?: NotificationData
+  data?: NotificationData,
+  waitForResponse = false
 ): { reason: string; send: boolean } {
   const source = data?.source || 'unknown';
 
   // Check for duplicate notifications first
-  if (isDuplicateNotification(title, message, data)) {
+  if (isDuplicateNotification(title, message, data, waitForResponse)) {
     return {
       reason: 'Duplicate notification within 10-second window',
       send: false,
@@ -100,12 +204,23 @@ function intelligentNotificationFilter(
   };
 }
 
-function isDuplicateNotification(title: string, message: string, data?: NotificationData): boolean {
+function isDuplicateNotification(
+  title: string,
+  message: string,
+  data?: NotificationData,
+  waitForResponse = false
+): boolean {
+  // Never deduplicate bidirectional permission requests — each one creates a
+  // unique pending request that the hook polls by requestId.
+  if (waitForResponse) {
+    return false;
+  }
+
   const key = `${title}|${message}|${data?.category || 'unknown'}`;
   const now = Date.now();
 
   if (notificationCache.has(key)) {
-    const lastSent = notificationCache.get(key)!;
+    const lastSent = notificationCache.get(key) ?? 0;
     if (now - lastSent < DEDUP_WINDOW) {
       return true; // Duplicate within time window
     }
@@ -159,6 +274,13 @@ export const POST: RequestHandler = async ({ request }) => {
     const waitForResponse =
       typeof body.waitForResponse === 'boolean' ? body.waitForResponse : false;
 
+    // Broadcast to /ws/events for real-time activity feed
+    try {
+      broadcastHookEvent(body);
+    } catch {
+      // Best-effort broadcast — don't fail the notify request
+    }
+
     if (!title || typeof title !== 'string' || !message || typeof message !== 'string') {
       return json({ error: 'Title and message are required and must be strings' }, { status: 400 });
     }
@@ -171,22 +293,24 @@ export const POST: RequestHandler = async ({ request }) => {
     const requestId = Math.random().toString(36).substring(2, 15);
     const dataRequestId = typeof data?.requestId === 'string' ? data.requestId : undefined;
     const canonicalRequestId = dataRequestId || requestId;
-    const shouldSendNotification = intelligentNotificationFilter(title, message, data);
+    const shouldSendNotification = intelligentNotificationFilter(
+      title,
+      message,
+      data,
+      waitForResponse
+    );
 
     if (!shouldSendNotification.send) {
-      addNotification({
-        category: data?.category ?? null,
-        data: (data as Record<string, unknown>) ?? null,
-        error: shouldSendNotification.reason,
-        id: canonicalRequestId,
-        message,
-        project: data?.project ?? null,
-        source: data?.source ?? null,
-        status: 'filtered',
-        timestamp: new Date().toISOString(),
-        title,
-        tool: data?.tool ?? null,
-      });
+      addNotification(
+        buildNotificationRecord(
+          canonicalRequestId,
+          title,
+          message,
+          'filtered',
+          data,
+          shouldSendNotification.reason
+        )
+      );
 
       return json({
         message: 'Notification filtered (not sent)',
@@ -209,19 +333,7 @@ export const POST: RequestHandler = async ({ request }) => {
         });
       }
 
-      addNotification({
-        category: data?.category ?? null,
-        data: (data as Record<string, unknown>) ?? null,
-        error: null,
-        id: canonicalRequestId,
-        message,
-        project: data?.project ?? null,
-        source: data?.source ?? null,
-        status: 'skipped',
-        timestamp: new Date().toISOString(),
-        title,
-        tool: data?.tool ?? null,
-      });
+      addNotification(buildNotificationRecord(canonicalRequestId, title, message, 'skipped', data));
 
       return json({
         message: 'Push skipped (WebSocket clients connected)',
@@ -293,19 +405,7 @@ export const POST: RequestHandler = async ({ request }) => {
           });
         }
 
-        addNotification({
-          category: data?.category ?? null,
-          data: (data as Record<string, unknown>) ?? null,
-          error: null,
-          id: canonicalRequestId,
-          message,
-          project: data?.project ?? null,
-          source: data?.source ?? null,
-          status: 'sent',
-          timestamp: new Date().toISOString(),
-          title,
-          tool: data?.tool ?? null,
-        });
+        addNotification(buildNotificationRecord(canonicalRequestId, title, message, 'sent', data));
 
         return json({
           message: 'Notification sent successfully',
@@ -317,19 +417,16 @@ export const POST: RequestHandler = async ({ request }) => {
       } else {
         console.error(`[notify] FCM delivery failed: ${fcmResult.error}`);
 
-        addNotification({
-          category: data?.category ?? null,
-          data: (data as Record<string, unknown>) ?? null,
-          error: fcmResult.error ?? null,
-          id: canonicalRequestId,
-          message,
-          project: data?.project ?? null,
-          source: data?.source ?? null,
-          status: 'failed',
-          timestamp: new Date().toISOString(),
-          title,
-          tool: data?.tool ?? null,
-        });
+        addNotification(
+          buildNotificationRecord(
+            canonicalRequestId,
+            title,
+            message,
+            'failed',
+            data,
+            fcmResult.error
+          )
+        );
 
         return json(
           {
@@ -384,19 +481,7 @@ export const POST: RequestHandler = async ({ request }) => {
           });
         }
 
-        addNotification({
-          category: data?.category ?? null,
-          data: (data as Record<string, unknown>) ?? null,
-          error: null,
-          id: canonicalRequestId,
-          message,
-          project: data?.project ?? null,
-          source: data?.source ?? null,
-          status: 'sent',
-          timestamp: new Date().toISOString(),
-          title,
-          tool: data?.tool ?? null,
-        });
+        addNotification(buildNotificationRecord(canonicalRequestId, title, message, 'sent', data));
 
         return json({
           message: 'Notification sent successfully',
@@ -409,19 +494,9 @@ export const POST: RequestHandler = async ({ request }) => {
         const notifErrMsg = toErrorMessage(notificationError);
         console.error(`[notify] APNs delivery failed: ${notifErrMsg}`);
 
-        addNotification({
-          category: data?.category ?? null,
-          data: (data as Record<string, unknown>) ?? null,
-          error: notifErrMsg,
-          id: canonicalRequestId,
-          message,
-          project: data?.project ?? null,
-          source: data?.source ?? null,
-          status: 'failed',
-          timestamp: new Date().toISOString(),
-          title,
-          tool: data?.tool ?? null,
-        });
+        addNotification(
+          buildNotificationRecord(canonicalRequestId, title, message, 'failed', data, notifErrMsg)
+        );
 
         return json(
           {

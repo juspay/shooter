@@ -5,13 +5,13 @@
 // Load .env before any other imports so all modules see populated process.env.
 import './src/lib/env.js';
 
+import type { ConversationMessage } from '$lib/types';
+
 import { existsSync } from 'fs';
 import { createServer, type Server } from 'http';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { type WebSocket, WebSocketServer } from 'ws';
-
-import type { ConversationMessage } from './src/lib/modules/server/sessions/types.js';
 
 // ── Build guard ─────────────────────────────────────────────────────────
 // Fail fast with a clear message instead of a cryptic ERR_MODULE_NOT_FOUND.
@@ -87,7 +87,7 @@ const sessionWatcherAdapter = {
 
 if (!process.env.API_KEY) {
   console.warn(
-    `\n⚠ WARNING: API_KEY is not set. Authenticated API routes will return 401.\n  Run 'shooter setup' to configure, or set API_KEY in your environment.\n`,
+    `\n⚠ WARNING: API_KEY is not set. Authenticated API routes will return 401.\n  Run 'shooter setup' to configure, or set API_KEY in your environment.\n`
   );
 }
 
