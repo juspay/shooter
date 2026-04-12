@@ -1,22 +1,20 @@
-import type {
-  FCMConfiguration,
-  HealthChecks,
-  HealthConfiguration,
-  HealthStatus,
-} from '$generated/types';
+import type { FCMConfiguration, HealthChecks, HealthConfiguration, HealthStatus } from '$lib/types';
 
 import { env } from '$env/dynamic/private';
 import { validateAuth } from '$lib/modules/server/auth';
+import { getProviderAvailability } from '$lib/modules/shared/providers';
 import { json } from '@sveltejs/kit';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
 import type { RequestHandler } from './$types';
 
-const PKG_VERSION: string = (() => {
+const PKG_VERSION: string = ((): string => {
   const root = process.env.SHOOTER_PKG_ROOT || process.cwd();
   try {
-    const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf-8')) as { version?: string };
+    const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf-8')) as {
+      version?: string;
+    };
     return pkg.version || 'unknown';
   } catch {
     return 'unknown';
@@ -76,19 +74,26 @@ export const GET: RequestHandler = ({ request, url }) => {
     warnings.push('FCM not configured — Android push notifications disabled');
   }
 
-  const health: {
-    checks: HealthChecks;
-    configuration: HealthConfiguration;
-    environment: string;
-    status: HealthStatus;
-    timestamp: string;
-    version: string;
-    warnings: string[];
-  } = {
+  // AI provider checks
+  const aiProviders = getProviderAvailability(env);
+  const hasAnyAiProvider = Object.values(aiProviders).some(Boolean);
+
+  if (!hasAnyAiProvider) {
+    warnings.push(
+      'No AI provider configured — AI summaries disabled. Run "shooter setup" to configure.'
+    );
+  }
+
+  const health = {
+    ai: {
+      activeProvider: env.NEUROLINK_PROVIDER ?? 'auto',
+      hasAnyProvider: hasAnyAiProvider,
+      providers: aiProviders,
+    },
     checks,
     configuration,
     environment: env.NODE_ENV || 'development',
-    status: 'healthy',
+    status: 'healthy' as HealthStatus,
     timestamp: new Date().toISOString(),
     version: PKG_VERSION,
     warnings,
@@ -101,7 +106,15 @@ export const GET: RequestHandler = ({ request, url }) => {
 
   // Public response: status + warnings. Authenticated: full details.
   if (!wantsDetails) {
-    return json({ status: health.status, timestamp: health.timestamp, version: health.version, warnings: health.warnings });
+    // Filter AI provider configuration warnings from the unauthenticated
+    // response so we don't leak system capability details to anonymous callers.
+    const publicWarnings = health.warnings.filter((w) => !w.includes('AI provider'));
+    return json({
+      status: health.status,
+      timestamp: health.timestamp,
+      version: health.version,
+      warnings: publicWarnings,
+    });
   }
 
   return json(health);

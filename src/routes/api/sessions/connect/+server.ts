@@ -65,9 +65,11 @@ export const POST: RequestHandler = async ({ request }) => {
 
   const existing = ptyManager
     .list()
-    .find((t) => t.status === 'running' && (
-      t.sessionFile?.endsWith(`/${sessionId}.jsonl`) || t.openCodeSessionId === sessionId
-    ));
+    .find(
+      (t) =>
+        t.status === 'running' &&
+        (t.sessionFile?.endsWith(`/${sessionId}.jsonl`) || t.openCodeSessionId === sessionId)
+    );
 
   if (existing) {
     console.log(
@@ -94,8 +96,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
   // --- Build args based on command ---
 
-  const args: string[] =
-    command === 'claude' ? ['--resume', sessionId] : ['--session', sessionId];
+  const args: string[] = command === 'claude' ? ['--resume', sessionId] : ['--session', sessionId];
 
   try {
     const terminal = await ptyManager.create(command, args, realCwd, 120, 40);
@@ -107,7 +108,10 @@ export const POST: RequestHandler = async ({ request }) => {
     return json(
       {
         command: terminal.command,
-        createdAt: terminal.createdAt instanceof Date ? terminal.createdAt.toISOString() : terminal.createdAt,
+        createdAt:
+          terminal.createdAt instanceof Date
+            ? terminal.createdAt.toISOString()
+            : terminal.createdAt,
         cwd: terminal.cwd,
         id: terminal.id,
         pid: terminal.pid,

@@ -1,29 +1,7 @@
 // IMPORTANT: This module must NEVER be imported at module top level in a Svelte component.
 // Always call createTerminal() inside onMount() only.
 
-import type { FitAddon } from '@xterm/addon-fit';
-import type { Terminal } from '@xterm/xterm';
-
-interface TerminalInstance {
-  dispose: () => void;
-  fitAddon: FitAddon | null;
-  sendInput: (data: string) => void;
-  term: Terminal;
-}
-
-interface TerminalOptions {
-  apiKey?: string;
-  container: HTMLElement;
-  fontSize?: number;
-  getTicket: () => Promise<string>;
-  onActivity?: (active: boolean) => void;
-  onCwd?: (path: string) => void;
-  onDisconnect?: () => void;
-  onExit?: (code: number) => void;
-  onReconnect?: () => void;
-  terminalId?: string;
-  wsUrl: string;
-}
+import type { TerminalInstance, TerminalOptions, WsTerminalInboundMessage } from '$lib/types';
 
 export async function createTerminal(options: TerminalOptions): Promise<TerminalInstance> {
   // Dynamic imports — only loaded client-side
@@ -97,8 +75,8 @@ export async function createTerminal(options: TerminalOptions): Promise<Terminal
     const pasteTermId = options.terminalId;
     const pasteApiKey = options.apiKey;
 
-    pasteListener = (e: ClipboardEvent) => {
-      void (async () => {
+    pasteListener = (e: ClipboardEvent): void => {
+      void (async (): Promise<void> => {
         try {
           if (!e.clipboardData) {
             return;
@@ -117,13 +95,15 @@ export async function createTerminal(options: TerminalOptions): Promise<Terminal
 
           // Read image as base64
           const reader = new FileReader();
-          const base64 = await new Promise<string>((resolve, reject) => {
-            reader.onload = () => {
-              resolve(reader.result as string);
-            };
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
-          });
+          const base64 = await new Promise<string>(
+            (resolve, reject: (reason?: unknown) => void) => {
+              reader.onload = (): void => {
+                resolve(reader.result as string);
+              };
+              reader.onerror = reject;
+              reader.readAsDataURL(blob);
+            }
+          );
 
           // Upload to server
           const res = await fetch(`/api/terminals/${pasteTermId}/paste-image`, {
@@ -154,7 +134,7 @@ export async function createTerminal(options: TerminalOptions): Promise<Terminal
   let reconnectDelay = 1000;
   let disposed = false;
 
-  async function connect() {
+  async function connect(): Promise<void> {
     if (disposed) {
       return;
     }
@@ -180,35 +160,35 @@ export async function createTerminal(options: TerminalOptions): Promise<Terminal
 
     ws = new WebSocket(`${options.wsUrl}?ticket=${ticket}`);
 
-    ws.onopen = () => {
+    ws.onopen = (): void => {
       reconnectDelay = 1000; // Reset backoff
       options.onReconnect?.();
     };
 
-    ws.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
+    ws.onmessage = (event: MessageEvent): void => {
+      const msg = JSON.parse(event.data as string) as WsTerminalInboundMessage;
       if (msg.type === 'output') {
-        term.write(msg.data);
+        term.write(msg.data ?? '');
       } else if (msg.type === 'scrollback') {
-        term.write(msg.data);
+        term.write(msg.data ?? '');
       } else if (msg.type === 'exit') {
-        term.write(`\r\n\x1b[90m[Process exited with code ${msg.code}]\x1b[0m\r\n`);
+        term.write(`\r\n\x1b[90m[Process exited with code ${String(msg.code)}]\x1b[0m\r\n`);
         // Process exited — stop reconnection and notify parent
         disposed = true;
         if (reconnectTimer) {
           clearTimeout(reconnectTimer);
         }
-        options.onExit?.(msg.code);
+        options.onExit?.(msg.code ?? 0);
       } else if (msg.type === 'output-dropped') {
-        term.write(`\r\n\x1b[33m[${msg.bytes} bytes dropped]\x1b[0m\r\n`);
+        term.write(`\r\n\x1b[33m[${String(msg.bytes)} bytes dropped]\x1b[0m\r\n`);
       } else if (msg.type === 'activity') {
-        options.onActivity?.(msg.active);
+        options.onActivity?.(msg.active ?? false);
       } else if (msg.type === 'cwd') {
-        options.onCwd?.(msg.path);
+        options.onCwd?.(msg.path ?? '');
       }
     };
 
-    ws.onclose = () => {
+    ws.onclose = (): void => {
       if (disposed) {
         return;
       }
@@ -231,7 +211,7 @@ export async function createTerminal(options: TerminalOptions): Promise<Terminal
   });
 
   // Handle resize — skip when container is hidden (display:none → size 0)
-  const resizeObserver = new ResizeObserver(() => {
+  const resizeObserver = new ResizeObserver((): void => {
     if (!options.container.offsetWidth || !options.container.offsetHeight) {
       return;
     }
@@ -242,7 +222,7 @@ export async function createTerminal(options: TerminalOptions): Promise<Terminal
   });
   resizeObserver.observe(options.container);
 
-  function dispose() {
+  function dispose(): void {
     disposed = true;
     if (reconnectTimer) {
       clearTimeout(reconnectTimer);
@@ -255,7 +235,7 @@ export async function createTerminal(options: TerminalOptions): Promise<Terminal
     term.dispose();
   }
 
-  function sendInput(data: string) {
+  function sendInput(data: string): void {
     if (ws?.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ data, type: 'input' }));
     }

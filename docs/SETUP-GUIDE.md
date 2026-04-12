@@ -86,7 +86,7 @@ node scripts/setup.cjs
 | **5. Write `.env`**               | Generates a `.env` file from your answers. If `.env` already exists, asks before overwriting. Commented-out stubs are written for any platform you did not configure.                                       |
 | **6. Shell environment**          | Detects your shell profile (`~/.zshrc`, `~/.bash_profile`, etc.) and offers to append `export API_KEY="..."`. This is required for Claude Code hooks to authenticate with the server.                       |
 | **7. Build**                      | Runs `pnpm build` (SvelteKit with adapter-node).                                                                                                                                                            |
-| **8. Health check**               | Starts the server temporarily, polls `http://localhost:54007/api/health` for up to 15 seconds, reports the result, then stops the server.                                                                    |
+| **8. Health check**               | Starts the server temporarily, polls `http://localhost:54007/api/health` for up to 15 seconds, reports the result, then stops the server.                                                                   |
 
 After all steps complete, the wizard prints the commands to start the server (`pnpm start`) and run in dev mode (`pnpm dev`).
 

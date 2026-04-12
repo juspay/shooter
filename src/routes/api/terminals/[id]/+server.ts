@@ -5,6 +5,21 @@ import { json } from '@sveltejs/kit';
 
 import type { RequestHandler } from './$types';
 
+/** Extract the last non-empty line from a scrollback string. */
+function lastScrollbackLine(scrollback: string): null | string {
+  if (!scrollback) {
+    return null;
+  }
+  const lines = scrollback.trimEnd().split('\n');
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i].trim();
+    if (line) {
+      return line.slice(0, 200);
+    }
+  }
+  return null;
+}
+
 // GET /api/terminals/:id — Get terminal details by ID
 export const GET: RequestHandler = ({ params, request }) => {
   const authError = validateAuth(request);
@@ -28,8 +43,7 @@ export const GET: RequestHandler = ({ params, request }) => {
       exitCode: terminal.exitCode,
       exitedAt: terminal.exitedAt?.toISOString() ?? null,
       id: terminal.id,
-      lastOutput:
-        terminal.scrollback.length > 0 ? terminal.scrollback[terminal.scrollback.length - 1] : null,
+      lastOutput: lastScrollbackLine(terminal.scrollback),
       pid: terminal.pid,
       sessionWs: `/ws/session/${terminal.id}`,
       status: terminal.status,

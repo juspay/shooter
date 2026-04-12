@@ -1,9 +1,7 @@
 <script lang="ts">
-  interface Props {
-    status: 'degraded' | 'error' | 'healthy' | 'unknown';
-  }
+  import type { StatusBadgeProps } from '$lib/types';
 
-  const { status }: Props = $props();
+  const { status }: StatusBadgeProps = $props();
 
   function getStatusLabel(s: string): string {
     switch (s) {

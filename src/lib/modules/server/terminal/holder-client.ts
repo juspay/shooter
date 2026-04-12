@@ -7,32 +7,13 @@
  * so PtyManager can slot it in as `ManagedTerminal.pty`.
  */
 
-import type { ConnectResult } from '$generated/types';
+import type {
+  ConnectResult,
+  HolderIncomingMessage as IncomingMessage,
+  HolderOutgoingMessage as OutgoingMessage,
+} from '$lib/types';
 
 import * as net from 'net';
-
-// ── Local Protocol Types ──────────────────────────────────────────────
-// The generated union types (IncomingMessage, OutgoingMessage) use
-// class wrappers and non-literal discriminants, making them hard to
-// narrow with switch/case. We keep simple local types matching the
-// ndjson protocol from the design spec for runtime dispatch.
-
-/** Messages received from the holder process. */
-type IncomingMessage =
-  | { active: boolean; type: 'activity' }
-  | { code: null | number; signal: null | string; type: 'exit' }
-  | { data: string; type: 'output' }
-  | { data: string; type: 'scrollback' }
-  | { exitCode: null | number; exited: boolean; pid: number; type: 'info' }
-  | { path: string; type: 'cwd' };
-
-// ── Connect Result ────────────────────────────────────────────────────
-
-/** Messages sent to the holder process. */
-type OutgoingMessage =
-  | { cols: number; rows: number; type: 'resize' }
-  | { data: string; type: 'input' }
-  | { signal?: string; type: 'kill' };
 
 // ── HolderClient ──────────────────────────────────────────────────────
 
@@ -92,7 +73,7 @@ export class HolderClient {
         const lines = this.lineBuf.split('\n');
         // Keep the last element — it is either empty (complete line)
         // or a partial line still being received.
-        this.lineBuf = lines.pop()!;
+        this.lineBuf = lines.pop() ?? '';
 
         for (const line of lines) {
           if (line.length === 0) {
@@ -101,11 +82,6 @@ export class HolderClient {
 
           let msg: IncomingMessage;
           try {
-            // TODO: Apply generated holder decoders (decodeHolderClientMessage)
-            // at this socket boundary once the generated union discriminant
-            // types support literal narrowing with switch/case. Currently the
-            // generated wrappers use non-literal discriminants, so we keep
-            // local IncomingMessage types for runtime dispatch.
             msg = JSON.parse(line) as IncomingMessage;
           } catch {
             continue;
@@ -126,16 +102,16 @@ export class HolderClient {
 
             // Handshake complete once we have info.
             if (info !== null) {
-              const settle = () => {
-                if (settled) {
+              const settle = (): void => {
+                if (settled || !info) {
                   return;
                 }
                 settled = true;
                 clearTimeout(handshakeTimer);
                 resolve({
-                  exitCode: info!.exitCode,
-                  exited: info!.exited,
-                  pid: info!.pid,
+                  exitCode: info.exitCode,
+                  exited: info.exited,
+                  pid: info.pid,
                   scrollback,
                 });
                 // Replay queued messages in the next macrotask so that

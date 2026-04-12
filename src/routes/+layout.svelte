@@ -1,12 +1,29 @@
 <script lang="ts">
+  import type { LayoutData } from '$lib/types';
+
   import '../app.css';
   import '$lib/theme.css';
+  import { browser } from '$app/environment';
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
-  import { StatusBadge } from '$lib/modules/client/common';
+  import { Icon, StatusBadge } from '$lib/modules/client/common';
   import { onMount, type Snippet } from 'svelte';
 
-  const { children }: { children: Snippet } = $props();
+  const { children, data }: { children: Snippet; data: LayoutData } = $props();
+
+  // Expose AI provider flags for summarizers (they run outside SvelteKit's data flow)
+  $effect(() => {
+    if (!browser || !data?.aiProviders) {
+      return;
+    }
+    (window as unknown as Record<string, unknown>).__aiProviders = data.aiProviders;
+    if (data.neurolinkProvider) {
+      const proc = (window as unknown as { process?: { env?: Record<string, string> } }).process;
+      if (proc?.env) {
+        proc.env.NEUROLINK_PROVIDER = data.neurolinkProvider;
+      }
+    }
+  });
 
   let systemStatus = $state<'degraded' | 'error' | 'healthy' | 'unknown'>('unknown');
 
@@ -51,7 +68,9 @@
         <StatusBadge status={systemStatus} />
         <button
           class="btn-gear {$page.url.pathname === '/config' ? 'btn-gear-active' : ''}"
-          onclick={() => goto('/config')}
+          onclick={(): void => {
+            void goto('/config');
+          }}
           aria-label="Settings"
         >
           <svg
@@ -79,7 +98,7 @@
     {@render children()}
   </div>
 
-  <!-- Bottom tab bar: Projects + Terminals -->
+  <!-- Bottom tab bar: Dashboard + Activity + Terminals -->
   <nav class="bottom-tabs">
     <div class="bottom-tabs-inner">
       <a
@@ -97,10 +116,20 @@
           stroke-linecap="round"
           stroke-linejoin="round"
         >
-          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
-          ></path>
+          <rect x="3" y="3" width="7" height="7"></rect>
+          <rect x="14" y="3" width="7" height="7"></rect>
+          <rect x="3" y="14" width="7" height="7"></rect>
+          <rect x="14" y="14" width="7" height="7"></rect>
         </svg>
-        <span>Projects</span>
+        <span>Dashboard</span>
+      </a>
+      <a
+        href="/activity"
+        class="tab-item"
+        class:active={$page.url.pathname.startsWith('/activity')}
+      >
+        <Icon name="bell" size={26} />
+        <span>Activity</span>
       </a>
       <a
         href="/terminals"

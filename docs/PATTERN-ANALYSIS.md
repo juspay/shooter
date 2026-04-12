@@ -189,8 +189,8 @@ Neither platform pushes refreshed tokens to the server. After token rotation, pu
 | L6  | `isShooterConfig` type guard duplicated in 4 files                                                                                             | Multiple pages                                  |
 | L7  | `formatRelativeTime` duplicated in 3 files                                                                                                     | `+page`, `project`, `terminals`                 |
 | L8  | Chat message rendering HTML block duplicated in 3 files                                                                                        | `session/[id]`, `terminals/[id]`, `ChatView`    |
-| L9  | ~~Triple `StatusEnum` in generated `Terminal.ts` (compile error, dead code)~~ **RESOLVED** — type-crafter migration eliminated duplicate enums | `src/generated/types/Terminal.ts`               |
-| L10 | Generated JWT types unused/unreachable — re-exported from index.ts but never imported by app code                                              | `src/generated/types/JWT.ts`                    |
+| L9  | ~~Triple `StatusEnum` in generated `Terminal.ts` (compile error, dead code)~~ **RESOLVED** — type-crafter migration eliminated duplicate enums | `src/lib/types/generated/Terminal.ts`           |
+| L10 | Generated JWT types unused/unreachable — re-exported from index.ts but never imported by app code                                              | `src/lib/types/generated/JWT.ts`                |
 | L11 | `/api/webhook` is dead stub code with no auth                                                                                                  | `src/routes/api/webhook/+server.ts`             |
 | L12 | `/api/health` exposes config details without auth (including new FCM status)                                                                   | `src/routes/api/health/+server.ts`              |
 | L13 | `APNS_KEY_BASE64` referenced in health check but never used by APNs service                                                                    | `health/+server.ts:49`                          |

@@ -6,6 +6,7 @@
 // Cloudflare Tunnel closes idle WebSocket connections after ~100 seconds,
 // so 30-second pings keep connections alive through the tunnel.
 
+import type { PendingPong } from '$lib/types';
 import type { WebSocket } from 'ws';
 
 import { getAllConnections } from './server.js';
@@ -24,11 +25,6 @@ let pingInterval: null | ReturnType<typeof setInterval> = null;
  * Stores the timeout timer and the listener functions so they can be
  * removed cleanly when stopKeepalive() is called mid-cycle.
  */
-interface PendingPong {
-  onClose: () => void;
-  onPong: () => void;
-  timer: ReturnType<typeof setTimeout>;
-}
 const pendingPongs = new Map<WebSocket, PendingPong>();
 
 // ── Public API ───────────────────────────────────────────────────────

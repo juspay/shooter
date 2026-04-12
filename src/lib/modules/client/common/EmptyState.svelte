@@ -1,27 +1,9 @@
 <script lang="ts">
-  import type { Snippet } from 'svelte';
+  import type { EmptyStateProps } from '$lib/types';
 
   import Icon from './Icon.svelte';
 
-  interface Props {
-    children?: Snippet;
-    description: string;
-    icon:
-      | 'alert-triangle'
-      | 'bell'
-      | 'check-circle'
-      | 'file'
-      | 'folder'
-      | 'play'
-      | 'refresh'
-      | 'settings'
-      | 'terminal'
-      | 'tool'
-      | 'x-circle';
-    title: string;
-  }
-
-  const { children, description, icon, title }: Props = $props();
+  const { children, description, icon, title }: EmptyStateProps = $props();
 </script>
 
 <div class="empty-state">

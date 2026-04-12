@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ProjectGroup, ShooterConfig } from '$generated/types';
+  import type { DashboardCard, ProjectGroup, ShooterConfig } from '$lib/types';
 
   import { goto } from '$app/navigation';
   import {
@@ -11,6 +11,7 @@
     isShooterConfig,
     setCache,
   } from '$lib/modules/client/common';
+  import { connect, DashboardView, disconnect, getCards } from '$lib/modules/client/dashboard';
   import { Banner, Button, Pill, Shimmer } from '@juspay/svelte-ui-components';
   import { onDestroy, onMount } from 'svelte';
 
@@ -25,6 +26,8 @@
   let fetchError = $state<null | string>(null);
   let hasMore = $state(false);
   let currentOffset = $state(0);
+
+  const cards = $derived(getCards());
 
   onMount(() => {
     loadConfiguration();
@@ -51,6 +54,7 @@
       clearInterval(pollTimer);
       pollTimer = null;
     }
+    disconnect();
   });
 
   function loadConfiguration(): void {
@@ -60,6 +64,8 @@
         const parsed: unknown = JSON.parse(saved);
         if (isShooterConfig(parsed)) {
           config = parsed;
+          // Connect dashboard store with API key
+          void connect(config.apiKey);
         } else {
           localStorage.removeItem('shooter_config');
           config = null;
@@ -97,7 +103,7 @@
       }
 
       fetchError = null;
-      const result: { projects: ProjectGroup[]; total?: number } = await response.json();
+      const result = (await response.json()) as { projects: ProjectGroup[]; total?: number };
       if (append) {
         projects = [...projects, ...result.projects];
       } else {
@@ -129,22 +135,26 @@
     void goto('/config');
   }
 
+  function navigateToTerminal(terminalId: string): void {
+    void goto(`/terminals/${terminalId}`);
+  }
+
   function totalSessionCount(): number {
     return projects.reduce((sum, p) => sum + p.sessionCount, 0);
   }
 </script>
 
 <svelte:head>
-  <title>Projects - Shooter</title>
-  <meta name="description" content="Claude Code sessions across all projects" />
+  <title>Dashboard - Shooter</title>
+  <meta name="description" content="Active terminals and Claude Code sessions" />
 </svelte:head>
 
 <main class="main">
   <div class="page-header">
     <div class="page-header-content">
       <div>
-        <h1 class="page-title">Projects</h1>
-        <p class="page-description">Claude Code sessions across all projects</p>
+        <h1 class="page-title">Dashboard</h1>
+        <p class="page-description">Active terminals and Claude Code sessions</p>
       </div>
       <div class="page-actions">
         <Button classes="btn-secondary" onclick={forceRefresh} disabled={loading}>
@@ -159,9 +169,9 @@
     <Banner text={fetchError} classes="banner-error" />
   {/if}
 
-  {#if loading && projects.length === 0}
+  {#if loading && projects.length === 0 && cards.length === 0}
     <div class="loading-container">
-      {#each Array(5) as _, i (i)}
+      {#each Array(3) as _, i (i)}
         <Shimmer classes="shimmer-card" />
       {/each}
     </div>
@@ -173,36 +183,63 @@
     >
       <Button classes="btn-primary" onclick={navigateToConfig} text="Configure Settings" />
     </EmptyState>
-  {:else if totalSessionCount() === 0}
-    <EmptyState
-      icon="bell"
-      title="No sessions yet"
-      description="Claude Code sessions will appear here once JSONL files are found"
-    />
   {:else}
-    <div class="projects-container">
-      {#each projects as project (project.id)}
-        <a href="/project?id={project.id}" class="session-card">
-          <div class="session-card-header">
-            <div>
-              <h3 class="session-card-title">{project.name}</h3>
-              <div class="session-card-subtitle">{project.fullPath}</div>
-            </div>
-            <Pill text="Last updated {formatRelativeTime(project.lastModified)}" classes="pill-session-time" />
-          </div>
-          <div class="session-stats">
-            <span
-              ><strong>{project.sessionCount}</strong>
-              {project.sessionCount === 1 ? 'session' : 'sessions'}</span
-            >
-          </div>
-        </a>
-      {/each}
-    </div>
-    {#if hasMore}
-      <div style="text-align: center; padding: 1rem;">
-        <Button classes="btn-secondary" onclick={loadMore} text="Load More" />
+    <!-- Dashboard section: active terminal sessions -->
+    {#if cards.length > 0}
+      <div class="dashboard-section">
+        <DashboardView
+          {cards}
+          onCardClick={(card: DashboardCard): void => {
+            navigateToTerminal(card.terminalId);
+          }}
+        />
       </div>
+    {/if}
+
+    <!-- Sessions archive below dashboard -->
+    {#if loading && projects.length === 0}
+      <div class="loading-container">
+        {#each Array(3) as _, i (i)}
+          <Shimmer classes="shimmer-card" />
+        {/each}
+      </div>
+    {:else if totalSessionCount() === 0 && cards.length === 0}
+      <EmptyState
+        icon="bell"
+        title="No sessions yet"
+        description="Claude Code sessions will appear here once JSONL files are found"
+      />
+    {:else if projects.length > 0}
+      {#if cards.length > 0}
+        <h3 class="section-label">Sessions</h3>
+      {/if}
+      <div class="projects-container">
+        {#each projects as project (project.id)}
+          <a href="/project?id={project.id}" class="session-card">
+            <div class="session-card-header">
+              <div>
+                <h3 class="session-card-title">{project.name}</h3>
+                <div class="session-card-subtitle">{project.fullPath}</div>
+              </div>
+              <Pill
+                text="Last updated {formatRelativeTime(project.lastModified)}"
+                classes="pill-session-time"
+              />
+            </div>
+            <div class="session-stats">
+              <span
+                ><strong>{project.sessionCount}</strong>
+                {project.sessionCount === 1 ? 'session' : 'sessions'}</span
+              >
+            </div>
+          </a>
+        {/each}
+      </div>
+      {#if hasMore}
+        <div style="text-align: center; padding: 1rem;">
+          <Button classes="btn-secondary" onclick={loadMore} text="Load More" />
+        </div>
+      {/if}
     {/if}
   {/if}
 </main>
@@ -236,6 +273,19 @@
     display: flex;
     gap: var(--space-2);
     flex-shrink: 0;
+  }
+
+  .dashboard-section {
+    margin-bottom: var(--space-6);
+  }
+
+  .section-label {
+    font-size: var(--text-xs, 12px);
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    margin-bottom: var(--space-3);
   }
 
   .projects-container {

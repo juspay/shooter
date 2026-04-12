@@ -1,19 +1,10 @@
 <script lang="ts">
+  import type { CommandPaletteProps } from '$lib/types';
+
   import { CommandMenu } from '@juspay/svelte-ui-components';
 
-  interface Command {
-    action: () => void;
-    label: string;
-  }
-
-  interface Props {
-    commands: Command[];
-    onClose: () => void;
-    open?: boolean;
-  }
-
   // eslint-disable-next-line prefer-const -- open is mutated via bind:open from parent
-  let { commands, onClose, open = $bindable(false) }: Props = $props();
+  let { commands, onClose, open = $bindable(false) }: CommandPaletteProps = $props();
 
   const items = $derived(
     commands.map((cmd, i) => ({

@@ -2,23 +2,8 @@
 // Manages the /ws/events channel: tracks connected clients and broadcasts
 // ShooterEvents to all listeners. No client-to-server messages are expected.
 
-import type { PermissionDecision, SessionSource } from '$generated/types';
+import type { WireShooterEvent as ShooterEvent } from '$lib/types';
 import type { WebSocket } from 'ws';
-
-// ── Event types ─────────────────────────────────────────────────────
-
-export type ShooterEvent =
-  | { code: null | number; terminalId: string; type: 'terminal-exited' }
-  | { command: string; terminalId: string; type: 'terminal-created' }
-  | { decision: PermissionDecision; requestId: string; type: 'permission-resolved' }
-  | {
-      input: Record<string, unknown>;
-      requestId: string;
-      tool: string;
-      type: 'permission-requested';
-    }
-  | { project: string; sessionId: string; source: SessionSource; type: 'session-started' }
-  | { sessionId: string; summary: string; type: 'session-ended' };
 
 // ── Connection tracking ─────────────────────────────────────────────
 

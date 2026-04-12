@@ -57,13 +57,13 @@ Open [http://localhost:54007](http://localhost:54007) in your browser. Visit `/c
 
 ## All Setup Methods
 
-| Method              | Command                                                                                        | Notes                                                                                                |
-| ------------------- | ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Method              | Command                                                                                        | Notes                                                                                                         |
+| ------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
 | One-command install | `curl -fsSL https://raw.githubusercontent.com/juspay/shooter/release/scripts/install.sh \| sh` | Recommended. Clones to `~/.shooter/repo`, auto-generates API key, builds, installs cloudflared, starts server |
-| Interactive wizard  | `pnpm setup`                                                                                   | Walks through env config, builds, and verifies. Pass `--auto` for non-interactive mode.              |
-| CLI (npx)           | `npx @juspay/shooter setup`                                                                    | No clone needed -- runs the setup wizard directly from npm                                           |
-| Docker              | `docker compose up -d`                                                                         | See [Docker](#docker)                                                                                |
-| Manual              | See [Manual Setup](#manual-setup)                                                              | For advanced users                                                                                   |
+| Interactive wizard  | `pnpm setup`                                                                                   | Walks through env config, builds, and verifies. Pass `--auto` for non-interactive mode.                       |
+| CLI (npx)           | `npx @juspay/shooter setup`                                                                    | No clone needed -- runs the setup wizard directly from npm                                                    |
+| Docker              | `docker compose up -d`                                                                         | See [Docker](#docker)                                                                                         |
+| Manual              | See [Manual Setup](#manual-setup)                                                              | For advanced users                                                                                            |
 
 ### Manual Setup
 
@@ -368,7 +368,7 @@ All endpoints require the `Authorization: Bearer <API_KEY>` header.
 | `POST`   | `/api/response`             | Submit a permission allow/deny decision              |
 | `GET`    | `/api/response`             | Poll for a pending permission decision               |
 | `GET`    | `/api/sessions`             | List sessions across all projects                    |
-| `POST`   | `/api/webhook`              | Receive external webhook events                      |
+| `POST`   | `/api/webhook`              | Stub — returns 501 (not yet implemented)             |
 | `GET`    | `/api/qr-config`            | Generate QR code for mobile app pairing              |
 | `POST`   | `/api/device-token`         | Register a device token (iOS or Android)             |
 | `GET`    | `/api/debug`                | Debug information (APNs config, device token status) |
@@ -423,23 +423,23 @@ pnpm format:check  # Check formatting without writing
 
 The `shooter` command (via `bin/shooter.cjs` or the global `shooter` symlink) supports:
 
-| Command              | Description                                                        |
-| -------------------- | ------------------------------------------------------------------ |
-| `shooter start`      | Start the server (default if no command given)                     |
-| `shooter stop`       | Stop the running server gracefully (SIGTERM, then SIGKILL after 5s)|
-| `shooter status`     | Show PID, URL, autostart state, log path                          |
-| `shooter autostart on`  | Enable autostart on login (LaunchAgent on macOS, systemd on Linux) |
-| `shooter autostart off` | Disable autostart and remove the service definition              |
-| `shooter logs`       | Tail server logs (log file on macOS, journalctl on Linux)          |
-| `shooter setup`      | Quick setup (~60s): API key + build. `--auto` for non-interactive, `--push` for push config |
-| `shooter version`    | Print version number                                               |
-| `shooter help`       | Show all available commands                                        |
+| Command                 | Description                                                                                 |
+| ----------------------- | ------------------------------------------------------------------------------------------- |
+| `shooter start`         | Start the server (default if no command given)                                              |
+| `shooter stop`          | Stop the running server gracefully (SIGTERM, then SIGKILL after 5s)                         |
+| `shooter status`        | Show PID, URL, autostart state, log path                                                    |
+| `shooter autostart on`  | Enable autostart on login (LaunchAgent on macOS, systemd on Linux)                          |
+| `shooter autostart off` | Disable autostart and remove the service definition                                         |
+| `shooter logs`          | Tail server logs (log file on macOS, journalctl on Linux)                                   |
+| `shooter setup`         | Quick setup (~60s): API key + build. `--auto` for non-interactive, `--push` for push config |
+| `shooter version`       | Print version number                                                                        |
+| `shooter help`          | Show all available commands                                                                 |
 
 Process state is tracked via a PID file at `~/.shooter/shooter.pid`. Logs are written to `~/.shooter/logs/shooter.log` when running via autostart.
 
 ### Type System
 
-Types are auto-generated from YAML specifications in `specs/types/` using [type-crafter](https://github.com/nicktaf/type-crafter). Never edit files in `src/generated/types/` directly -- edit the YAML specs and run `pnpm run gen:types`.
+Types are auto-generated from YAML specifications in `specs/types/` using [type-crafter](https://github.com/nicktaf/type-crafter). Never edit files in `src/lib/types/generated/` directly -- edit the YAML specs and run `pnpm run gen:types`.
 
 ---
 
@@ -464,8 +464,9 @@ shooter/
     hooks/notifier.cjs             # Unified hook notifier (Node.js)
     settings.json                  # Hook configuration (13 event types)
   src/
-    generated/types/               # Auto-generated TypeScript types (DO NOT EDIT)
     lib/
+      types/
+        generated/                 # Auto-generated TypeScript types (DO NOT EDIT)
       modules/
         server/
           apn/                     # APNs push notification service
@@ -489,6 +490,9 @@ shooter/
             opencode-reader.ts     # Parse OpenCode sessions
         client/
           common/                  # Reusable UI components
+          activity/                # Activity feed components
+          dashboard/               # Dashboard components
+          neurolink/               # Neurolink integration components
           terminal/
             ChatView.svelte        # Structured AI conversation view
             LaunchSheet.svelte     # Terminal launch dialog

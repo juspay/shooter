@@ -1,7 +1,7 @@
 // Shared client utilities
 export { clearCache, getCached, setCache } from './cache';
 export { default as Card } from './Card.svelte';
-export { isShooterConfig } from './config-guard';
+export { getApiKey, isShooterConfig } from './config-guard';
 export { default as EmptyState } from './EmptyState.svelte';
 export { toErrorMessage } from './error';
 

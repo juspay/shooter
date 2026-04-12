@@ -23,6 +23,23 @@ const SYSTEMD_UNIT = path.join(os.homedir(), '.config', 'systemd', 'user', 'shoo
 
 const pkg = require(path.join(PKG_ROOT, 'package.json'));
 
+// ── Read API key from env files (same chain as src/lib/env.ts) ──────
+function readApiKey() {
+  if (process.env.API_KEY) return process.env.API_KEY;
+  const envFiles = [
+    path.join(SHOOTER_HOME, '.env'),
+    path.join(PKG_ROOT, '.env'),
+    path.join(os.homedir(), '.shooter', '.env'),
+  ];
+  for (const f of envFiles) {
+    try {
+      const match = fs.readFileSync(f, 'utf8').match(/^API_KEY=(.+)$/m);
+      if (match) return match[1].trim();
+    } catch {}
+  }
+  return null;
+}
+
 // ── Signal Helpers ──────────────────────────────────────────────────
 function signalCode(sig) {
   return os.constants.signals[sig] || 0;
@@ -38,7 +55,11 @@ function readPid() {
     // Verify it's actually a node/shooter process (prevent PID reuse attacks)
     try {
       const cmdline = execSync(`ps -p ${pid} -o command= 2>/dev/null`, { encoding: 'utf8' }).trim();
-      if (!cmdline.includes('shooter') && !cmdline.includes('server.ts') && !cmdline.includes('tsx')) {
+      if (
+        !cmdline.includes('shooter') &&
+        !cmdline.includes('server.ts') &&
+        !cmdline.includes('tsx')
+      ) {
         // PID was reused by a different process — stale pidfile
         fs.unlinkSync(PID_FILE);
         return null;
@@ -59,7 +80,9 @@ function writePid(pid) {
 }
 
 function removePid() {
-  try { fs.unlinkSync(PID_FILE); } catch {}
+  try {
+    fs.unlinkSync(PID_FILE);
+  } catch {}
 }
 
 // ── CLI argument parsing ────────────────────────────────────────────
@@ -140,7 +163,9 @@ function startTunnel(port) {
       if (match) {
         clearInterval(poll);
         fs.writeFileSync(tunnelUrlFile, match[0]);
+        const apiKey = readApiKey();
         console.log(`Tunnel active: ${match[0]}`);
+        console.log(`  API key: ${apiKey ? '(set)' : '(not set — run shooter setup)'}`);
       }
     } catch {}
     waited += 1;
@@ -159,10 +184,16 @@ function stopTunnel() {
   try {
     const pid = parseInt(fs.readFileSync(tunnelPidFile, 'utf8').trim(), 10);
     if (!isNaN(pid)) {
-      try { process.kill(pid, 'SIGTERM'); } catch {}
+      try {
+        process.kill(pid, 'SIGTERM');
+      } catch {}
     }
-    try { fs.unlinkSync(tunnelPidFile); } catch {}
-    try { fs.unlinkSync(tunnelUrlFile); } catch {}
+    try {
+      fs.unlinkSync(tunnelPidFile);
+    } catch {}
+    try {
+      fs.unlinkSync(tunnelUrlFile);
+    } catch {}
   } catch {}
 }
 
@@ -234,9 +265,11 @@ function startServer() {
     child.unref();
     fs.closeSync(logFd);
 
+    const apiKey = readApiKey();
     console.log(`Shooter started in background (PID ${child.pid}).`);
-    console.log(`  URL:   http://localhost:${port}`);
-    console.log(`  Logs:  ${LOG_FILE}`);
+    console.log(`  URL:     http://localhost:${port}`);
+    console.log(`  API key: ${apiKey ? '(set)' : '(not set — run shooter setup)'}`);
+    console.log(`  Logs:    ${LOG_FILE}`);
 
     // Start tunnel in background if available; it writes URL to ~/.shooter/.tunnel_url
     if (!noTunnel && isCloudflaredAvailable()) {
@@ -329,7 +362,9 @@ function stopServer() {
         if (waited > 5000) {
           clearInterval(check);
           console.log('Force-killing...');
-          try { process.kill(pid, 'SIGKILL'); } catch {}
+          try {
+            process.kill(pid, 'SIGKILL');
+          } catch {}
           removePid();
           console.log('Shooter stopped.');
         }
@@ -365,7 +400,9 @@ function showStatus() {
   const autostartEnabled = isAutostartInstalled();
   const tunnelUrlFile = path.join(SHOOTER_HOME, '.tunnel_url');
   let tunnelUrl = null;
-  try { tunnelUrl = fs.readFileSync(tunnelUrlFile, 'utf8').trim(); } catch {}
+  try {
+    tunnelUrl = fs.readFileSync(tunnelUrlFile, 'utf8').trim();
+  } catch {}
 
   if (pid) {
     console.log(`Shooter is running`);
@@ -490,7 +527,9 @@ function enableLaunchAgent() {
 
   // Unload existing if present
   if (fs.existsSync(LAUNCHD_PLIST)) {
-    try { execSync(`launchctl unload "${LAUNCHD_PLIST}" 2>/dev/null`); } catch {}
+    try {
+      execSync(`launchctl unload "${LAUNCHD_PLIST}" 2>/dev/null`);
+    } catch {}
   }
 
   fs.writeFileSync(LAUNCHD_PLIST, plist);
@@ -509,7 +548,9 @@ function disableLaunchAgent() {
     return;
   }
 
-  try { execSync(`launchctl unload "${LAUNCHD_PLIST}" 2>/dev/null`); } catch {}
+  try {
+    execSync(`launchctl unload "${LAUNCHD_PLIST}" 2>/dev/null`);
+  } catch {}
   fs.unlinkSync(LAUNCHD_PLIST);
   console.log('Autostart disabled. LaunchAgent removed.');
 }
@@ -555,10 +596,16 @@ function disableSystemdUnit() {
     return;
   }
 
-  try { execSync('systemctl --user stop shooter.service 2>/dev/null'); } catch {}
-  try { execSync('systemctl --user disable shooter.service 2>/dev/null'); } catch {}
+  try {
+    execSync('systemctl --user stop shooter.service 2>/dev/null');
+  } catch {}
+  try {
+    execSync('systemctl --user disable shooter.service 2>/dev/null');
+  } catch {}
   fs.unlinkSync(SYSTEMD_UNIT);
-  try { execSync('systemctl --user daemon-reload'); } catch {}
+  try {
+    execSync('systemctl --user daemon-reload');
+  } catch {}
   console.log('Autostart disabled. systemd unit removed.');
 }
 
@@ -569,9 +616,13 @@ function showLogs() {
 
   // For systemd on Linux, use journalctl
   if (platform === 'linux' && fs.existsSync(SYSTEMD_UNIT)) {
-    const child = spawn('journalctl', ['--user', '-u', 'shooter.service', '-f', '--no-pager', '-n', '50'], {
-      stdio: 'inherit',
-    });
+    const child = spawn(
+      'journalctl',
+      ['--user', '-u', 'shooter.service', '-f', '--no-pager', '-n', '50'],
+      {
+        stdio: 'inherit',
+      }
+    );
     child.on('exit', (code) => process.exit(code ?? 0));
     for (const sig of ['SIGTERM', 'SIGINT']) {
       process.on(sig, () => child.kill(sig));

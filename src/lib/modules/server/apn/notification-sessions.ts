@@ -1,8 +1,6 @@
-import type { NotificationSession } from '$generated/types';
+import type { Session } from '$lib/types';
 
 import { getNotifications, type NotificationRecord } from './notification-history';
-
-export type Session = NotificationSession;
 
 const SESSION_GAP_MS = 30 * 60 * 1000; // 30 min gap = new session
 const ACTIVE_THRESHOLD_MS = 5 * 60 * 1000; // active if last event < 5 min ago

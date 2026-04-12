@@ -8,7 +8,7 @@
 # no-ops. If the generator regresses (e.g., after a type-crafter upgrade),
 # they activate and silently fix the output. Do not remove them.
 
-FILE="./src/generated/types/Terminal.ts"
+FILE="./src/lib/types/generated/Terminal.ts"
 
 # Portable sed-in-place helper (works on both BSD/macOS and GNU/Linux)
 _sed_i() {
@@ -31,7 +31,7 @@ _sed_i 's/contentItem/ContentBlockItem/g' "$FILE"
 _sed_i 's/decodeContentItem/decodeContentBlockItem/g' "$FILE"
 
 # Remove stale lowercase barrel exports from index.ts
-INDEX="./src/generated/types/index.ts"
+INDEX="./src/lib/types/generated/index.ts"
 _sed_i "/export .* from '\\.\\/Apn'/d" "$INDEX"
 _sed_i "/export .* from '\\.\\/Cli'/d" "$INDEX"
 _sed_i "/export .* from '\\.\\/Api'/d" "$INDEX"

@@ -5,7 +5,7 @@
 // This avoids putting the long-lived API_KEY in WebSocket URL query parameters,
 // which would appear in proxy logs, Cloudflare access logs, and browser history.
 
-import type { Ticket } from '$generated/types';
+import type { Ticket } from '$lib/types';
 
 import { randomBytes } from 'crypto';
 

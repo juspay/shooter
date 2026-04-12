@@ -1,23 +1,10 @@
 <script lang="ts">
-  import type { CreateTerminalResponse } from '$generated/types';
+  import type { CreateTerminalResponse, LaunchSheetProps, Preset } from '$lib/types';
 
   import { Banner, Button, Choicebox, Input, Select } from '@juspay/svelte-ui-components';
   import { onMount } from 'svelte';
 
-  interface Props {
-    apiKey: string;
-    onClose: () => void;
-    onLaunch: (response: CreateTerminalResponse) => void;
-    open: boolean;
-  }
-
-  interface Preset {
-    args: string[];
-    command: string;
-    label: string;
-  }
-
-  const { apiKey, onClose, onLaunch, open }: Props = $props();
+  const { apiKey, onClose, onLaunch, open }: LaunchSheetProps = $props();
 
   const presets: Preset[] = [
     { args: [], command: 'claude', label: 'Claude Code' },
@@ -45,7 +32,7 @@
       if (!response.ok) {
         return;
       }
-      const data: { projects: { fullPath: string }[] } = await response.json();
+      const data = (await response.json()) as { projects: { fullPath: string }[] };
       const paths = data.projects
         .map((p) => p.fullPath)
         .filter((p): p is string => typeof p === 'string' && p.length > 0);
@@ -104,12 +91,14 @@
       });
 
       if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        launchError = data.error || `Failed to launch (${response.status})`;
+        const data = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+        launchError =
+          (typeof data.error === 'string' ? data.error : '') ||
+          `Failed to launch (${response.status})`;
         return;
       }
 
-      const result: CreateTerminalResponse = await response.json();
+      const result = (await response.json()) as CreateTerminalResponse;
       onLaunch(result);
     } catch {
       launchError = 'Network error — is the server running?';
@@ -152,7 +141,7 @@
             <Choicebox
               mode="radio"
               selected={selectedPreset === i}
-              onclick={() => {
+              onclick={(): void => {
                 selectPreset(i);
               }}
               classes="preset-choice"
@@ -171,7 +160,7 @@
             : [{ id: '', label: 'No recent projects' }]}
           value={selectedCwd ? [selectedCwd] : projectPaths.length > 0 ? [projectPaths[0]] : ['']}
           placeholder="Select a project"
-          onchange={(value) => {
+          onchange={(value: string[]): void => {
             selectedCwd = value[0] || '';
           }}
           classes="launch-select"

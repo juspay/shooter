@@ -1,12 +1,9 @@
 <script lang="ts">
+  import type { ConnectionStatusProps } from '$lib/types';
+
   import { Button } from '@juspay/svelte-ui-components';
 
-  interface Props {
-    onretry?: () => void;
-    status: 'connected' | 'disconnected' | 'reconnecting';
-  }
-
-  const { onretry, status }: Props = $props();
+  const { onretry, status }: ConnectionStatusProps = $props();
 
   const label = $derived(
     status === 'connected'

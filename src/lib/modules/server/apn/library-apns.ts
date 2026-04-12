@@ -1,8 +1,8 @@
+import type { LibraryResult as APNsLibraryResult, NotificationPayload } from '$lib/types';
+
 import { env } from '$env/dynamic/private';
 // APNs service using proven library instead of manual implementation
 import apn from '@parse/node-apn';
-
-import type { LibraryResult as APNsLibraryResult, NotificationPayload } from './types';
 
 import { toErrorMessage } from '../utils/error';
 
@@ -79,7 +79,10 @@ export class LibraryAPNsService {
 
     notification.badge = payload.badge ?? 1;
     notification.sound = payload.sound ?? 'default';
-    notification.topic = this.bundleId!;
+    if (!this.bundleId) {
+      throw new Error('APNs bundleId is required but was not configured');
+    }
+    notification.topic = this.bundleId;
 
     if (payload.category) {
       notification.aps.category = payload.category;

@@ -1,14 +1,11 @@
 <script lang="ts">
+  import type { ShortcutsHelpProps } from '$lib/types';
+
   import { KeyboardInput, Modal } from '@juspay/svelte-ui-components';
 
   import { getShortcutList } from './keyboard-shortcuts';
 
-  interface Props {
-    onClose: () => void;
-    open: boolean;
-  }
-
-  const { onClose, open }: Props = $props();
+  const { onClose, open }: ShortcutsHelpProps = $props();
   const shortcuts = getShortcutList();
 </script>
 

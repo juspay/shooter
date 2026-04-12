@@ -1,6 +1,5 @@
 <script lang="ts">
-  import type { NativeBridgeConfig } from '$generated/types';
-  import type { ShooterConfig } from '$lib/types/config';
+  import type { ConfigPageData, NativeBridgeConfig, ShooterConfig } from '$lib/types';
 
   import { browser } from '$app/environment';
   import {
@@ -11,8 +10,11 @@
     scanQR,
     toErrorMessage,
   } from '$lib/modules/client/common';
+  import { PROVIDERS } from '$lib/modules/client/neurolink/provider-config';
   import { Banner, Button, Input, Stepper } from '@juspay/svelte-ui-components';
   import { onMount } from 'svelte';
+
+  const { data }: { data: ConfigPageData } = $props();
 
   let serverUrl = $state('');
   let apiKey = $state('');
@@ -157,26 +159,45 @@
 
   onMount(() => {
     if (browser) {
-      try {
-        const saved = localStorage.getItem('shooter_config');
-        if (saved) {
-          const parsed: unknown = JSON.parse(saved);
-          if (isShooterConfig(parsed)) {
-            if (parsed.apiKey) {
-              apiKey = parsed.apiKey;
-            }
-            if (parsed.deviceToken) {
-              deviceToken = parsed.deviceToken;
-            }
-            if (parsed.serverUrl) {
-              serverUrl = parsed.serverUrl;
-            }
-          } else {
-            localStorage.removeItem('shooter_config');
+      // Auto-configure from URL fragment (#key=...&url=...) to avoid
+      // exposing secrets in the request URL, browser history, or referrer headers.
+      const hash = window.location.hash.slice(1);
+      if (hash) {
+        const params = new URLSearchParams(hash);
+        const paramKey = params.get('key');
+        const paramUrl = params.get('url');
+        if (paramKey) {
+          apiKey = paramKey;
+          if (paramUrl) {
+            serverUrl = paramUrl;
           }
+          void saveConfiguration();
+          // Clean fragment so the key doesn't linger
+          window.history.replaceState({}, '', window.location.pathname);
         }
-      } catch {
-        // No saved configuration — expected on first visit
+      }
+      if (!apiKey) {
+        try {
+          const saved = localStorage.getItem('shooter_config');
+          if (saved) {
+            const parsed: unknown = JSON.parse(saved);
+            if (isShooterConfig(parsed)) {
+              if (parsed.apiKey) {
+                apiKey = parsed.apiKey;
+              }
+              if (parsed.deviceToken) {
+                deviceToken = parsed.deviceToken;
+              }
+              if (parsed.serverUrl) {
+                serverUrl = parsed.serverUrl;
+              }
+            } else {
+              localStorage.removeItem('shooter_config');
+            }
+          }
+        } catch {
+          // No saved configuration — expected on first visit
+        }
       }
 
       // Hydrate from native bridge BEFORE applying the browser default.
@@ -285,13 +306,13 @@
         method: 'POST',
       });
 
-      const data = await response.json();
+      const data = (await response.json()) as Record<string, unknown>;
 
       if (response.ok) {
         result = 'Test notification sent successfully';
         statusType = 'success';
       } else {
-        result = `Test failed: ${data.error || 'Unknown error'}`;
+        result = `Test failed: ${typeof data.error === 'string' ? data.error : 'Unknown error'}`;
         statusType = 'error';
       }
     } catch (error) {
@@ -358,7 +379,8 @@
             infoMessage="Required for sending notifications"
           />
           <p class="input-help">
-            Find this in your <code>~/.shooter/.env</code> file. Run <code>shooter setup</code> to generate one.
+            Find this in your <code>~/.shooter/.env</code> file. Run <code>shooter setup</code> to generate
+            one.
           </p>
 
           <Input
@@ -470,6 +492,35 @@
                 disabled={qrLoading || !apiKey.trim()}
                 text={qrDataUrl ? 'Regenerate QR Code' : 'Generate QR Code'}
               />
+            {/if}
+          </div>
+        </Card>
+
+        <Card title="AI Providers" description="NeuroLink-powered summaries and AI features">
+          <div class="ai-providers">
+            {#each PROVIDERS as provider (provider.id)}
+              <div class="provider-row">
+                <Icon
+                  name={data.aiProviders[provider.id] ? 'check-circle' : 'x-circle'}
+                  size={14}
+                />
+                <span class="provider-label">{provider.label}</span>
+                <span class="provider-status" class:configured={data.aiProviders[provider.id]}>
+                  {data.aiProviders[provider.id] ? 'configured' : 'not configured'}
+                </span>
+              </div>
+            {/each}
+
+            {#if data.activeProvider}
+              <div class="active-provider">
+                Active: <strong>{data.activeProvider}</strong>
+              </div>
+            {:else if Object.values(data.aiProviders).some(Boolean)}
+              <div class="active-provider">Auto-detected from configured keys</div>
+            {:else}
+              <p class="ai-help">
+                Run <code>shooter setup</code> to configure AI providers for summaries.
+              </p>
             {/if}
           </div>
         </Card>
@@ -631,7 +682,49 @@
   }
 
   .settings-sidebar :global(.card):last-child {
-    border-color: rgba(217, 48, 54, 0.3);
+    border-color: color-mix(in srgb, var(--ds-red-700) 30%, transparent);
+  }
+
+  .ai-providers {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+  .provider-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+  }
+  .provider-label {
+    flex: 1;
+    color: var(--text-primary);
+  }
+  .provider-status {
+    font-size: var(--text-xs);
+    color: var(--text-tertiary);
+  }
+  .provider-status.configured {
+    color: var(--ds-green-900);
+  }
+  .active-provider {
+    margin-top: var(--space-2);
+    padding-top: var(--space-2);
+    border-top: 1px solid var(--border);
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+  }
+  .ai-help {
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+    margin-top: var(--space-2);
+  }
+  .ai-help code {
+    background: var(--ds-gray-200, #1a1a1a);
+    padding: 1px 4px;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
   }
 
   .danger-description {
@@ -640,12 +733,12 @@
     margin-bottom: var(--space-4);
     line-height: var(--leading-relaxed);
     padding-left: var(--space-3);
-    border-left: 3px solid rgba(217, 48, 54, 0.5);
+    border-left: 3px solid color-mix(in srgb, var(--ds-red-700) 50%, transparent);
   }
 
   .input-help {
     font-size: var(--text-xs);
-    color: var(--color-text-tertiary, #888);
+    color: var(--text-tertiary);
     margin-top: var(--space-1);
     margin-bottom: 0;
   }

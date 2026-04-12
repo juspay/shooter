@@ -1,9 +1,12 @@
 <script lang="ts">
   import type {
+    ChatViewProps,
     ConversationMessage,
+    GroupedPart,
     MessagePart,
+    ToolGroup,
     ToolUsePart,
-  } from '$lib/modules/server/sessions/types';
+  } from '$lib/types';
 
   import { browser } from '$app/environment';
   import { getToolDescription, renderMarkdown } from '$lib/modules/client/common';
@@ -22,23 +25,12 @@
     sessionEnded = false,
     showHeader = false,
     showInput = true,
-  }: {
-    connectionState?: 'connected' | 'connecting' | 'disconnected' | 'idle' | 'reconnecting';
-    messages: ConversationMessage[];
-    newestFirst?: boolean;
-    onCancel?: () => void;
-    onSendInput?: (text: string) => void;
-    sendDisabled?: boolean;
-    sessionEnded?: boolean;
-    showHeader?: boolean;
-    showInput?: boolean;
-  } = $props();
+  }: ChatViewProps = $props();
 
   // When sendDisabled is explicitly provided, it overrides the connectionState check.
   // Otherwise fall back to the existing behaviour (disabled when not connected).
   const isInputDisabled = $derived(
-    sessionEnded ||
-    (sendDisabled !== undefined ? sendDisabled : connectionState !== 'connected')
+    sessionEnded || (sendDisabled !== undefined ? sendDisabled : connectionState !== 'connected')
   );
 
   // --- Local state ---
@@ -51,9 +43,7 @@
 
   // --- Show Details toggle (persisted in localStorage) ---
   const SHOW_DETAILS_KEY = 'shooter:chatview:showDetails';
-  let showDetails = $state(
-    browser ? localStorage.getItem(SHOW_DETAILS_KEY) === 'true' : false,
-  );
+  let showDetails = $state(browser ? localStorage.getItem(SHOW_DETAILS_KEY) === 'true' : false);
 
   function toggleShowDetails(): void {
     showDetails = !showDetails;
@@ -63,22 +53,15 @@
   }
 
   // --- Tool grouping ---
-  interface ToolGroup {
-    groupId: string;
-    summary: string;
-    tools: ToolUsePart[];
-    type: 'tool_group';
-  }
-
-  type GroupedPart = MessagePart | ToolGroup;
-
   function groupMessageParts(parts: MessagePart[], messageId: string): GroupedPart[] {
     const result: GroupedPart[] = [];
     let currentToolGroup: ToolUsePart[] = [];
     let groupIndex = 0;
 
     function flushToolGroup(): void {
-      if (currentToolGroup.length === 0) {return;}
+      if (currentToolGroup.length === 0) {
+        return;
+      }
 
       if (currentToolGroup.length === 1) {
         // Single tool -- render as normal tool card, no group wrapper
@@ -223,7 +206,7 @@
         {#if !sessionEnded && onCancel}
           <Button
             classes="btn-danger btn-sm"
-            onclick={() => {
+            onclick={(): void => {
               onCancel();
             }}
             text="Cancel"
@@ -280,8 +263,10 @@
                   <div class="chat-tool-group">
                     <div
                       class="chat-tool-group-header"
-                      onclick={() => { toggleGroup(gpart.groupId); }}
-                      onkeydown={(e) => {
+                      onclick={(): void => {
+                        toggleGroup(gpart.groupId);
+                      }}
+                      onkeydown={(e: KeyboardEvent): void => {
                         if (e.key === 'Enter' || e.key === ' ') {
                           e.preventDefault();
                           toggleGroup(gpart.groupId);
@@ -290,7 +275,9 @@
                       role="button"
                       tabindex="0"
                     >
-                      <span class="chat-tool-group-chevron" class:expanded={groupExpanded}>&#9654;</span>
+                      <span class="chat-tool-group-chevron" class:expanded={groupExpanded}
+                        >&#9654;</span
+                      >
                       <span class="chat-tool-group-summary">{gpart.summary}</span>
                     </div>
                     {#if groupExpanded}
@@ -301,8 +288,10 @@
                           <div class="chat-tool-card">
                             <div
                               class="chat-tool-header"
-                              onclick={() => { toggleTool(toolId); }}
-                              onkeydown={(e) => {
+                              onclick={(): void => {
+                                toggleTool(toolId);
+                              }}
+                              onkeydown={(e: KeyboardEvent): void => {
                                 if (e.key === 'Enter' || e.key === ' ') {
                                   e.preventDefault();
                                   toggleTool(toolId);
@@ -311,9 +300,13 @@
                               role="button"
                               tabindex="0"
                             >
-                              <span class="chat-tool-chevron" class:expanded={isExpanded}>&#9654;</span>
+                              <span class="chat-tool-chevron" class:expanded={isExpanded}
+                                >&#9654;</span
+                              >
                               <Pill text={tool.toolName} classes="pill-tool-name" />
-                              <span class="chat-tool-description">{getToolDescriptionFromPart(tool)}</span>
+                              <span class="chat-tool-description"
+                                >{getToolDescriptionFromPart(tool)}</span
+                              >
                             </div>
                             <Accordion expand={isExpanded}>
                               {#if isExpanded}
@@ -337,8 +330,10 @@
                   <div class="chat-tool-card">
                     <div
                       class="chat-tool-header"
-                      onclick={() => { toggleTool(toolId); }}
-                      onkeydown={(e) => {
+                      onclick={(): void => {
+                        toggleTool(toolId);
+                      }}
+                      onkeydown={(e: KeyboardEvent): void => {
                         if (e.key === 'Enter' || e.key === ' ') {
                           e.preventDefault();
                           toggleTool(toolId);
@@ -363,8 +358,10 @@
                   <div class="chat-thinking">
                     <div
                       class="chat-thinking-header"
-                      onclick={() => { toggleTool(thinkId); }}
-                      onkeydown={(e) => {
+                      onclick={(): void => {
+                        toggleTool(thinkId);
+                      }}
+                      onkeydown={(e: KeyboardEvent): void => {
                         if (e.key === 'Enter' || e.key === ' ') {
                           e.preventDefault();
                           toggleTool(thinkId);
@@ -399,8 +396,10 @@
                     <div class="chat-tool-card">
                       <div
                         class="chat-tool-header"
-                        onclick={() => { toggleTool(resultId); }}
-                        onkeydown={(e) => {
+                        onclick={(): void => {
+                          toggleTool(resultId);
+                        }}
+                        onkeydown={(e: KeyboardEvent): void => {
                           if (e.key === 'Enter' || e.key === ' ') {
                             e.preventDefault();
                             toggleTool(resultId);
@@ -409,7 +408,9 @@
                         role="button"
                         tabindex="0"
                       >
-                        <span class="chat-tool-chevron" class:expanded={isResultExpanded}>&#9654;</span>
+                        <span class="chat-tool-chevron" class:expanded={isResultExpanded}
+                          >&#9654;</span
+                        >
                         <Pill
                           text={part.isError ? '\u274C Tool Error' : '\u2705 Tool Result'}
                           classes={part.isError ? 'pill-tool-error' : 'pill-tool-success'}
@@ -460,7 +461,9 @@
         bind:value={inputText}
         dataType="text"
         useTextArea={true}
-        placeholder={sessionEnded ? 'Session ended' : 'Send a message... (Shift+Enter for new line)'}
+        placeholder={sessionEnded
+          ? 'Session ended'
+          : 'Send a message... (Shift+Enter for new line)'}
         disable={isInputDisabled}
         onKeyDown={handleKeydown}
         classes="chat-input-field"

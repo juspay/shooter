@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ShooterConfig, TerminalListItem } from '$generated/types';
+  import type { ShooterConfig, TerminalListItem } from '$lib/types';
 
   import { goto } from '$app/navigation';
   import {
@@ -343,7 +343,7 @@
               </span>
               <Button
                 classes="btn-ghost btn-sm btn-remove"
-                onclick={(e) => removeTerminal(e, terminal.id)}
+                onclick={(e: MouseEvent): void => void removeTerminal(e, terminal.id)}
                 text="&times;"
               />
             </div>

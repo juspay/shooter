@@ -1,14 +1,7 @@
 <script lang="ts">
-  import type { Snippet } from 'svelte';
+  import type { CardProps } from '$lib/types';
 
-  interface Props {
-    children: Snippet;
-    class?: string;
-    description?: string;
-    title?: string;
-  }
-
-  const { children, class: className = '', description, title }: Props = $props();
+  const { children, class: className = '', description, title }: CardProps = $props();
 </script>
 
 <div class="card {className}">

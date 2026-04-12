@@ -1,4 +1,6 @@
 <script lang="ts">
+  import type { IconProps } from '$lib/types';
+
   import AlertTriangle from '$lib/assets/icons/alert-triangle.svg?raw';
   import Bell from '$lib/assets/icons/bell.svg?raw';
   import CheckCircle from '$lib/assets/icons/check-circle.svg?raw';
@@ -25,13 +27,7 @@
     'x-circle': XCircle,
   };
 
-  interface Props {
-    class?: string;
-    name: keyof typeof icons;
-    size?: number;
-  }
-
-  const { class: className = '', name, size = 16 }: Props = $props();
+  const { class: className = '', name, size = 16 }: IconProps = $props();
 
   const svgContent = $derived(icons[name] || '');
 </script>

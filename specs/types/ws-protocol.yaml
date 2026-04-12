@@ -636,6 +636,112 @@ WsProtocol:
         type: string
         description: Summary of what happened in the session
 
+  EventToolStarted:
+    type: object
+    description: A tool execution has started
+    required:
+      - type
+      - tool
+    properties:
+      type:
+        type: string
+        const: tool-started
+      tool:
+        type: string
+        description: Name of the tool being executed
+      command:
+        type: string
+        nullable: true
+        description: Command being executed (for Bash tool)
+      filePath:
+        type: string
+        nullable: true
+        description: File path being operated on
+      terminalId:
+        type: string
+        nullable: true
+        description: Associated terminal identifier
+
+  EventToolCompleted:
+    type: object
+    description: A tool execution has completed
+    required:
+      - type
+      - tool
+      - success
+    properties:
+      type:
+        type: string
+        const: tool-completed
+      tool:
+        type: string
+        description: Name of the tool that completed
+      success:
+        type: boolean
+        description: Whether the tool execution succeeded
+      terminalId:
+        type: string
+        nullable: true
+        description: Associated terminal identifier
+
+  EventToolFailed:
+    type: object
+    description: A tool execution has failed
+    required:
+      - type
+      - tool
+      - error
+    properties:
+      type:
+        type: string
+        const: tool-failed
+      tool:
+        type: string
+        description: Name of the tool that failed
+      error:
+        type: string
+        description: Error message
+      terminalId:
+        type: string
+        nullable: true
+        description: Associated terminal identifier
+
+  EventAgentIdle:
+    type: object
+    description: The AI agent is idle and waiting
+    required:
+      - type
+    properties:
+      type:
+        type: string
+        const: agent-idle
+      message:
+        type: string
+        nullable: true
+        description: Optional idle message
+      terminalId:
+        type: string
+        nullable: true
+        description: Associated terminal identifier
+
+  EventAgentQuestion:
+    type: object
+    description: The AI agent has a question for the user
+    required:
+      - type
+      - message
+    properties:
+      type:
+        type: string
+        const: agent-question
+      message:
+        type: string
+        description: The question being asked
+      terminalId:
+        type: string
+        nullable: true
+        description: Associated terminal identifier
+
   ShooterEvent:
     description: Broadcast events sent from server to all connected clients on the global events channel
     oneOf:
@@ -645,6 +751,11 @@ WsProtocol:
       - $ref: './specs/types/ws-protocol.yaml#/WsProtocol/EventPermissionResolved'
       - $ref: './specs/types/ws-protocol.yaml#/WsProtocol/EventSessionStarted'
       - $ref: './specs/types/ws-protocol.yaml#/WsProtocol/EventSessionEnded'
+      - $ref: './specs/types/ws-protocol.yaml#/WsProtocol/EventToolStarted'
+      - $ref: './specs/types/ws-protocol.yaml#/WsProtocol/EventToolCompleted'
+      - $ref: './specs/types/ws-protocol.yaml#/WsProtocol/EventToolFailed'
+      - $ref: './specs/types/ws-protocol.yaml#/WsProtocol/EventAgentIdle'
+      - $ref: './specs/types/ws-protocol.yaml#/WsProtocol/EventAgentQuestion'
 
   # ═══════════════════════════════════════════════════════════════════════
   # WebSocket Auth — Ticket Store

@@ -1,11 +1,12 @@
 <script lang="ts">
-  import type { SessionViewResponse, ShooterConfig } from '$generated/types';
   import type {
     ConversationMessage,
     MessagePart,
     SessionInfo,
+    SessionViewResponse,
+    ShooterConfig,
     ToolUsePart,
-  } from '$lib/modules/server/sessions/types';
+  } from '$lib/types';
 
   import { browser } from '$app/environment';
   import { page } from '$app/state';
@@ -26,7 +27,9 @@
 
   // Terminal + WS connection state
   let connectedTerminalId = $state<null | string>(null);
-  let chatConnectionState = $state<'connected' | 'connecting' | 'disconnected' | 'idle' | 'reconnecting'>('idle');
+  let chatConnectionState = $state<
+    'connected' | 'connecting' | 'disconnected' | 'idle' | 'reconnecting'
+  >('idle');
   // sendStatus:
   //   'idle'       = no terminal yet; input ready for first send
   //   'connecting' = calling /api/sessions/connect
@@ -52,7 +55,9 @@
   function getConfig(): null | ShooterConfig {
     try {
       const saved = localStorage.getItem('shooter_config');
-      if (!saved) { return null; }
+      if (!saved) {
+        return null;
+      }
       return JSON.parse(saved) as ShooterConfig;
     } catch {
       return null;
@@ -61,14 +66,18 @@
 
   async function getWsTicket(): Promise<null | string> {
     const config = getConfig();
-    if (!config) { return null; }
+    if (!config) {
+      return null;
+    }
     try {
       const res = await fetch('/api/ws-ticket', {
         headers: { Authorization: `Bearer ${config.apiKey}` },
         method: 'POST',
       });
-      if (!res.ok) { return null; }
-      const data: { ticket: string } = await res.json();
+      if (!res.ok) {
+        return null;
+      }
+      const data = (await res.json()) as { ticket: string };
       return data.ticket;
     } catch {
       return null;
@@ -78,7 +87,9 @@
   // --- Session WS (receive chat messages) ---
 
   async function connectSessionWs(sessionWsPath: string, termId: string): Promise<void> {
-    if (disposed) { return; }
+    if (disposed) {
+      return;
+    }
 
     // Avoid stacking connections
     if (
@@ -89,7 +100,9 @@
     }
 
     const ticket = await getWsTicket();
-    if (!ticket || disposed) { return; }
+    if (!ticket || disposed) {
+      return;
+    }
 
     chatConnectionState = 'connecting';
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -97,24 +110,38 @@
       `${protocol}//${window.location.host}${sessionWsPath}?ticket=${ticket}`
     );
 
-    socket.onopen = () => {
-      if (disposed) { socket.close(); return; }
+    socket.onopen = (): void => {
+      if (disposed) {
+        socket.close();
+        return;
+      }
       chatConnectionState = 'connected';
       socket.send(JSON.stringify({ sessionId: termId, type: 'subscribe' }));
     };
 
-    socket.onmessage = (event) => {
-      if (disposed) { return; }
-      try { handleSessionMessage(JSON.parse(event.data as string)); } catch { /* ignore */ }
+    socket.onmessage = (event: MessageEvent): void => {
+      if (disposed) {
+        return;
+      }
+      try {
+        const parsed = JSON.parse(event.data as string) as Record<string, unknown>;
+        handleSessionMessage(parsed);
+      } catch {
+        /* ignore */
+      }
     };
 
-    socket.onclose = () => {
-      if (disposed) { return; }
+    socket.onclose = (): void => {
+      if (disposed) {
+        return;
+      }
       chatConnectionState = 'disconnected';
       sessionWs = null;
       if (connectedTerminalId) {
-        if (sessionReconnectTimer) { clearTimeout(sessionReconnectTimer); }
-        sessionReconnectTimer = setTimeout(() => {
+        if (sessionReconnectTimer) {
+          clearTimeout(sessionReconnectTimer);
+        }
+        sessionReconnectTimer = setTimeout((): void => {
           sessionReconnectTimer = null;
           if (!disposed && connectedTerminalId) {
             void connectSessionWs(`/ws/session/${connectedTerminalId}`, connectedTerminalId);
@@ -123,8 +150,10 @@
       }
     };
 
-    socket.onerror = () => {
-      if (!disposed) { chatConnectionState = 'disconnected'; }
+    socket.onerror = (): void => {
+      if (!disposed) {
+        chatConnectionState = 'disconnected';
+      }
     };
 
     sessionWs = socket;
@@ -133,16 +162,23 @@
   // --- Terminal WS (send PTY input only) ---
 
   async function connectTerminalWs(wsPath: string): Promise<void> {
-    if (disposed) { return; }
+    if (disposed) {
+      return;
+    }
 
     const ticket = await getWsTicket();
-    if (!ticket || disposed) { return; }
+    if (!ticket || disposed) {
+      return;
+    }
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const ws = new WebSocket(`${protocol}//${window.location.host}${wsPath}?ticket=${ticket}`);
 
-    ws.onopen = () => {
-      if (disposed) { ws.close(); return; }
+    ws.onopen = (): void => {
+      if (disposed) {
+        ws.close();
+        return;
+      }
       terminalWs = ws;
       if (sendStatus === 'ready' && pendingMessage) {
         ws.send(JSON.stringify({ data: `${pendingMessage}\n`, type: 'input' }));
@@ -150,8 +186,10 @@
       }
     };
 
-    ws.onclose = () => {
-      if (terminalWs === ws) { terminalWs = null; }
+    ws.onclose = (): void => {
+      if (terminalWs === ws) {
+        terminalWs = null;
+      }
     };
   }
 
@@ -243,10 +281,7 @@
       const thinkPart: MessagePart = { content: (msg.text as string) || '', type: 'thinking' };
       const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null;
       if (lastMsg?.role === 'assistant') {
-        messages = [
-          ...messages.slice(0, -1),
-          { ...lastMsg, parts: [...lastMsg.parts, thinkPart] },
-        ];
+        messages = [...messages.slice(0, -1), { ...lastMsg, parts: [...lastMsg.parts, thinkPart] }];
       } else {
         messages = [
           ...messages,
@@ -266,10 +301,16 @@
   // --- Connect + send flow ---
 
   async function connectAndSend(): Promise<void> {
-    if (!session || disposed) { sendStatus = 'idle'; return; }
+    if (!session || disposed) {
+      sendStatus = 'idle';
+      return;
+    }
 
     const config = getConfig();
-    if (!config) { sendStatus = 'idle'; return; }
+    if (!config) {
+      sendStatus = 'idle';
+      return;
+    }
 
     sendStatus = 'connecting';
 
@@ -284,9 +325,12 @@
         method: 'POST',
       });
 
-      if (!res.ok || disposed) { sendStatus = 'idle'; return; }
+      if (!res.ok || disposed) {
+        sendStatus = 'idle';
+        return;
+      }
 
-      const result: { sessionWs: string; terminalId: string; ws: string } = await res.json();
+      const result = (await res.json()) as { sessionWs: string; terminalId: string; ws: string };
       connectedTerminalId = result.terminalId;
       sendStatus = 'resuming';
 
@@ -300,7 +344,9 @@
   // --- Called by ChatView on submit ---
 
   function sendMessage(text: string): void {
-    if (!text.trim()) { return; }
+    if (!text.trim()) {
+      return;
+    }
 
     if (sendStatus === 'ready' && terminalWs?.readyState === WebSocket.OPEN) {
       terminalWs.send(JSON.stringify({ data: `${text}\n`, type: 'input' }));
@@ -321,8 +367,12 @@
   // --- REST fetch (initial messages) ---
 
   async function fetchSession(): Promise<void> {
-    if (!browser) { return; }
-    if (messages.length === 0) { loading = true; }
+    if (!browser) {
+      return;
+    }
+    if (messages.length === 0) {
+      loading = true;
+    }
 
     try {
       const config = getConfig();
@@ -348,8 +398,9 @@
           headers: { Authorization: `Bearer ${config.apiKey}` },
         });
         if (projectsRes.ok) {
-          const projectsData: { projects?: { id: string; sessions?: { id: string }[] }[] } =
-            await projectsRes.json();
+          const projectsData = (await projectsRes.json()) as {
+            projects?: { id: string; sessions?: { id: string }[] }[];
+          };
           for (const project of projectsData.projects || []) {
             if ((project.sessions || []).find((s) => s.id === sid)) {
               res = await fetch(
@@ -362,11 +413,17 @@
         }
       }
 
-      if (!res.ok) { error = 'Session not found'; loading = false; return; }
+      if (!res.ok) {
+        error = 'Session not found';
+        loading = false;
+        return;
+      }
 
-      const data: SessionViewResponse = await res.json();
+      const data = (await res.json()) as SessionViewResponse;
       session = data.session as SessionInfo;
-      const rawMessages = Array.isArray(data.messages) ? (data.messages as unknown as ConversationMessage[]) : [];
+      const rawMessages = Array.isArray(data.messages)
+        ? (data.messages as unknown as ConversationMessage[])
+        : [];
       messages = rawMessages;
       hasMoreMessages = rawMessages.length >= currentLimit;
       setCache(`shooter_session_${sid}`, { messages: rawMessages, session: data.session });
@@ -377,9 +434,13 @@
   }
 
   async function loadEarlierMessages(): Promise<void> {
-    if (!browser || loadingMore) { return; }
+    if (!browser || loadingMore) {
+      return;
+    }
     const config = getConfig();
-    if (!config) { return; }
+    if (!config) {
+      return;
+    }
 
     loadingMore = true;
     try {
@@ -387,18 +448,28 @@
       const sid = sessionId || '';
       const pid = projectId || '';
       const queryParts = [`id=${encodeURIComponent(sid)}`, `limit=${newLimit}`];
-      if (pid) { queryParts.push(`project=${encodeURIComponent(pid)}`); }
+      if (pid) {
+        queryParts.push(`project=${encodeURIComponent(pid)}`);
+      }
       const res = await fetch(`/api/sessions?${queryParts.join('&')}`, {
         headers: { Authorization: `Bearer ${config.apiKey}` },
       });
-      if (!res.ok) { return; }
-      const data: SessionViewResponse = await res.json();
-      const rawMessages = Array.isArray(data.messages) ? (data.messages as unknown as ConversationMessage[]) : [];
+      if (!res.ok) {
+        return;
+      }
+      const data = (await res.json()) as SessionViewResponse;
+      const rawMessages = Array.isArray(data.messages)
+        ? (data.messages as unknown as ConversationMessage[])
+        : [];
       messages = rawMessages;
       currentLimit = newLimit;
       hasMoreMessages = rawMessages.length >= newLimit;
       setCache(`shooter_session_${sid}`, { messages: rawMessages, session: data.session });
-    } catch { /* best effort */ } finally { loadingMore = false; }
+    } catch {
+      /* best effort */
+    } finally {
+      loadingMore = false;
+    }
   }
 
   // --- Lifecycle ---
@@ -416,11 +487,15 @@
     }
 
     void fetchSession().then(async () => {
-      if (!session || disposed) { return; }
+      if (!session || disposed) {
+        return;
+      }
 
       // Check if there's already a running terminal for this session
       const config = getConfig();
-      if (!config) { return; }
+      if (!config) {
+        return;
+      }
 
       try {
         const command = session.source === 'opencode' ? 'opencode' : 'claude';
@@ -439,19 +514,27 @@
         });
 
         if (res.ok && !disposed) {
-          const result: { sessionWs: string; terminalId: string; ws: string } = await res.json();
+          const result = (await res.json()) as {
+            sessionWs: string;
+            terminalId: string;
+            ws: string;
+          };
           connectedTerminalId = result.terminalId;
           sendStatus = 'resuming';
           void connectSessionWs(result.sessionWs, result.terminalId);
           void connectTerminalWs(result.ws);
         }
         // 404 = no existing terminal, that's fine
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     });
 
-    return () => {
+    return (): void => {
       disposed = true;
-      if (sessionReconnectTimer) { clearTimeout(sessionReconnectTimer); }
+      if (sessionReconnectTimer) {
+        clearTimeout(sessionReconnectTimer);
+      }
       sessionWs?.close();
       terminalWs?.close();
     };
@@ -501,11 +584,7 @@
     <div class="session-chat-container">
       {#if hasMoreMessages}
         <div class="load-earlier-row">
-          <button
-            class="load-earlier-btn"
-            onclick={loadEarlierMessages}
-            disabled={loadingMore}
-          >
+          <button class="load-earlier-btn" onclick={loadEarlierMessages} disabled={loadingMore}>
             {loadingMore ? 'Loading...' : 'Load earlier messages'}
           </button>
         </div>
@@ -570,8 +649,13 @@
   }
 
   @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.4; }
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.4;
+    }
   }
 
   .connection-dot {

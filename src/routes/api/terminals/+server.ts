@@ -9,6 +9,21 @@ import type { RequestHandler } from './$types';
 
 const ALLOWED_COMMANDS = ['zsh', 'bash', 'sh', 'fish', 'claude', 'opencode'];
 
+/** Extract the last non-empty line from a scrollback string. */
+function lastScrollbackLine(scrollback: string): null | string {
+  if (!scrollback) {
+    return null;
+  }
+  const lines = scrollback.trimEnd().split('\n');
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i].trim();
+    if (line) {
+      return line.slice(0, 200);
+    }
+  }
+  return null;
+}
+
 // GET /api/terminals — List all terminals (active + recently exited)
 export const GET: RequestHandler = ({ request }) => {
   const authError = validateAuth(request);
@@ -28,6 +43,7 @@ export const GET: RequestHandler = ({ request }) => {
       exitedAt: t.exitedAt?.toISOString() ?? null,
       id: t.id,
       isActive: t.isActive,
+      lastOutput: lastScrollbackLine(t.scrollback),
       pid: t.pid,
       status: t.status,
     }));
@@ -127,7 +143,10 @@ export const POST: RequestHandler = async ({ request }) => {
     return json(
       {
         command: terminal.command,
-        createdAt: terminal.createdAt instanceof Date ? terminal.createdAt.toISOString() : terminal.createdAt,
+        createdAt:
+          terminal.createdAt instanceof Date
+            ? terminal.createdAt.toISOString()
+            : terminal.createdAt,
         cwd: terminal.cwd,
         id: terminal.id,
         pid: terminal.pid,

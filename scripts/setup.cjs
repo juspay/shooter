@@ -10,7 +10,6 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
-
 // ── ANSI helpers ─────────────────────────────────────────────────────
 const C = {
   reset: '\x1b[0m',
@@ -52,10 +51,28 @@ function escapeForDoubleQuotedShell(s) {
   return s.replace(/[\\"$`]/g, '\\$&');
 }
 
-// ── Secure key generator ─────────────────────────────────────────────
-// Produces a 256-bit random hex key (64 characters).
-function generateSecureKey() {
-  return crypto.randomBytes(32).toString('hex');
+// ── API key generator ────────────────────────────────────────────────
+// Produces a readable key: <machinename><4 random hex chars>
+// e.g. "sachinsharma567f"
+// Easy to recognise, type, and remember — still unique per install.
+function generateApiKey() {
+  const os = require('os');
+  // Take only the letters-only leading portion of the hostname — strips
+  // device serial suffixes like HCW39CV9MH which always contain digits.
+  const name =
+    os
+      .hostname()
+      .toLowerCase()
+      .replace(/\.local$/, '') // strip macOS .local suffix
+      .replace(/[^a-z0-9]/g, ' ') // turn separators into spaces
+      .trim()
+      .split(' ')
+      .filter((p) => /^[a-z]+$/.test(p)) // keep only pure-letter segments
+      .join('')
+      .slice(0, 20) || 'shooter';
+
+  const suffix = crypto.randomBytes(16).toString('hex'); // 128 bits of entropy
+  return `${name}-${suffix}`;
 }
 
 // ── Globals ──────────────────────────────────────────────────────────
@@ -66,6 +83,52 @@ const AUTO_MODE = process.argv.includes('--auto');
 const PUSH_MODE = process.argv.includes('--push');
 
 let rl; // readline interface — created in main()
+
+// ── AI Provider Registry ─────────────────────────────────────────────
+const PROVIDER_REGISTRY = [
+  {
+    envKeys: ['GOOGLE_AI_API_KEY'],
+    hint: 'Get free at https://aistudio.google.com/apikey',
+    id: 'google-ai',
+    label: 'Google AI (Gemini)',
+  },
+  {
+    envKeys: ['ANTHROPIC_API_KEY'],
+    hint: 'Get at https://console.anthropic.com',
+    id: 'anthropic',
+    label: 'Anthropic (Claude)',
+  },
+  {
+    envKeys: ['OPENAI_API_KEY'],
+    hint: 'Get at https://platform.openai.com/api-keys',
+    id: 'openai',
+    label: 'OpenAI (GPT)',
+  },
+  {
+    envKeys: ['MISTRAL_API_KEY'],
+    hint: 'Get at https://console.mistral.ai',
+    id: 'mistral',
+    label: 'Mistral',
+  },
+  {
+    extraKeys: ['LITELLM_MODEL'],
+    envKeys: ['LITELLM_API_KEY', 'LITELLM_BASE_URL'],
+    hint: 'Local OpenAI-compatible proxy',
+    id: 'litellm',
+    label: 'LiteLLM (local)',
+  },
+];
+
+const AI_ENV_KEYS = [
+  'ANTHROPIC_API_KEY',
+  'GOOGLE_AI_API_KEY',
+  'LITELLM_API_KEY',
+  'LITELLM_BASE_URL',
+  'LITELLM_MODEL',
+  'MISTRAL_API_KEY',
+  'NEUROLINK_PROVIDER',
+  'OPENAI_API_KEY',
+];
 
 // ── Auto-incrementing step counter ──────────────────────────────────
 let _stepNum = 0;
@@ -200,6 +263,83 @@ function validateEmail(email) {
   return null;
 }
 
+// ── Collect AI Provider Config ───────────────────────────────────────
+async function collectAIConfig(config) {
+  step('AI-Powered Features (Optional)');
+  console.log('');
+  console.log('  Shooter uses NeuroLink to generate AI summaries of your coding sessions.');
+  console.log('  You can configure one or more AI providers.');
+  console.log('');
+
+  if (AUTO_MODE) {
+    console.log(dim('  Skipping AI provider configuration in --auto mode.'));
+    console.log('');
+    return;
+  }
+
+  const wantAI = await confirm('Configure AI providers?');
+  if (!wantAI) {
+    console.log('  Skipped — summaries will use basic text fallback.');
+    return;
+  }
+
+  console.log('');
+  console.log('  Available providers:');
+  PROVIDER_REGISTRY.forEach((p, i) => {
+    console.log(`    ${i + 1}. ${p.label}`);
+  });
+  console.log(`    ${PROVIDER_REGISTRY.length + 1}. Skip`);
+  console.log('');
+
+  let configureMore = true;
+  while (configureMore) {
+    const choice = await askRequired(
+      `Choose provider (1-${PROVIDER_REGISTRY.length + 1})`,
+      (val) => {
+        const n = parseInt(val, 10);
+        return n >= 1 && n <= PROVIDER_REGISTRY.length + 1
+          ? null
+          : `Enter a number 1-${PROVIDER_REGISTRY.length + 1}`;
+      }
+    );
+
+    const idx = parseInt(choice, 10) - 1;
+    if (idx >= PROVIDER_REGISTRY.length) {
+      break;
+    }
+
+    const provider = PROVIDER_REGISTRY[idx];
+    console.log(`  ${provider.hint}`);
+
+    for (const envKey of provider.envKeys) {
+      const value = await askRequired(`${envKey}`, (val) =>
+        val.length > 10 ? null : 'Key seems too short'
+      );
+      config[envKey] = value;
+    }
+
+    // Extra optional keys (e.g., LITELLM_MODEL)
+    if (provider.extraKeys) {
+      for (const envKey of provider.extraKeys) {
+        const value = await ask(`${envKey} (Enter to skip)`);
+        if (value) {
+          config[envKey] = value;
+        }
+      }
+    }
+
+    // Set as preferred provider if first one configured
+    if (!config.NEUROLINK_PROVIDER) {
+      config.NEUROLINK_PROVIDER = provider.id;
+    }
+
+    console.log(`  ✓ ${provider.label} configured`);
+    console.log('');
+
+    configureMore = await confirm('Configure another provider?');
+  }
+}
+
 // ── Collect configuration ────────────────────────────────────────────
 
 // ── Collect push notification config (separate flow) ────────────────
@@ -214,13 +354,10 @@ async function collectPushConfig(config) {
 
     // APNs key (.p8) — accept file path or pasted content, with retry on invalid input
     async function askForP8Key() {
-      const apnsKeyInput = await askRequired(
-        `  APNS_KEY (.p8 file path or paste key): `,
-        (val) => {
-          if (!val) return 'APNs key is required.';
-          return null;
-        }
-      );
+      const apnsKeyInput = await askRequired(`  APNS_KEY (.p8 file path or paste key): `, (val) => {
+        if (!val) return 'APNs key is required.';
+        return null;
+      });
 
       let key;
 
@@ -239,7 +376,9 @@ async function collectPushConfig(config) {
       } else {
         // Might be a partial path or multiline paste — try multiline
         console.log(yellow('  Input does not look like a file path or key.'));
-        console.log(dim('  Paste the full .p8 key contents (press Enter on empty line to finish):'));
+        console.log(
+          dim('  Paste the full .p8 key contents (press Enter on empty line to finish):')
+        );
         const lines = [apnsKeyInput];
         while (true) {
           const line = await ask('');
@@ -325,7 +464,9 @@ async function collectPushConfig(config) {
     }
 
     if (!config.fcmPrivateKey.includes('BEGIN')) {
-      console.log(yellow('  Warning: Key does not look like a PEM private key. Continuing anyway.'));
+      console.log(
+        yellow('  Warning: Key does not look like a PEM private key. Continuing anyway.')
+      );
     }
     console.log('');
 
@@ -337,6 +478,25 @@ async function collectPushConfig(config) {
     }
   }
   console.log('');
+}
+
+// ── Load existing AI config from .env (preserve during re-run) ──────────
+
+function loadExistingAIConfig(config) {
+  if (!fs.existsSync(DOT_ENV_PATH)) return;
+  const existing = fs.readFileSync(DOT_ENV_PATH, 'utf-8');
+
+  const get = (key) => {
+    const m = existing.match(new RegExp(`^${key}=["']?(.+?)["']?$`, 'm'));
+    return m ? m[1] : '';
+  };
+
+  for (const key of AI_ENV_KEYS) {
+    const value = get(key);
+    if (value) {
+      config[key] = value;
+    }
+  }
 }
 
 // ── Load existing push config from .env (preserve during non-push setup) ──
@@ -408,20 +568,29 @@ async function collectConfig() {
         const maskedKey = mask(config.apiKey);
         console.log(green(`  Existing API key preserved: ${maskedKey}`));
         loadExistingPushConfig(config);
+        loadExistingAIConfig(config); // Load existing AI config in auto mode
         if (config.wantIos || config.wantAndroid) {
           console.log(green('  Existing push config preserved.'));
         } else {
-          console.log(dim('  Push notifications not configured (add later with "shooter setup --push")'));
+          console.log(
+            dim('  Push notifications not configured (add later with "shooter setup --push")')
+          );
+        }
+        if (config.NEUROLINK_PROVIDER) {
+          console.log(green('  Existing AI config preserved.'));
+        } else {
+          console.log(dim('  AI providers not configured (add later with "shooter setup")'));
         }
         console.log('');
         return config;
       }
     }
 
-    config.apiKey = generateSecureKey();
+    config.apiKey = generateApiKey(); // Changed to generateApiKey()
     const maskedKey = mask(config.apiKey);
     console.log(green(`  API key generated: ${maskedKey}`));
     console.log(dim('  Push notifications not configured (add later with "shooter setup --push")'));
+    console.log(dim('  AI providers not configured (add later with "shooter setup")'));
     console.log('');
     return config;
   }
@@ -432,7 +601,7 @@ async function collectConfig() {
   if (apiKeyAnswer) {
     config.apiKey = apiKeyAnswer;
   } else {
-    config.apiKey = generateSecureKey();
+    config.apiKey = generateApiKey(); // Changed to generateApiKey()
     const maskedKey = mask(config.apiKey);
     console.log(green(`  Generated API key: ${maskedKey}`));
     console.log(dim('  (Saved to ~/.shooter/.env)'));
@@ -460,6 +629,10 @@ async function collectConfig() {
     console.log('');
   }
 
+  // ── AI Providers ───────────────────────────────────────────────────
+  loadExistingAIConfig(config);
+  await collectAIConfig(config);
+
   return config;
 }
 
@@ -471,7 +644,7 @@ function buildEnvContent(config) {
     `# ${new Date().toISOString()}`,
     '',
     '# Authentication',
-    `API_KEY="${escapeForDoubleQuotedShell(config.apiKey)}"`,
+    `API_KEY=${config.apiKey}`,
     '',
   ];
 
@@ -528,6 +701,17 @@ function buildEnvContent(config) {
     lines.push('# FCM_CLIENT_EMAIL=');
     lines.push('# FCM_PRIVATE_KEY=');
     lines.push('# ANDROID_DEVICE_TOKEN=');
+  }
+  lines.push('');
+
+  // AI / NeuroLink — preserve existing AI keys across re-runs
+  lines.push('# AI / NeuroLink');
+  for (const key of AI_ENV_KEYS) {
+    if (config[key]) {
+      lines.push(`${key}=${config[key]}`);
+    } else {
+      lines.push(`# ${key}=`);
+    }
   }
   lines.push('');
 
@@ -605,9 +789,9 @@ async function main() {
     rl.close();
   });
 
-  // Reset step counter; push mode adds one extra step
+  // Reset step counter; push mode adds one extra step, AI step adds another
   _stepNum = 0;
-  _totalSteps = (PUSH_MODE && !AUTO_MODE) ? 6 : 5;
+  _totalSteps = AUTO_MODE ? 5 : PUSH_MODE ? 7 : 6;
 
   printBanner();
 
@@ -641,14 +825,19 @@ async function main() {
   if (!cloudflaredAvailable) {
     console.log(yellow('  cloudflared not found.'));
     console.log(dim('  Install it to get a public URL for your phone:'));
-    console.log(dim('  https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/'));
+    console.log(
+      dim(
+        '  https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/'
+      )
+    );
     console.log('');
     console.log(dim('  Once installed, run:'));
     console.log(cyan('    cloudflared tunnel --url http://localhost:54007'));
     console.log('');
   } else {
     const port = process.env.PORT || 54007;
-    const startTunnel = AUTO_MODE || await confirm('  Start a Cloudflare Tunnel now to get your public URL?');
+    const startTunnel =
+      AUTO_MODE || (await confirm('  Start a Cloudflare Tunnel now to get your public URL?'));
     if (startTunnel) {
       console.log(dim('\n  Starting tunnel... (this may take a few seconds)\n'));
       await new Promise((resolve) => {
@@ -665,7 +854,11 @@ async function main() {
             console.log(green('  Tunnel URL (use this on your phone):'));
             console.log(`\n  ${C.bold}${C.cyan}${match[0]}${C.reset}\n`);
             console.log(dim('  Keep this terminal session open to maintain the tunnel.'));
-            console.log(dim('  For a persistent tunnel, see: https://developers.cloudflare.com/cloudflare-one/'));
+            console.log(
+              dim(
+                '  For a persistent tunnel, see: https://developers.cloudflare.com/cloudflare-one/'
+              )
+            );
             console.log('');
             resolve();
           }
@@ -722,7 +915,9 @@ async function main() {
   if (!config.wantIos && !config.wantAndroid) {
     console.log(bold('  Optional add-ons:'));
     console.log(`  ${dim('Push notifications:')}  ${cyan('shooter setup --push')}`);
-    console.log(`  ${dim('Cloudflare Tunnel:')}   ${cyan('shooter start')} ${dim('(auto-starts tunnel)')}`);
+    console.log(
+      `  ${dim('Cloudflare Tunnel:')}   ${cyan('shooter start')} ${dim('(auto-starts tunnel)')}`
+    );
     console.log('');
   } else {
     const platforms = [];

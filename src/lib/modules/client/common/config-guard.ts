@@ -8,7 +8,27 @@
  * fields default to null at runtime).
  */
 
-import type { ShooterConfig } from '$lib/types/config';
+import type { ShooterConfig } from '$lib/types';
+
+/** Read the API key from the shooter_config stored in localStorage. */
+export function getApiKey(): string {
+  try {
+    const saved = localStorage.getItem('shooter_config');
+    if (!saved) {
+      return '';
+    }
+    const parsed: unknown = JSON.parse(saved);
+    if (parsed && typeof parsed === 'object') {
+      const obj = parsed as Record<string, unknown>;
+      if (typeof obj.apiKey === 'string') {
+        return obj.apiKey;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return '';
+}
 
 export function isShooterConfig(value: unknown): value is ShooterConfig {
   if (!value || typeof value !== 'object') {
@@ -32,7 +52,7 @@ export function isShooterConfig(value: unknown): value is ShooterConfig {
   if (
     obj.lastUpdated !== undefined &&
     obj.lastUpdated !== null &&
-    typeof obj.lastUpdated !== 'string'
+    typeof obj.lastUpdated !== 'number'
   ) {
     return false;
   }

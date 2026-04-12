@@ -1,8 +1,8 @@
 // In-memory notification history store.
 // Same pattern as pending-requests.ts — suitable for single-instance deployments.
 
-export type { NotificationRecord } from '$generated/types';
-import type { NotificationRecord } from '$generated/types';
+export type { NotificationRecord } from '$lib/types';
+import type { NotificationRecord } from '$lib/types';
 
 const MAX_HISTORY = 100;
 

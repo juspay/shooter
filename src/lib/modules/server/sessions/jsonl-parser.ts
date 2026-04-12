@@ -7,7 +7,51 @@
  * eliminates drift between the two code paths.
  */
 
-import type { ConversationMessage, MessagePart } from './types';
+import type { ConversationMessage, MessagePart } from '$lib/types';
+
+/* ------------------------------------------------------------------ */
+/*  Type guards & helpers for untyped parsed JSON                     */
+/* ------------------------------------------------------------------ */
+
+/** Extract text from a tool-result content field (string or array of {type,text}). */
+function extractToolResultText(content: unknown): string {
+  if (typeof content === 'string') {
+    return content;
+  }
+  if (Array.isArray(content)) {
+    return (content as unknown[])
+      .filter((c): c is Record<string, unknown> => isRecord(c) && c.type === 'text')
+      .map((c) => {
+        const text = c.text;
+        return typeof text === 'string' ? text : '';
+      })
+      .join('\n');
+  }
+  return '';
+}
+
+/** Narrow an unknown value to a plain object with string keys. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** Safely read a string property from a record (returns '' on miss). */
+function str(obj: Record<string, unknown>, key: string): string {
+  const v = obj[key];
+  return typeof v === 'string' ? v : '';
+}
+
+/** Coerce unknown array-ish content into Record<string, unknown>[]. */
+function toContentBlocks(raw: unknown): Record<string, unknown>[] {
+  if (Array.isArray(raw)) {
+    return (raw as unknown[]).filter((item): item is Record<string, unknown> => isRecord(item));
+  }
+  // Single value — wrap it
+  if (isRecord(raw)) {
+    return [raw];
+  }
+  return [];
+}
 
 /**
  * Internal event types that should be skipped during parsing.
@@ -62,53 +106,61 @@ export function parseJsonlLine(
   const messages: ConversationMessage[] = [];
   const assistantCompleted: ConversationMessage[] = [];
 
-  const entry = JSON.parse(line);
-  const entryType = entry.type;
+  const entry: unknown = JSON.parse(line);
+  if (!isRecord(entry)) {
+    return { assistantCompleted, messages };
+  }
+
+  const entryType = str(entry, 'type');
 
   // Skip known internal event types that don't represent conversation content
   if (SKIP_EVENT_TYPES.has(entryType)) {
     return { assistantCompleted, messages };
   }
 
+  const entryTimestamp = str(entry, 'timestamp');
+  const entryUuid = str(entry, 'uuid');
+
   if (entryType === 'user') {
-    const msg = entry.message;
+    const msg = isRecord(entry.message) ? entry.message : null;
     if (!msg?.content) {
       return { assistantCompleted, messages };
     }
 
     const parts: MessagePart[] = [];
-    const content = Array.isArray(msg.content) ? msg.content : [msg.content];
+    const blocks = toContentBlocks(msg.content);
 
-    for (const block of content) {
-      if (typeof block === 'string') {
-        parts.push({ content: block, type: 'text' });
-      } else if (block.type === 'text') {
-        parts.push({ content: block.text || '', type: 'text' });
-      } else if (block.type === 'tool_result') {
-        let output = '';
-        if (typeof block.content === 'string') {
-          output = block.content;
-        } else if (Array.isArray(block.content)) {
-          output = block.content
-            .filter((c: { type: string }) => c.type === 'text')
-            .map((c: { text: string }) => c.text)
-            .join('\n');
+    // Handle bare-string content items (not wrapped in a block)
+    if (Array.isArray(msg.content)) {
+      for (const item of msg.content as unknown[]) {
+        if (typeof item === 'string') {
+          parts.push({ content: item, type: 'text' });
         }
-        if (entry.toolUseResult?.content) {
-          const trc = entry.toolUseResult.content;
-          if (typeof trc === 'string') {
-            output = trc;
-          } else if (Array.isArray(trc)) {
-            output = trc
-              .filter((c: { type: string }) => c.type === 'text')
-              .map((c: { text: string }) => c.text)
-              .join('\n');
-          }
+      }
+    } else if (typeof msg.content === 'string') {
+      parts.push({ content: msg.content, type: 'text' });
+    }
+
+    for (const block of blocks) {
+      const blockType = str(block, 'type');
+      if (!blockType) {
+        continue;
+      }
+      if (blockType === 'text') {
+        parts.push({ content: str(block, 'text'), type: 'text' });
+      } else if (blockType === 'tool_result') {
+        let output = extractToolResultText(block.content);
+
+        // Check for toolUseResult override
+        const toolUseResult = isRecord(entry.toolUseResult) ? entry.toolUseResult : null;
+        if (toolUseResult?.content !== undefined) {
+          output = extractToolResultText(toolUseResult.content);
         }
+
         parts.push({
-          isError: block.is_error || false,
+          isError: typeof block.is_error === 'boolean' ? block.is_error : false,
           output: output.slice(0, 2000),
-          toolUseId: block.tool_use_id || '',
+          toolUseId: str(block, 'tool_use_id'),
           type: 'tool_result',
         });
       }
@@ -116,41 +168,44 @@ export function parseJsonlLine(
 
     if (parts.length > 0 && parts.some((p) => p.type === 'text')) {
       messages.push({
-        id: entry.uuid || `user-${messageIndex}`,
+        id: entryUuid || `user-${messageIndex}`,
         parts: parts.filter((p) => p.type === 'text'),
         role: 'user',
-        timestamp: entry.timestamp || '',
+        timestamp: entryTimestamp,
       });
     }
 
     const toolResults = parts.filter((p) => p.type === 'tool_result');
     if (toolResults.length > 0) {
       messages.push({
-        id: `tool-result-${entry.uuid || messageIndex}`,
+        id: `tool-result-${entryUuid || messageIndex}`,
         parts: toolResults,
         role: 'system',
-        timestamp: entry.timestamp || '',
+        timestamp: entryTimestamp,
       });
     }
   } else if (entryType === 'assistant') {
-    const msg = entry.message;
+    const msg = isRecord(entry.message) ? entry.message : null;
     if (!msg?.content) {
       return { assistantCompleted, messages };
     }
 
-    const content = Array.isArray(msg.content) ? msg.content : [msg.content];
-    const msgId = msg.id || entry.uuid;
+    const blocks = toContentBlocks(msg.content);
+    const msgId = str(msg, 'id') || entryUuid;
 
-    for (const block of content) {
+    for (const block of blocks) {
       const part = parseAssistantBlock(block);
       if (!part) {
         continue;
       }
 
       if (!assistantTurns.has(msgId)) {
-        assistantTurns.set(msgId, { parts: [], timestamp: entry.timestamp || '' });
+        assistantTurns.set(msgId, { parts: [], timestamp: entryTimestamp });
       }
-      assistantTurns.get(msgId)!.parts.push(part);
+      const turn = assistantTurns.get(msgId);
+      if (turn) {
+        turn.parts.push(part);
+      }
     }
 
     if (msg.stop_reason) {

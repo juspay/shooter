@@ -5,17 +5,15 @@
  * Uses capture-phase window keydown to intercept before xterm.
  */
 
+import type { ShortcutManagerOptions } from '$lib/types';
+
 export const isMac =
   typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.userAgent);
 
 export const modLabel = isMac ? '⌘' : 'Ctrl';
 
-interface ShortcutManagerOptions {
-  onHelp: () => void;
-}
-
-export function createShortcutManager(options: ShortcutManagerOptions) {
-  function handler(e: KeyboardEvent) {
+export function createShortcutManager(options: ShortcutManagerOptions): { destroy: () => void } {
+  function handler(e: KeyboardEvent): void {
     const mod = isMac ? e.metaKey : e.ctrlKey;
     if (!mod) {
       return;
@@ -38,7 +36,7 @@ export function createShortcutManager(options: ShortcutManagerOptions) {
   window.addEventListener('keydown', handler, true); // capture phase
 
   return {
-    destroy() {
+    destroy(): void {
       window.removeEventListener('keydown', handler, true);
     },
   };

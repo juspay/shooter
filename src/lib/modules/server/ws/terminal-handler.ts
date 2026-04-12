@@ -2,24 +2,13 @@
 // Relays terminal output to connected clients and routes client input
 // (keystrokes, resize, signals) back to the PTY.
 
-import type { TerminalSignal } from '$generated/types';
+import type {
+  WireTerminalClientMessage as ClientMessage,
+  TerminalPtyManagerLike as PtyManagerLike,
+  WireTerminalServerMessage as ServerMessage,
+  TerminalSignal,
+} from '$lib/types';
 import type { WebSocket } from 'ws';
-
-// ── Types ────────────────────────────────────────────────────────────
-
-/** Inbound messages from the client. */
-type ClientMessage =
-  | { cols: number; rows: number; type: 'resize' }
-  | { data: string; type: 'input' }
-  | { signal: TerminalSignal; type: 'signal' };
-
-/** Outbound messages to the client. */
-type ServerMessage =
-  | { bytes: number; type: 'output-dropped' }
-  | { chunk: number; data: string; total: number; type: 'scrollback' }
-  | { code: null | number; signal: null | string; type: 'exit' }
-  | { data: string; type: 'output' }
-  | { message: string; type: 'error' };
 
 // ── Constants ────────────────────────────────────────────────────────
 
@@ -29,28 +18,6 @@ const SIGNAL_MAP: Record<string, NodeJS.Signals> = {
   SIGTERM: 'SIGTERM',
   SIGTSTP: 'SIGTSTP',
 };
-
-// ── PTY Manager type ─────────────────────────────────────────────────
-// Minimal duck-typed shape matching the real pty-manager singleton.
-
-interface ManagedTerminal {
-  clients: Set<WebSocket>;
-  exitCode: null | number;
-  id: string;
-  pty: {
-    kill: (signal: string) => void;
-    pid: number;
-    resize: (cols: number, rows: number) => void;
-    write: (data: string) => void;
-  };
-  status: 'exited' | 'running';
-}
-
-interface PtyManagerLike {
-  attach: (id: string, ws: WebSocket) => boolean;
-  detach: (id: string, ws: WebSocket) => boolean;
-  getTerminal: (id: string) => ManagedTerminal | undefined;
-}
 
 // Placeholder: will be replaced with the real ptyManager singleton import.
 // import { ptyManager } from '../terminal/pty-manager';
@@ -153,8 +120,13 @@ export function setPtyManager(manager: PtyManagerLike): void {
 /** Parse and validate an inbound client message. Returns null for invalid messages. */
 function parseClientMessage(raw: string): ClientMessage | null {
   try {
-    const msg = JSON.parse(raw);
-    if (!msg || typeof msg !== 'object' || typeof msg.type !== 'string') {
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') {
+      return null;
+    }
+
+    const msg = parsed as Record<string, unknown>;
+    if (typeof msg.type !== 'string') {
       return null;
     }
 
@@ -164,27 +136,32 @@ function parseClientMessage(raw: string): ClientMessage | null {
           return null;
         }
         return { data: msg.data, type: 'input' };
-      case 'resize':
+      case 'resize': {
+        const cols = msg.cols;
+        const rows = msg.rows;
         if (
-          typeof msg.cols !== 'number' ||
-          typeof msg.rows !== 'number' ||
-          !Number.isFinite(msg.cols) ||
-          !Number.isFinite(msg.rows)
+          typeof cols !== 'number' ||
+          typeof rows !== 'number' ||
+          !Number.isFinite(cols) ||
+          !Number.isFinite(rows)
         ) {
           return null;
         }
-        if (msg.cols < 1 || msg.rows < 1 || msg.cols > 500 || msg.rows > 200) {
+        if (cols < 1 || rows < 1 || cols > 500 || rows > 200) {
           return null;
         }
-        return { cols: Math.floor(msg.cols), rows: Math.floor(msg.rows), type: 'resize' };
-      case 'signal':
-        if (typeof msg.signal !== 'string' || !Object.hasOwn(SIGNAL_MAP, msg.signal)) {
+        return { cols: Math.floor(cols), rows: Math.floor(rows), type: 'resize' };
+      }
+      case 'signal': {
+        const signal = msg.signal;
+        if (typeof signal !== 'string' || !Object.hasOwn(SIGNAL_MAP, signal)) {
           return null;
         }
         return {
-          signal: msg.signal as TerminalSignal,
+          signal: signal as TerminalSignal,
           type: 'signal',
         };
+      }
       default:
         return null;
     }

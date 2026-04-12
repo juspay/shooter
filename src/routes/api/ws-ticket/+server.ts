@@ -5,7 +5,7 @@
 // query parameter on the WebSocket upgrade URL, keeping the long-lived API_KEY
 // out of URL strings (which appear in proxy logs and browser history).
 //
-// Rate limited to 10 requests per minute per API key.
+// Rate limited to 30 requests per minute per API key.
 
 import { validateAuth } from '$lib/modules/server/auth';
 import { generateTicket } from '$lib/modules/server/ws/ticket-store';
@@ -16,7 +16,7 @@ import type { RequestHandler } from './$types';
 // ── Rate limiting ───────────────────────────────────────────────────
 
 const RATE_LIMIT_WINDOW_MS = 60_000; // 60 seconds
-const RATE_LIMIT_MAX = 10; // max 10 requests per window
+const RATE_LIMIT_MAX = 30; // max 30 requests per window (activity feed + dashboard + per-terminal sockets)
 
 /** Maps API key -> array of request timestamps (epoch ms). */
 const rateLimitMap = new Map<string, number[]>();
@@ -69,11 +69,11 @@ export const POST: RequestHandler = ({ request }) => {
   }
 
   // Extract the API key for rate limiting
-  const apiKey = request.headers.get('authorization')!.substring(7);
+  const apiKey = (request.headers.get('authorization') ?? '').substring(7).trim();
 
   if (!checkRateLimit(apiKey)) {
     return json(
-      { error: 'Rate limit exceeded. Maximum 10 ticket requests per minute.' },
+      { error: 'Rate limit exceeded. Maximum 30 ticket requests per minute.' },
       { status: 429 }
     );
   }
