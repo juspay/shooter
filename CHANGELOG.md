@@ -1,3 +1,9 @@
+## [1.6.0](https://github.com/juspay/shooter/compare/v1.5.0...v1.6.0) (2026-04-15)
+
+### Features
+
+*  NeuroLink AI integration, live dashboard, activity feed, and type governance ([5373a44](https://github.com/juspay/shooter/commit/5373a441dc8c399d965a844a3b39834a7dad1d5d))
+
 ## [1.5.0](https://github.com/juspay/shooter/compare/v1.4.0...v1.5.0) (2026-04-03)
 
 ### Features
