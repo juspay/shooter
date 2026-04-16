@@ -152,11 +152,13 @@ export function listProjectsWithSessions(): ProjectGroup[] {
     // Sort sessions by modified desc
     sessions.sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime());
 
-    // Prefer projectPath from session index, then cwd from JSONL, then decoded dir name
+    // Prefer projectPath from session index, then cwd from JSONL, then
+    // filesystem-validated decoder, then last-resort naive decoding.
     const realPath =
       sessions.find((s) => s.projectPath && !s.projectPath.includes('.claude/projects'))
         ?.projectPath ||
       readCwdFromProjectDir(projectDir, sessions) ||
+      decodeClaudeProjectDir(dir) ||
       (dir.startsWith('-') ? dir.replace(/-/g, '/') : `/${dir.replace(/-/g, '/')}`);
     const pathSegments = realPath.split('/').filter(Boolean);
     const projectName = pathSegments.slice(-2).join('/');
@@ -179,6 +181,10 @@ export function listProjectsWithSessions(): ProjectGroup[] {
 export function listSessions(): SessionInfo[] {
   const projectDir = getProjectDir();
   return listSessionsForProject(projectDir);
+}
+
+function bytesReadEnded(chunk: string): boolean {
+  return chunk.length > 0 && chunk.charCodeAt(chunk.length - 1) === 10;
 }
 
 function cleanTitle(prompt: string): string {
@@ -214,6 +220,52 @@ function cleanTitle(prompt: string): string {
     return `${firstLine.slice(0, 77)}...`;
   }
   return firstLine;
+}
+
+/**
+ * Decode a Claude Code project directory name like "-home-parth-dogra-Desktop-Repo-pr-guardian"
+ * into the real filesystem path "/home/parth-dogra/Desktop/Repo/pr-guardian".
+ *
+ * Claude Code encodes paths by replacing "/" with "-", which is ambiguous when
+ * the original path contains hyphens (e.g. "parth-dogra", "pr-guardian"). This
+ * walks the filesystem from / and greedily matches the longest hyphen-joined
+ * segment that exists as a directory at each step.
+ *
+ * Returns null if no valid decoding exists on this filesystem.
+ */
+function decodeClaudeProjectDir(encoded: string): null | string {
+  if (!encoded.startsWith('-')) {
+    return null;
+  }
+  const parts = encoded.slice(1).split('-');
+  if (parts.length === 0) {
+    return null;
+  }
+
+  let currentPath = '/';
+  let i = 0;
+  while (i < parts.length) {
+    let matchedTo = -1;
+    // Try the longest possible segment first (greedy longest match)
+    for (let j = parts.length; j > i; j--) {
+      const segment = parts.slice(i, j).join('-');
+      const candidate = path.join(currentPath, segment);
+      try {
+        if (fs.statSync(candidate).isDirectory()) {
+          matchedTo = j;
+          break;
+        }
+      } catch {
+        // not a directory / doesn't exist — try a shorter segment
+      }
+    }
+    if (matchedTo === -1) {
+      return null;
+    }
+    currentPath = path.join(currentPath, parts.slice(i, matchedTo).join('-'));
+    i = matchedTo;
+  }
+  return currentPath;
 }
 
 function getProjectDir(): string {
@@ -334,33 +386,40 @@ function listSessionsForProject(projectDir: string): SessionInfo[] {
 }
 
 function readCwdFromProjectDir(projectDir: string, sessions: SessionInfo[]): string {
+  // Scan complete JSONL lines until we find one with cwd. Newer Claude Code
+  // versions write metadata lines (permission-mode, file-history-snapshot)
+  // first, so cwd only appears on line 2+.
+  const READ_BYTES = 65536;
   for (const session of sessions) {
     try {
       const filePath = path.join(projectDir, `${session.id}.jsonl`);
       if (!fs.existsSync(filePath)) {
         continue;
       }
-      // Only read the first 4KB — cwd appears on line 1
       const fd = fs.openSync(filePath, 'r');
-      let firstChunk: string;
+      let chunk: string;
       try {
-        const buf = Buffer.alloc(4096);
-        const bytesRead = fs.readSync(fd, buf, 0, 4096, 0);
-        firstChunk = buf.toString('utf-8', 0, bytesRead);
+        const buf = Buffer.alloc(READ_BYTES);
+        const bytesRead = fs.readSync(fd, buf, 0, READ_BYTES, 0);
+        chunk = buf.toString('utf-8', 0, bytesRead);
       } finally {
         fs.closeSync(fd);
       }
-      const firstLine = firstChunk.split('\n')[0];
-      if (!firstLine.trim()) {
-        continue;
-      }
-      try {
-        const entry = JSON.parse(firstLine) as Record<string, unknown>;
-        if (typeof entry.cwd === 'string' && entry.cwd) {
-          return entry.cwd;
+      const lines = chunk.split('\n');
+      // Drop the last line if the chunk was truncated mid-line
+      const completeLines = bytesReadEnded(chunk) ? lines : lines.slice(0, -1);
+      for (const line of completeLines) {
+        if (!line.trim()) {
+          continue;
         }
-      } catch {
-        // skip malformed first line
+        try {
+          const entry = JSON.parse(line) as Record<string, unknown>;
+          if (typeof entry.cwd === 'string' && entry.cwd) {
+            return entry.cwd;
+          }
+        } catch {
+          // skip malformed line and try the next one
+        }
       }
     } catch {
       // skip unreadable files

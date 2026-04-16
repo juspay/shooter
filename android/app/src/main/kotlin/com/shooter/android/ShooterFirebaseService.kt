@@ -1,5 +1,7 @@
 package com.shooter.android
 
+import android.content.Context
+import android.util.Log
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import okhttp3.Call
@@ -15,44 +17,62 @@ import java.util.concurrent.TimeUnit
 
 class ShooterFirebaseService : FirebaseMessagingService() {
 
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(10, TimeUnit.SECONDS)
-        .build()
-
     override fun onNewToken(token: String) {
         val prefs = AppPreferences(this)
         prefs.fcmToken = token
-        registerTokenWithServer(prefs, token)
+        registerTokenWithServer(this, token)
     }
 
-    private fun registerTokenWithServer(prefs: AppPreferences, token: String) {
-        val serverUrl = prefs.serverUrl?.trimEnd('/') ?: return
-        val apiKey = prefs.apiKey ?: return
+    companion object {
+        private const val TAG = "ShooterFCM"
 
-        val json = JSONObject().apply {
-            put("token", token)
-            put("platform", "android")
-        }
-
-        val body = json.toString()
-            .toRequestBody("application/json; charset=utf-8".toMediaType())
-
-        val request = Request.Builder()
-            .url("$serverUrl/api/device-token")
-            .header("Authorization", "Bearer $apiKey")
-            .post(body)
+        private val client = OkHttpClient.Builder()
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(10, TimeUnit.SECONDS)
             .build()
 
-        client.newCall(request).enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {
-                // Token will be re-sent on next refresh or app startup
+        /**
+         * POST the FCM token to /api/device-token so the server can push to this
+         * device. Safe to call from any thread. Returns silently if server URL or
+         * API key is not yet configured — callers should re-invoke whenever those
+         * change.
+         */
+        fun registerTokenWithServer(context: Context, token: String) {
+            val prefs = AppPreferences(context)
+            val serverUrl = prefs.serverUrl?.trimEnd('/')
+            val apiKey = prefs.apiKey
+            if (serverUrl.isNullOrBlank() || apiKey.isNullOrBlank()) {
+                Log.d(TAG, "registerTokenWithServer: skipping — url=${!serverUrl.isNullOrBlank()} key=${!apiKey.isNullOrBlank()}")
+                return
             }
 
-            override fun onResponse(call: Call, response: Response) {
-                response.close()
+            val json = JSONObject().apply {
+                put("token", token)
+                put("platform", "android")
             }
-        })
+
+            val body = json.toString()
+                .toRequestBody("application/json; charset=utf-8".toMediaType())
+
+            val request = Request.Builder()
+                .url("$serverUrl/api/device-token")
+                .header("Authorization", "Bearer $apiKey")
+                .post(body)
+                .build()
+
+            // Do not log token material — even a prefix is a stable device identifier.
+            Log.d(TAG, "POST $serverUrl/api/device-token (tokenLength=${token.length})")
+            client.newCall(request).enqueue(object : Callback {
+                override fun onFailure(call: Call, e: IOException) {
+                    Log.w(TAG, "device-token POST failed: ${e.message}")
+                }
+
+                override fun onResponse(call: Call, response: Response) {
+                    Log.d(TAG, "device-token POST → HTTP ${response.code}")
+                    response.close()
+                }
+            })
+        }
     }
 
     override fun onMessageReceived(message: RemoteMessage) {

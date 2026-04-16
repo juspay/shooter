@@ -45,10 +45,15 @@ class MainActivity : AppCompatActivity() {
         setupWebView()
         loadDashboard(intent)
 
-        // Proactively fetch and cache FCM token on startup
+        // Proactively fetch the FCM token on every launch and re-register it
+        // with the server. onNewToken() in ShooterFirebaseService only fires
+        // when the token changes (first install, rotation), so if the API key
+        // wasn't set at that moment the token would otherwise never reach the
+        // server. Re-POSTing on every launch is idempotent on the server side.
         FirebaseMessaging.getInstance().token
             .addOnSuccessListener { token ->
                 AppPreferences(this).fcmToken = token
+                ShooterFirebaseService.registerTokenWithServer(this, token)
             }
 
         // Pre-download scanner module so first scan is instant
@@ -126,6 +131,15 @@ class MainActivity : AppCompatActivity() {
         swipeRefresh.setOnRefreshListener {
             webView.reload()
         }
+
+        // Disable pull-to-refresh entirely. Shooter's mobile layout uses a
+        // fixed header + bottom nav, so the actual list scrolls inside an
+        // internal container — webView.scrollY is always 0. That makes it
+        // impossible for SwipeRefreshLayout to distinguish "user wants to
+        // refresh" from "user wants to scroll up through the list", and it
+        // intercepts every upward swipe. The Refresh button in the app header
+        // covers the refresh UX.
+        swipeRefresh.isEnabled = false
     }
 
     private fun loadDashboard(intent: Intent) {
@@ -279,6 +293,14 @@ class MainActivity : AppCompatActivity() {
                 if (obj.has("serverUrl")) prefs.serverUrl = obj.getString("serverUrl")
                 if (obj.has("apiKey")) prefs.apiKey = obj.getString("apiKey")
                 android.util.Log.d(TAG, "ShooterBridge.saveConfig: saved successfully")
+
+                // The API key may have just been entered for the first time.
+                // Re-POST the cached FCM token so the server can push to this
+                // device (onNewToken fired earlier when no key was set).
+                val cachedToken = prefs.fcmToken
+                if (!cachedToken.isNullOrBlank()) {
+                    ShooterFirebaseService.registerTokenWithServer(this@MainActivity, cachedToken)
+                }
             } catch (e: Exception) {
                 android.util.Log.e(TAG, "ShooterBridge.saveConfig failed", e)
             }
