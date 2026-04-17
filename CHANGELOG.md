@@ -1,3 +1,9 @@
+## [1.6.2](https://github.com/juspay/shooter/compare/v1.6.1...v1.6.2) (2026-04-17)
+
+### Bug Fixes
+
+*  session discovery fallback, dashboard UI, and message dedup ([4a1e559](https://github.com/juspay/shooter/commit/4a1e559e63dea20171d2cbba3ba9185a2779c183))
+
 ## [1.6.1](https://github.com/juspay/shooter/compare/v1.6.0...v1.6.1) (2026-04-17)
 
 ### Bug Fixes
