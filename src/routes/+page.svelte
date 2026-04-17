@@ -163,6 +163,24 @@
         </Button>
       </div>
     </div>
+    {#if projects.length > 0}
+      <div class="stats-bar">
+        <div class="stat-chip">
+          <span class="stat-value">{projects.length}</span>
+          <span class="stat-label">{projects.length === 1 ? 'project' : 'projects'}</span>
+        </div>
+        <div class="stat-chip">
+          <span class="stat-value">{totalSessionCount()}</span>
+          <span class="stat-label">{totalSessionCount() === 1 ? 'session' : 'sessions'}</span>
+        </div>
+        {#if cards.length > 0}
+          <div class="stat-chip stat-chip-active">
+            <span class="stat-value">{cards.length}</span>
+            <span class="stat-label">active</span>
+          </div>
+        {/if}
+      </div>
+    {/if}
   </div>
 
   {#if fetchError}
@@ -258,7 +276,7 @@
 
   .page-title {
     font-size: var(--text-2xl);
-    font-weight: 600;
+    font-weight: 700;
     letter-spacing: -0.03em;
     color: var(--text-primary);
     margin-bottom: var(--space-1);
@@ -273,6 +291,42 @@
     display: flex;
     gap: var(--space-2);
     flex-shrink: 0;
+  }
+
+  .stats-bar {
+    display: flex;
+    gap: 10px;
+    margin-top: var(--space-4);
+  }
+
+  .stat-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 20px;
+    padding: 6px 14px;
+  }
+
+  .stat-chip-active {
+    background: rgba(34, 197, 94, 0.1);
+    border-color: rgba(34, 197, 94, 0.25);
+  }
+
+  .stat-value {
+    font-weight: 700;
+    font-size: 0.9rem;
+    color: #f0f0f0;
+  }
+
+  .stat-chip-active .stat-value {
+    color: #22c55e;
+  }
+
+  .stat-label {
+    font-size: 0.78rem;
+    color: rgba(163, 163, 163, 0.8);
   }
 
   .dashboard-section {
@@ -291,7 +345,7 @@
   .projects-container {
     display: flex;
     flex-direction: column;
-    gap: var(--space-4);
+    gap: var(--space-3);
     animation: fadeIn 0.2s ease;
   }
 
@@ -299,6 +353,10 @@
     .page-header-content {
       flex-direction: column;
       gap: var(--space-4);
+    }
+
+    .stats-bar {
+      flex-wrap: wrap;
     }
   }
 
