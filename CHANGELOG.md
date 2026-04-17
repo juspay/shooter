@@ -1,3 +1,9 @@
+## [1.6.1](https://github.com/juspay/shooter/compare/v1.6.0...v1.6.1) (2026-04-17)
+
+### Bug Fixes
+
+*  decode hyphenated project paths, wire FCM end-to-end, and harden android ([9e61ab9](https://github.com/juspay/shooter/commit/9e61ab92439c7189850c1e850e398ad71b44df71))
+
 ## [1.6.0](https://github.com/juspay/shooter/compare/v1.5.0...v1.6.0) (2026-04-15)
 
 ### Features
