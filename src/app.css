@@ -585,24 +585,44 @@ body {
    ============================================ */
 
 .session-card {
-  background: var(--bg-secondary, #141414);
-  border: 1px solid var(--border, #2a2a2a);
-  border-radius: var(--radius-lg, 12px);
-  padding: var(--space-4, 1rem) var(--space-5, 1.25rem);
+  background: linear-gradient(135deg, rgba(20, 20, 20, 0.9) 0%, rgba(28, 28, 32, 0.9) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-lg, 14px);
+  padding: var(--space-5, 1.25rem) var(--space-5, 1.25rem);
   cursor: pointer;
-  transition:
-    border-color var(--transition-fast, 150ms),
-    background var(--transition-fast, 150ms);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   display: flex;
   flex-direction: column;
   overflow: hidden;
   min-width: 0;
   gap: var(--space-3, 0.75rem);
+  position: relative;
+  text-decoration: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+}
+
+.session-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: linear-gradient(180deg, #22c55e 0%, #16a34a 100%);
+  border-radius: 3px 0 0 3px;
+  opacity: 0.7;
+  transition: opacity 0.25s;
 }
 
 .session-card:hover {
-  border-color: var(--gray-600, #525252);
-  background: var(--bg-tertiary, #1a1a1a);
+  border-color: rgba(34, 197, 94, 0.3);
+  background: linear-gradient(135deg, rgba(25, 25, 28, 0.95) 0%, rgba(32, 32, 38, 0.95) 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(34, 197, 94, 0.15) inset;
+}
+
+.session-card:hover::before {
+  opacity: 1;
 }
 
 .session-card-header {
@@ -620,20 +640,21 @@ body {
 }
 
 .session-card-title {
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--text-primary, #fafafa);
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #f0f0f0;
   margin: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  letter-spacing: -0.01em;
 }
 
 .session-card-subtitle {
-  font-size: 0.8rem;
-  color: var(--text-tertiary, #737373);
+  font-size: 0.78rem;
+  color: rgba(163, 163, 163, 0.7);
   font-family: var(--font-mono, monospace);
-  margin-top: 2px;
+  margin-top: 4px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -645,13 +666,15 @@ body {
 .session-stats {
   display: flex;
   gap: var(--space-4, 1rem);
-  font-size: 0.8rem;
+  font-size: 0.82rem;
   color: var(--text-secondary, #a3a3a3);
+  align-items: center;
 }
 
 .session-stats strong {
-  color: var(--text-primary, #fafafa);
-  font-weight: 600;
+  color: #22c55e;
+  font-weight: 700;
+  font-size: 0.95rem;
 }
 
 .session-tools {

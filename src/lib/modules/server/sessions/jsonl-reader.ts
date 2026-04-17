@@ -103,16 +103,29 @@ export function getSessionConversation(
       }
     }
 
+    // Deduplicate messages by ID — JSONL files can contain duplicate entries
+    // (e.g., from compaction or streaming). Keep the last occurrence since it
+    // has the most complete content.
+    const seenIds = new Set<string>();
+    const deduped: ConversationMessage[] = [];
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (!seenIds.has(messages[i].id)) {
+        seenIds.add(messages[i].id);
+        deduped.push(messages[i]);
+      }
+    }
+    deduped.reverse();
+
     // If no explicit offset, return the LAST `limit` messages (most recent conversation)
-    if (offset === 0 && messages.length > limit) {
-      let startIdx = messages.length - limit;
+    if (offset === 0 && deduped.length > limit) {
+      let startIdx = deduped.length - limit;
       // Adjust to start at a 'user' message boundary so we don't clip mid-turn
-      while (startIdx > 0 && startIdx < messages.length && messages[startIdx].role !== 'user') {
+      while (startIdx > 0 && startIdx < deduped.length && deduped[startIdx].role !== 'user') {
         startIdx--;
       }
-      return messages.slice(startIdx);
+      return deduped.slice(startIdx);
     }
-    return messages.slice(offset, offset + limit);
+    return deduped.slice(offset, offset + limit);
   } catch (error) {
     console.error('[sessions] Failed to parse session JSONL:', error);
     return [];
@@ -225,37 +238,39 @@ function getProjectDir(): string {
 
 function listSessionsForProject(projectDir: string): SessionInfo[] {
   const indexPath = path.join(projectDir, 'sessions-index.json');
+  const hasIndex = fs.existsSync(indexPath);
 
-  if (!fs.existsSync(indexPath)) {
-    return [];
-  }
+  const indexedIds = new Set<string>();
+  const sessions: SessionInfo[] = [];
 
-  try {
-    const raw = fs.readFileSync(indexPath, 'utf-8');
-    const index = JSON.parse(raw) as {
-      entries: {
-        created?: string;
-        firstPrompt?: string;
-        gitBranch?: string;
-        isSidechain?: boolean;
-        messageCount?: number;
-        modified?: string;
-        projectPath?: string;
-        sessionId: string;
-        summary?: string;
-      }[];
-    };
+  // Phase 1: Read from sessions-index.json if it exists
+  if (hasIndex) {
+    try {
+      const raw = fs.readFileSync(indexPath, 'utf-8');
+      const index = JSON.parse(raw) as {
+        entries: {
+          created?: string;
+          firstPrompt?: string;
+          gitBranch?: string;
+          isSidechain?: boolean;
+          messageCount?: number;
+          modified?: string;
+          projectPath?: string;
+          sessionId: string;
+          summary?: string;
+        }[];
+      };
 
-    const indexedIds = new Set<string>();
-    const sessions: SessionInfo[] = index.entries
-      .filter((e) => !e.isSidechain)
-      .filter((e) => {
-        const jsonlFile = path.join(projectDir, `${e.sessionId}.jsonl`);
-        return fs.existsSync(jsonlFile);
-      })
-      .map((entry) => {
+      for (const entry of index.entries) {
+        if (entry.isSidechain) {
+          continue;
+        }
+        const jsonlFile = path.join(projectDir, `${entry.sessionId}.jsonl`);
+        if (!fs.existsSync(jsonlFile)) {
+          continue;
+        }
         indexedIds.add(entry.sessionId);
-        return {
+        sessions.push({
           created: entry.created || '',
           gitBranch: entry.gitBranch || '',
           id: entry.sessionId,
@@ -265,72 +280,68 @@ function listSessionsForProject(projectDir: string): SessionInfo[] {
           source: 'claude-code' as const,
           summary: entry.summary || '',
           title: cleanTitle(entry.firstPrompt || entry.summary || 'Untitled Session'),
-        };
-      });
-
-    // Also scan for JSONL files not in the index (e.g., active sessions)
-    try {
-      const files = fs.readdirSync(projectDir);
-      for (const file of files) {
-        if (!file.endsWith('.jsonl')) {
-          continue;
-        }
-        const sessionId = file.replace('.jsonl', '');
-        if (indexedIds.has(sessionId)) {
-          continue;
-        }
-        // Read first user message as title
-        const filePath = path.join(projectDir, file);
-        const stat = fs.statSync(filePath);
-        let firstPrompt = 'Active Session';
-        let messageCount = 0;
-        try {
-          const content = fs.readFileSync(filePath, 'utf-8');
-          // Count user + assistant messages by searching each line for the type field.
-          // The type field may appear anywhere on the line (after parentUuid, isSidechain, etc.)
-          // so a prefix-only check is not reliable with the current JSONL format.
-          let countPos = 0;
-          while (countPos < content.length) {
-            const nl = content.indexOf('\n', countPos);
-            const lineEnd = nl === -1 ? content.length : nl;
-            const line = content.substring(countPos, lineEnd);
-            if (line.includes('"type":"user"') || line.includes('"type":"assistant"')) {
-              messageCount++;
-            }
-            if (nl === -1) {
-              break;
-            }
-            countPos = nl + 1;
-          }
-          const prompt = findFirstUserPrompt(content);
-          if (prompt) {
-            firstPrompt = prompt;
-          }
-        } catch {
-          // ignore read errors
-        }
-
-        sessions.push({
-          created: stat.birthtime.toISOString(),
-          gitBranch: '',
-          id: sessionId,
-          messageCount,
-          modified: stat.mtime.toISOString(),
-          projectPath: '',
-          source: 'claude-code' as const,
-          summary: '',
-          title: cleanTitle(firstPrompt),
         });
       }
-    } catch {
-      // ignore scan errors
+    } catch (error) {
+      console.error('[sessions] Failed to read sessions index:', error);
     }
-
-    return sessions.sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime());
-  } catch (error) {
-    console.error('[sessions] Failed to read sessions index:', error);
-    return [];
   }
+
+  // Phase 2: Scan for JSONL files not in the index (or all files when no index exists)
+  try {
+    const files = fs.readdirSync(projectDir);
+    for (const file of files) {
+      if (!file.endsWith('.jsonl')) {
+        continue;
+      }
+      const sessionId = file.replace('.jsonl', '');
+      if (indexedIds.has(sessionId)) {
+        continue;
+      }
+      const filePath = path.join(projectDir, file);
+      const stat = fs.statSync(filePath);
+      let firstPrompt = 'Active Session';
+      let messageCount = 0;
+      try {
+        const content = fs.readFileSync(filePath, 'utf-8');
+        let countPos = 0;
+        while (countPos < content.length) {
+          const nl = content.indexOf('\n', countPos);
+          const lineEnd = nl === -1 ? content.length : nl;
+          const line = content.substring(countPos, lineEnd);
+          if (line.includes('"type":"user"') || line.includes('"type":"assistant"')) {
+            messageCount++;
+          }
+          if (nl === -1) {
+            break;
+          }
+          countPos = nl + 1;
+        }
+        const prompt = findFirstUserPrompt(content);
+        if (prompt) {
+          firstPrompt = prompt;
+        }
+      } catch {
+        // ignore read errors
+      }
+
+      sessions.push({
+        created: stat.birthtime.toISOString(),
+        gitBranch: '',
+        id: sessionId,
+        messageCount,
+        modified: stat.mtime.toISOString(),
+        projectPath: '',
+        source: 'claude-code' as const,
+        summary: '',
+        title: cleanTitle(firstPrompt),
+      });
+    }
+  } catch {
+    // ignore scan errors
+  }
+
+  return sessions.sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime());
 }
 
 function readCwdFromProjectDir(projectDir: string, sessions: SessionInfo[]): string {
