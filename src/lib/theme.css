@@ -547,6 +547,7 @@
   --relative-time-font-size: var(--text-xs);
   --relative-time-color: var(--text-tertiary);
   --relative-time-font-weight: 400;
+
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -563,6 +564,7 @@
   --pill-hover-background: var(--ds-green-100);
   --pill-hover-color: var(--ds-green-900);
   --pill-cursor: default;
+
   height: 26px;
   text-transform: uppercase;
   letter-spacing: 0.02em;
@@ -578,6 +580,7 @@
   --pill-hover-background: var(--ds-red-100);
   --pill-hover-color: var(--ds-red-900);
   --pill-cursor: default;
+
   height: 26px;
   text-transform: uppercase;
   letter-spacing: 0.02em;
@@ -593,6 +596,7 @@
   --pill-hover-background: var(--ds-amber-100);
   --pill-hover-color: var(--ds-amber-900);
   --pill-cursor: default;
+
   height: 26px;
   text-transform: uppercase;
   letter-spacing: 0.02em;
@@ -608,6 +612,7 @@
   --pill-hover-background: var(--ds-gray-300);
   --pill-hover-color: var(--text-secondary);
   --pill-cursor: default;
+
   height: 26px;
   text-transform: uppercase;
   letter-spacing: 0.02em;
@@ -622,7 +627,7 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: currentColor;
+  background: currentcolor;
   flex-shrink: 0;
 }
 

@@ -280,7 +280,7 @@ body {
   .page-actions {
     width: 100%;
   }
-  .page-actions :global(button) {
+  .page-actions > * {
     flex: 1;
   }
 }
@@ -309,8 +309,15 @@ body {
 }
 
 @keyframes activity-pulse {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.5); opacity: 0.7; }
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.5);
+    opacity: 0.7;
+  }
 }
 
 /* Connection dot — for live session/terminal indicators */
@@ -336,8 +343,13 @@ body {
 }
 
 @keyframes pulse-dot {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
 }
 
 /* Cards */
@@ -685,7 +697,9 @@ body {
   gap: var(--space-3, 0.75rem);
   position: relative;
   text-decoration: none;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.3),
+    0 0 0 1px rgba(255, 255, 255, 0.03) inset;
 }
 
 .session-card::before {
@@ -705,7 +719,9 @@ body {
   border-color: rgba(34, 197, 94, 0.3);
   background: linear-gradient(135deg, rgba(25, 25, 28, 0.95) 0%, rgba(32, 32, 38, 0.95) 100%);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(34, 197, 94, 0.15) inset;
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(34, 197, 94, 0.15) inset;
 }
 
 .session-card:hover::before {
