@@ -1,3 +1,9 @@
+## [1.7.0](https://github.com/juspay/shooter/compare/v1.6.2...v1.7.0) (2026-04-21)
+
+### Features
+
+*  maximize svelte-ui-components library usage, consolidate CSS ([7b2c767](https://github.com/juspay/shooter/commit/7b2c767fb542554277164be35c4f83840d412dca)), closes [#4ade80](https://github.com/juspay/shooter/issues/4ade80) [#22c55e](https://github.com/juspay/shooter/issues/22c55e)
+
 ## [1.6.2](https://github.com/juspay/shooter/compare/v1.6.1...v1.6.2) (2026-04-17)
 
 ### Bug Fixes
