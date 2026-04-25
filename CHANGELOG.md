@@ -1,3 +1,9 @@
+## [1.7.1](https://github.com/juspay/shooter/compare/v1.7.0...v1.7.1) (2026-04-25)
+
+### Bug Fixes
+
+*  replace invalid :global() in global CSS and tidy stylelint nits ([e0c8dac](https://github.com/juspay/shooter/commit/e0c8dac897766b0aa27ca66f48b00535a642bab9))
+
 ## [1.7.0](https://github.com/juspay/shooter/compare/v1.6.2...v1.7.0) (2026-04-21)
 
 ### Features
