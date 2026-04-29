@@ -1,3 +1,9 @@
+## [1.8.0](https://github.com/juspay/shooter/compare/v1.7.1...v1.8.0) (2026-04-29)
+
+### Features
+
+*  add git-based auto-update mechanism and fix session viewer ([b431c9e](https://github.com/juspay/shooter/commit/b431c9e482543e295433df8d86c8889b2e15cc08))
+
 ## [1.7.1](https://github.com/juspay/shooter/compare/v1.7.0...v1.7.1) (2026-04-25)
 
 ### Bug Fixes
