@@ -85,6 +85,15 @@ function removePid() {
   } catch {}
 }
 
+// ── Guard / auto-update constants ──────────────────────────────────
+const GUARD_PID_FILE = path.join(SHOOTER_HOME, 'guard.pid');
+const GUARD_LOG_FILE = path.join(LOG_DIR, 'guard.log');
+const UPDATE_CHECK_INTERVAL_MS = 2 * 60 * 60 * 1000; // 2 hours
+const UPDATE_FIRST_CHECK_MS = 30_000; // 30 seconds after start
+const INSTALL_TIMEOUT_MS = 120_000;
+const BUILD_TIMEOUT_MS = 300_000;
+const HEALTH_TIMEOUT_MS = 30_000;
+
 // ── CLI argument parsing ────────────────────────────────────────────
 const args = process.argv.slice(2);
 const command = args[0] || 'start';
@@ -107,6 +116,12 @@ switch (command) {
     break;
   case 'setup':
     runSetup();
+    break;
+  case 'update':
+    runUpdate(args[1]);
+    break;
+  case 'guard':
+    runGuard();
     break;
   case 'version':
   case '--version':
@@ -279,6 +294,10 @@ function startServer() {
     } else if (!noTunnel && !isCloudflaredAvailable()) {
       console.log('  (cloudflared not found — no tunnel. Install: brew install cloudflared)');
     }
+
+    // Spawn auto-update guard (detached) — only when launchd is managing
+    spawnGuard(child.pid, port);
+
     // Exit immediately — daemon is running, tunnel starts async
     process.exit(0);
   } else {
@@ -312,9 +331,13 @@ function startServer() {
       }, 3000);
     }
 
+    // Spawn auto-update guard (detached) — only when launchd is managing
+    spawnGuard(child.pid, port);
+
     child.on('error', (err) => {
       removePid();
       if (tunnelStarted) stopTunnel();
+      stopGuard();
       console.error('Failed to start Shooter server:', err.message);
       process.exit(1);
     });
@@ -322,6 +345,7 @@ function startServer() {
     child.on('exit', (code, signal) => {
       removePid();
       stopTunnel();
+      stopGuard();
       if (signal) {
         process.exit(128 + (signalCode(signal) || 1));
       }
@@ -333,6 +357,7 @@ function startServer() {
       process.on(sig, () => {
         child.kill(sig);
         stopTunnel();
+        stopGuard();
       });
     }
   }
@@ -351,6 +376,7 @@ function stopServer() {
 
   console.log(`Stopping Shooter (PID ${pid})...`);
   stopTunnel();
+  stopGuard();
   try {
     process.kill(pid, 'SIGTERM');
     // Wait briefly for clean shutdown
@@ -681,6 +707,493 @@ function runSetup() {
   });
 }
 
+// ── update ──────────────────────────────────────────────────────────
+
+function runUpdate(subcommand) {
+  const { checkForUpdate } = require(path.join(PKG_ROOT, 'scripts', 'update-checker.cjs'));
+  const { recordCheck, isVersionSuppressed } = require(path.join(PKG_ROOT, 'scripts', 'update-state.cjs'));
+
+  const result = checkForUpdate(PKG_ROOT);
+  if (!result.checkFailed) recordCheck(result.latestVersion);
+
+  if (subcommand === 'check') {
+    // Just check, don't install
+    if (result.checkFailed) {
+      console.error(`Update check failed: ${result.error}`);
+      process.exitCode = 1;
+    } else if (result.updateAvailable) {
+      console.log(`Update available: ${result.currentVersion} → ${result.latestVersion}`);
+      console.log(`  Current commit: ${result.currentCommit}`);
+      console.log(`  Latest commit:  ${result.latestCommit}`);
+      if (isVersionSuppressed(result.latestVersion)) {
+        console.log(`  (version ${result.latestVersion} is temporarily suppressed — will retry in <24h)`);
+      }
+    } else {
+      console.log(`Already up to date: v${result.currentVersion} (${result.currentCommit})`);
+    }
+    return;
+  }
+
+  // Default: check + install
+  if (result.checkFailed) {
+    console.error(`Update check failed: ${result.error}`);
+    process.exitCode = 1;
+    return;
+  }
+  if (!result.updateAvailable) {
+    console.log(`Already up to date: v${result.currentVersion} (${result.currentCommit})`);
+    return;
+  }
+
+  // Only allow installs on the release branch
+  const { getCurrentBranch } = require(path.join(PKG_ROOT, 'scripts', 'update-checker.cjs'));
+  const branch = getCurrentBranch(PKG_ROOT);
+  if (branch !== 'release') {
+    console.log(`Cannot update: currently on branch '${branch || 'unknown'}', updates only apply to 'release'.`);
+    console.log('Switch to the release branch and try again.');
+    return;
+  }
+
+  if (isVersionSuppressed(result.latestVersion)) {
+    console.log(`Update to ${result.latestVersion} is temporarily suppressed (previous failure).`);
+    console.log('Suppression expires within 24 hours. Use a fresh git pull to override.');
+    return;
+  }
+
+  console.log(`Updating: ${result.currentVersion} → ${result.latestVersion}...`);
+  const success = performUpdate(result);
+  if (success) {
+    console.log(`\nUpdate complete! Now running v${result.latestVersion}.`);
+
+    // Restart if server is running
+    const pid = readPid();
+    if (pid) {
+      if (isLaunchdManaging()) {
+        const uid = process.getuid ? process.getuid() : 501;
+        try {
+          execSync(`launchctl kickstart -k gui/${uid}/${LAUNCHD_LABEL}`, {
+            timeout: 10_000,
+            stdio: 'pipe',
+          });
+          console.log('Signaled launchd to restart the server.');
+        } catch {
+          console.log('launchctl kickstart failed — the server may need a manual restart.');
+        }
+      } else {
+        try {
+          process.kill(pid, 'SIGTERM');
+        } catch {}
+        console.log('Server process terminated. Run "shooter start" to restart.');
+      }
+    }
+  }
+}
+
+/**
+ * Perform the actual update: git pull → pnpm install → pnpm build.
+ * Returns true on success. On failure, rolls back and returns false.
+ */
+function performUpdate(result) {
+  const { suppressVersion, recordSuccessfulUpdate } = require(path.join(PKG_ROOT, 'scripts', 'update-state.cjs'));
+
+  // Save current HEAD for rollback
+  let savedHead = '';
+  try {
+    savedHead = execSync('git rev-parse HEAD', {
+      cwd: PKG_ROOT,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+  } catch {}
+
+  // 1. Git pull (fast-forward only)
+  try {
+    console.log('  Pulling latest changes...');
+    execSync('git pull --ff-only origin release', {
+      cwd: PKG_ROOT,
+      stdio: 'inherit',
+      timeout: 30_000,
+    });
+  } catch (err) {
+    console.error('  Git pull failed:', err.message || err);
+    suppressVersion(result.latestVersion, 'pull_failed');
+    return false;
+  }
+
+  // 2. Install dependencies
+  try {
+    console.log('  Installing dependencies...');
+    execSync('pnpm install --frozen-lockfile', {
+      cwd: PKG_ROOT,
+      stdio: 'inherit',
+      timeout: INSTALL_TIMEOUT_MS,
+    });
+  } catch (err) {
+    console.error('  pnpm install failed:', err.message || err);
+    rollback(savedHead);
+    suppressVersion(result.latestVersion, 'install_failed');
+    return false;
+  }
+
+  // 3. Build
+  try {
+    console.log('  Building...');
+    execSync('pnpm build', {
+      cwd: PKG_ROOT,
+      stdio: 'inherit',
+      timeout: BUILD_TIMEOUT_MS,
+    });
+  } catch (err) {
+    console.error('  Build failed:', err.message || err);
+    rollback(savedHead);
+    suppressVersion(result.latestVersion, 'build_failed');
+    return false;
+  }
+
+  recordSuccessfulUpdate(result.latestVersion, result.currentVersion);
+  return true;
+}
+
+/**
+ * Roll back to a previous commit after a failed update.
+ */
+function rollback(savedHead) {
+  if (!savedHead) return;
+  console.log('  Rolling back to previous version...');
+  try {
+    execSync(`git reset --hard ${savedHead}`, {
+      cwd: PKG_ROOT,
+      stdio: 'inherit',
+      timeout: 10_000,
+    });
+    execSync('pnpm install --frozen-lockfile', {
+      cwd: PKG_ROOT,
+      stdio: 'inherit',
+      timeout: INSTALL_TIMEOUT_MS,
+    });
+    execSync('pnpm build', {
+      cwd: PKG_ROOT,
+      stdio: 'inherit',
+      timeout: BUILD_TIMEOUT_MS,
+    });
+  } catch (rollbackErr) {
+    console.error('  WARNING: Rollback failed:', rollbackErr.message || rollbackErr);
+    console.error('  Manual intervention may be required.');
+  }
+}
+
+// ── guard (hidden — spawned by start) ──────────────────────────────
+
+function spawnGuard(parentPid, port) {
+  // Only spawn guard when launchd is managing the service
+  if (!isLaunchdManaging()) return;
+
+  const shooterBin = path.join(PKG_ROOT, 'bin', 'shooter.cjs');
+  try {
+    fs.mkdirSync(LOG_DIR, { recursive: true });
+    const logFd = fs.openSync(GUARD_LOG_FILE, 'a');
+
+    const child = spawn(
+      process.execPath,
+      [shooterBin, 'guard', '--parent-pid', String(parentPid), '--port', String(port)],
+      {
+        cwd: PKG_ROOT,
+        detached: true,
+        stdio: ['ignore', logFd, logFd],
+        env: {
+          ...process.env,
+          SHOOTER_PKG_ROOT: PKG_ROOT,
+          SHOOTER_HOME,
+        },
+      }
+    );
+
+    if (child.pid) {
+      fs.mkdirSync(SHOOTER_HOME, { recursive: true });
+      fs.writeFileSync(GUARD_PID_FILE, String(child.pid));
+    }
+    child.unref();
+    fs.closeSync(logFd);
+  } catch (err) {
+    // Non-fatal — server runs fine without guard
+    console.log(`  (auto-update guard failed to start: ${err.message})`);
+  }
+}
+
+function stopGuard() {
+  try {
+    const pid = parseInt(fs.readFileSync(GUARD_PID_FILE, 'utf8').trim(), 10);
+    if (!isNaN(pid) && pid > 0) {
+      // Validate the PID is actually a guard process (prevent PID reuse attacks)
+      try {
+        const cmdline = execSync(`ps -p ${pid} -o command= 2>/dev/null`, {
+          encoding: 'utf8',
+        }).trim();
+        if (!cmdline.includes('shooter.cjs') || !cmdline.includes('guard')) {
+          // PID reused by an unrelated process — just clean up the stale pidfile
+          fs.unlinkSync(GUARD_PID_FILE);
+          return;
+        }
+      } catch {
+        // ps failed — process likely already exited
+        fs.unlinkSync(GUARD_PID_FILE);
+        return;
+      }
+      try {
+        process.kill(pid, 'SIGTERM');
+      } catch {}
+    }
+  } catch {}
+  try {
+    fs.unlinkSync(GUARD_PID_FILE);
+  } catch {}
+}
+
+function isLaunchdManaging() {
+  if (os.platform() !== 'darwin') return false;
+  try {
+    const uid = process.getuid ? process.getuid() : 501;
+    execSync(`launchctl print gui/${uid}/${LAUNCHD_LABEL} 2>/dev/null`, {
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 5_000,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function runGuard() {
+  // Parse guard-specific args
+  let parentPid = 0;
+  let port = DEFAULT_PORT;
+  for (let i = 1; i < args.length; i++) {
+    if (args[i] === '--parent-pid' && args[i + 1]) {
+      parentPid = parseInt(args[i + 1], 10);
+      i++;
+    } else if (args[i] === '--port' && args[i + 1]) {
+      port = parseInt(args[i + 1], 10);
+      i++;
+    }
+  }
+
+  if (!parentPid || parentPid <= 0) {
+    console.error('[guard] Invalid --parent-pid');
+    process.exit(1);
+  }
+
+  const { checkForUpdate, getCurrentBranch } = require(path.join(PKG_ROOT, 'scripts', 'update-checker.cjs'));
+  const {
+    recordCheck,
+    isVersionSuppressed,
+    suppressVersion,
+    recordSuccessfulUpdate,
+  } = require(path.join(PKG_ROOT, 'scripts', 'update-state.cjs'));
+
+  const log = (msg) => console.log(`[guard] ${new Date().toISOString()} ${msg}`);
+
+  // Check if parent is alive
+  function isParentAlive() {
+    try {
+      process.kill(parentPid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  let updateInProgress = false;
+  let updateRestartInProgress = false;
+
+  async function runUpdateCheck() {
+    if (updateInProgress) return;
+    updateInProgress = true;
+
+    try {
+      // Only auto-update on release branch
+      const branch = getCurrentBranch(PKG_ROOT);
+      if (branch !== 'release') {
+        log(`skipping update check — on branch '${branch}', not 'release'`);
+        return;
+      }
+
+      // 1. Check for update
+      const result = checkForUpdate(PKG_ROOT);
+      if (result.checkFailed) {
+        log(`update check failed: ${result.error}`);
+        return;
+      }
+      recordCheck(result.latestVersion);
+
+      if (!result.updateAvailable) {
+        log(`up to date: v${result.currentVersion}`);
+        return;
+      }
+
+      if (isVersionSuppressed(result.latestVersion)) {
+        log(`version ${result.latestVersion} is suppressed, skipping`);
+        return;
+      }
+
+      log(`update available: ${result.currentVersion} → ${result.latestVersion}`);
+
+      // 2. Save current HEAD for rollback
+      let savedHead = '';
+      try {
+        savedHead = execSync('git rev-parse HEAD', {
+          cwd: PKG_ROOT,
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'ignore'],
+        }).trim();
+      } catch {}
+
+      // 3. Git pull
+      try {
+        execSync('git pull --ff-only origin release', {
+          cwd: PKG_ROOT,
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'pipe'],
+          timeout: 30_000,
+        });
+      } catch (err) {
+        const stderr = err.stderr ? err.stderr.toString().trim().slice(-500) : '';
+        log(`git pull failed: ${err.message}${stderr ? '\n' + stderr : ''}`);
+        suppressVersion(result.latestVersion, 'pull_failed');
+        return;
+      }
+
+      // 4. Install dependencies
+      try {
+        log('installing dependencies...');
+        execSync('pnpm install --frozen-lockfile', {
+          cwd: PKG_ROOT,
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'pipe'],
+          timeout: INSTALL_TIMEOUT_MS,
+        });
+      } catch (err) {
+        const stderr = err.stderr ? err.stderr.toString().trim().slice(-500) : '';
+        log(`pnpm install failed: ${err.message}${stderr ? '\n' + stderr : ''}`);
+        guardRollback(savedHead);
+        suppressVersion(result.latestVersion, 'install_failed');
+        return;
+      }
+
+      // 5. Build
+      try {
+        log('building...');
+        execSync('pnpm build', {
+          cwd: PKG_ROOT,
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'pipe'],
+          timeout: BUILD_TIMEOUT_MS,
+        });
+      } catch (err) {
+        const stderr = err.stderr ? err.stderr.toString().trim().slice(-500) : '';
+        log(`build failed: ${err.message}${stderr ? '\n' + stderr : ''}`);
+        guardRollback(savedHead);
+        suppressVersion(result.latestVersion, 'build_failed');
+        return;
+      }
+
+      // 6. Restart via launchctl
+      updateRestartInProgress = true;
+      log('restarting via launchctl...');
+      const uid = process.getuid ? process.getuid() : 501;
+      try {
+        execSync(`launchctl kickstart -k gui/${uid}/${LAUNCHD_LABEL}`, {
+          timeout: 10_000,
+          stdio: 'pipe',
+        });
+      } catch {
+        log('WARNING: launchctl kickstart failed');
+        suppressVersion(result.latestVersion, 'restart_failed');
+        updateRestartInProgress = false;
+        return;
+      }
+
+      // 7. Wait for healthy restart
+      let healthy = false;
+      const restartStart = Date.now();
+      while (Date.now() - restartStart < HEALTH_TIMEOUT_MS) {
+        await sleep(2000);
+        try {
+          const resp = await fetch(`http://localhost:${port}/api/health`, {
+            signal: AbortSignal.timeout(3000),
+          });
+          if (resp.ok) {
+            const data = await resp.json();
+            if (data.version === result.latestVersion) {
+              healthy = true;
+              break;
+            }
+          }
+        } catch {
+          /* retry */
+        }
+      }
+
+      if (healthy) {
+        log(`update successful: now running v${result.latestVersion}`);
+        recordSuccessfulUpdate(result.latestVersion, result.currentVersion);
+        // New server will spawn its own guard — exit this one
+        process.exit(0);
+      } else {
+        log(`WARNING: server unhealthy after update to ${result.latestVersion}`);
+        suppressVersion(result.latestVersion, 'unhealthy_after_restart');
+        updateRestartInProgress = false;
+      }
+    } catch (err) {
+      log(`update check error: ${err.message || err}`);
+    } finally {
+      updateInProgress = false;
+    }
+  }
+
+  function guardRollback(savedHead) {
+    if (!savedHead) return;
+    log('rolling back...');
+    try {
+      execSync(`git reset --hard ${savedHead}`, {
+        cwd: PKG_ROOT,
+        stdio: ['ignore', 'pipe', 'ignore'],
+        timeout: 10_000,
+      });
+      execSync('pnpm install --frozen-lockfile', {
+        cwd: PKG_ROOT,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        timeout: INSTALL_TIMEOUT_MS,
+      });
+      execSync('pnpm build', {
+        cwd: PKG_ROOT,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        timeout: BUILD_TIMEOUT_MS,
+      });
+    } catch (rollbackErr) {
+      log(`WARNING: rollback failed: ${rollbackErr.message}`);
+    }
+  }
+
+  // Parent process health monitor
+  const parentCheckInterval = setInterval(() => {
+    if (!isParentAlive() && !updateRestartInProgress) {
+      log('parent process died, exiting guard');
+      clearInterval(parentCheckInterval);
+      process.exit(0);
+    }
+  }, 5_000);
+
+  // Schedule update checks
+  setTimeout(() => void runUpdateCheck(), UPDATE_FIRST_CHECK_MS);
+  setInterval(() => void runUpdateCheck(), UPDATE_CHECK_INTERVAL_MS);
+
+  log(`started (parent PID: ${parentPid}, port: ${port})`);
+}
+
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 // ── help ────────────────────────────────────────────────────────────
 
 function showHelp() {
@@ -699,12 +1212,19 @@ Commands:
   logs             Tail server logs
   setup            Quick setup (API key + build, ~60 seconds)
   setup --push     Add/reconfigure push notifications
+  update           Check for updates and install if available
+  update check     Check for updates without installing
   version          Show version number
   help             Show this help message
 
 Start options:
   -d, --daemon     Run in background (detach from terminal)
   --no-tunnel      Don't start a Cloudflare Tunnel
+
+Auto-update:
+  When running as a LaunchAgent, Shooter automatically checks for updates
+  every 2 hours. Updates are pulled from origin/release, built, and the
+  server is restarted via launchctl. Terminal sessions survive restarts.
 
 Examples:
   shooter                  Start the server + tunnel (foreground)
@@ -715,6 +1235,8 @@ Examples:
   shooter logs             Follow server logs
   shooter setup            Quick setup (~60s, push deferred)
   shooter setup --push     Add iOS/Android push notifications
+  shooter update           Check and install updates
+  shooter update check     Check for updates only
 `.trim()
   );
 }

@@ -12,7 +12,7 @@
   import { page } from '$app/state';
   import { getCached, setCache } from '$lib/modules/client/common';
   import ChatView from '$lib/modules/client/terminal/ChatView.svelte';
-  import { Button, Shimmer } from '@juspay/svelte-ui-components';
+  import { Button } from '@juspay/svelte-ui-components';
   import { onMount } from 'svelte';
 
   // --- State ---
@@ -382,8 +382,15 @@
         return;
       }
 
-      const sid = sessionId || '';
-      const pid = projectId || '';
+      const sid = sessionId ?? '';
+      const pid = projectId;
+
+      if (!sid) {
+        error = 'No session ID';
+        loading = false;
+        return;
+      }
+
       const queryStr = pid
         ? `id=${encodeURIComponent(sid)}&project=${encodeURIComponent(pid)}&limit=${currentLimit}`
         : `id=${encodeURIComponent(sid)}&limit=${currentLimit}`;
@@ -420,13 +427,15 @@
       }
 
       const data = (await res.json()) as SessionViewResponse;
-      session = data.session as SessionInfo;
       const rawMessages = Array.isArray(data.messages)
         ? (data.messages as unknown as ConversationMessage[])
         : [];
+      setCache(`shooter_session_${sid}`, { messages: rawMessages, session: data.session });
+      session = data.session as SessionInfo;
       messages = rawMessages;
       hasMoreMessages = rawMessages.length >= currentLimit;
-      setCache(`shooter_session_${sid}`, { messages: rawMessages, session: data.session });
+      loading = false;
+      return;
     } catch {
       error = 'Failed to load session';
     }
@@ -445,8 +454,11 @@
     loadingMore = true;
     try {
       const newLimit = currentLimit + 200;
-      const sid = sessionId || '';
-      const pid = projectId || '';
+      const sid = sessionId ?? '';
+      const pid = projectId;
+      if (!sid) {
+        return;
+      }
       const queryParts = [`id=${encodeURIComponent(sid)}`, `limit=${newLimit}`];
       if (pid) {
         queryParts.push(`project=${encodeURIComponent(pid)}`);
@@ -548,13 +560,13 @@
 
 <main class="main session-page-main">
   {#if loading && messages.length === 0}
-    <div class="loading-container">
-      <Shimmer classes="shimmer-header" />
+    <div class="loading-container" aria-live="polite" aria-busy="true">
+      <div class="shimmer shimmer-header" aria-hidden="true"></div>
       <div class="chat-container">
-        <Shimmer classes="shimmer-bubble shimmer-bubble-user" />
-        <Shimmer classes="shimmer-bubble shimmer-bubble-assistant" />
-        <Shimmer classes="shimmer-bubble shimmer-bubble-user-short" />
-        <Shimmer classes="shimmer-bubble shimmer-bubble-assistant-wide" />
+        <div class="shimmer shimmer-bubble shimmer-bubble-user" aria-hidden="true"></div>
+        <div class="shimmer shimmer-bubble shimmer-bubble-assistant" aria-hidden="true"></div>
+        <div class="shimmer shimmer-bubble shimmer-bubble-user-short" aria-hidden="true"></div>
+        <div class="shimmer shimmer-bubble shimmer-bubble-assistant-wide" aria-hidden="true"></div>
       </div>
     </div>
   {:else if error}
@@ -684,5 +696,4 @@
     flex-shrink: 0;
     border-bottom: 1px solid var(--border);
   }
-
 </style>

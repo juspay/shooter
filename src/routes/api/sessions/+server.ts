@@ -78,7 +78,9 @@ export const GET: RequestHandler = ({ request, url }) => {
 
     // Resolve short project ID to full path for the readers
     const allProjects = getMergedProjects();
-    const matchedProject = projectId ? allProjects.find((p) => p.id === projectId) : undefined;
+    const matchesProject = (p: ProjectGroup): boolean =>
+      p.id === projectId || p.fullPath === projectId;
+    const matchedProject = projectId ? allProjects.find(matchesProject) : undefined;
 
     // Try Claude Code first (pass the encoded dir name for filesystem lookup)
     const claudeProjectDir = matchedProject
@@ -90,15 +92,19 @@ export const GET: RequestHandler = ({ request, url }) => {
     if (messages.length === 0) {
       messages = getOpenCodeConversation(sessionId, offset, limit);
     }
-    let sessionInfo = null;
-    for (const project of allProjects) {
-      if (projectId && project.id !== projectId) {
-        continue;
-      }
-      const found = project.sessions.find((s) => s.id === sessionId);
-      if (found) {
-        sessionInfo = found;
-        break;
+
+    // Find session info — short-circuit when project is already resolved
+    let sessionInfo = matchedProject?.sessions.find((s) => s.id === sessionId) ?? null;
+    if (!sessionInfo) {
+      for (const project of allProjects) {
+        if (projectId && !matchesProject(project)) {
+          continue;
+        }
+        const found = project.sessions.find((s) => s.id === sessionId);
+        if (found) {
+          sessionInfo = found;
+          break;
+        }
       }
     }
 
