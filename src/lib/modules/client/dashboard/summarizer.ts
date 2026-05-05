@@ -7,12 +7,11 @@
 
 import type { SummaryContext, SummaryResult } from '$lib/types';
 
+import { NEUROLINK_CDN_URL } from '$lib/modules/client/neurolink/cdn';
 import { installFetchProxy } from '$lib/modules/client/neurolink/fetch-proxy';
 import { detectActiveProvider } from '$lib/modules/client/neurolink/provider-config';
 
 // ── CDN loading ───────────────────────────────────────────────────────────────
-
-const NEUROLINK_CDN_URL = 'https://unpkg.com/@juspay/neurolink/dist/browser/neurolink.min.js';
 
 // Significant event types that trigger conversational tone
 const SIGNIFICANT_EVENT_TYPES = new Set(['agent-question', 'terminal-exited', 'tool-failed']);

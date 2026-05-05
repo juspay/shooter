@@ -145,6 +145,35 @@ function hasFlag(flag) {
   return args.includes(flag);
 }
 
+// Keep in sync with `parsePortArg` in server.ts.
+function parsePortFlag() {
+  const isValid = (n) => Number.isInteger(n) && n >= 0 && n < 65536;
+  const fail = (raw) => {
+    console.error(`Error: invalid --port value "${raw}" — expected an integer in 0-65535.`);
+    process.exit(2);
+  };
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if ((a === '--port' || a === '-p') && args[i + 1] !== undefined) {
+      const raw = args[i + 1];
+      const n = parseInt(raw, 10);
+      if (!isValid(n)) fail(raw);
+      return n;
+    } else if (a.startsWith('--port=')) {
+      const raw = a.slice('--port='.length);
+      const n = parseInt(raw, 10);
+      if (!isValid(n)) fail(raw);
+      return n;
+    } else if (a.startsWith('-p=')) {
+      const raw = a.slice('-p='.length);
+      const n = parseInt(raw, 10);
+      if (!isValid(n)) fail(raw);
+      return n;
+    }
+  }
+  return undefined;
+}
+
 function isCloudflaredAvailable() {
   try {
     execSync('which cloudflared', { stdio: 'ignore' });
@@ -231,9 +260,12 @@ function startServer() {
 
   const daemon = hasFlag('--daemon') || hasFlag('-d');
   const noTunnel = hasFlag('--no-tunnel');
-  const port = resolvePort();
+  const cliPort = parsePortFlag();
+  const port = cliPort ?? resolvePort();
 
-  // Check if port is already in use (no external tools needed)
+  // Fail-fast pre-flight so a busy port is surfaced before we spawn the
+  // server and start the Cloudflare Tunnel — keeping tunnel and listen
+  // port in sync.
   try {
     execSync(
       `"${process.execPath}" -e "const s=require('net').createServer();s.listen(${parseInt(port, 10)},()=>s.close());s.on('error',e=>{if(e.code==='EADDRINUSE')process.exit(1)})"`,
@@ -241,7 +273,7 @@ function startServer() {
     );
   } catch {
     console.error(`Error: Port ${port} is already in use.`);
-    console.error('Stop the existing process or set a different PORT in ~/.shooter/.env');
+    console.error('Stop the existing process, pass --port <num>, or set PORT in ~/.shooter/.env');
     process.exit(1);
   }
 
@@ -271,6 +303,7 @@ function startServer() {
       stdio: ['ignore', logFd, logFd],
       env: {
         ...process.env,
+        PORT: String(port),
         SHOOTER_PKG_ROOT: PKG_ROOT,
         SHOOTER_HOME,
       },
@@ -311,6 +344,7 @@ function startServer() {
       stdio: 'inherit',
       env: {
         ...process.env,
+        PORT: String(port),
         SHOOTER_PKG_ROOT: PKG_ROOT,
         SHOOTER_HOME,
       },
@@ -1218,8 +1252,9 @@ Commands:
   help             Show this help message
 
 Start options:
-  -d, --daemon     Run in background (detach from terminal)
-  --no-tunnel      Don't start a Cloudflare Tunnel
+  -d, --daemon         Run in background (detach from terminal)
+  --no-tunnel          Don't start a Cloudflare Tunnel
+  -p, --port <num>     Port to listen on (overrides PORT env)
 
 Auto-update:
   When running as a LaunchAgent, Shooter automatically checks for updates
@@ -1227,16 +1262,17 @@ Auto-update:
   server is restarted via launchctl. Terminal sessions survive restarts.
 
 Examples:
-  shooter                  Start the server + tunnel (foreground)
-  shooter start -d         Start in background (daemon mode)
+  shooter                    Start the server + tunnel (foreground)
+  shooter start -d           Start in background (daemon mode)
   shooter start --no-tunnel  Start without Cloudflare Tunnel
-  shooter status           Check status and tunnel URL
-  shooter autostart on     Enable autostart on login
-  shooter logs             Follow server logs
-  shooter setup            Quick setup (~60s, push deferred)
-  shooter setup --push     Add iOS/Android push notifications
-  shooter update           Check and install updates
-  shooter update check     Check for updates only
+  shooter start --port 3000  Start on port 3000
+  shooter status             Check status and tunnel URL
+  shooter autostart on       Enable autostart on login
+  shooter logs               Follow server logs
+  shooter setup              Quick setup (~60s, push deferred)
+  shooter setup --push       Add iOS/Android push notifications
+  shooter update             Check and install updates
+  shooter update check       Check for updates only
 `.trim()
   );
 }

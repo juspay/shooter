@@ -141,11 +141,63 @@ server.on('upgrade', (request, socket, head) => {
 startKeepalive();
 
 // ── Listen ───────────────────────────────────────────────────────────
+// Port resolution priority: CLI flag (--port / -p) > PORT env > default.
+// Server fails fast on EADDRINUSE so the CLI's tunnel can stay in sync
+// with the actual listen port.
 
-const port = parseInt(process.env.PORT || '54007', 10);
+function parseEnvPort(): number | undefined {
+  const raw = process.env.PORT;
+  if (!raw) return undefined;
+  const n = parseInt(raw, 10);
+  return Number.isInteger(n) && n >= 0 && n < 65536 ? n : undefined;
+}
 
-server.listen(port, () => {
-  console.log(`Shooter server running on http://localhost:${port}`);
+// Keep in sync with `parsePortFlag` in bin/shooter.cjs.
+function parsePortArg(): number | undefined {
+  const argv = process.argv.slice(2);
+  const isValid = (n: number): boolean => Number.isInteger(n) && n >= 0 && n < 65536;
+  const fail = (raw: string): never => {
+    console.error(`Error: invalid --port value "${raw}" — expected an integer in 0–65535.`);
+    process.exit(2);
+  };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if ((a === '--port' || a === '-p') && argv[i + 1] !== undefined) {
+      const raw = argv[i + 1];
+      const n = parseInt(raw, 10);
+      if (!isValid(n)) fail(raw);
+      return n;
+    } else if (a.startsWith('--port=')) {
+      const raw = a.slice('--port='.length);
+      const n = parseInt(raw, 10);
+      if (!isValid(n)) fail(raw);
+      return n;
+    } else if (a.startsWith('-p=')) {
+      const raw = a.slice('-p='.length);
+      const n = parseInt(raw, 10);
+      if (!isValid(n)) fail(raw);
+      return n;
+    }
+  }
+  return undefined;
+}
+
+const DEFAULT_PORT = 54007;
+const requestedPort = parsePortArg() ?? parseEnvPort() ?? DEFAULT_PORT;
+
+server.once('error', (err: NodeJS.ErrnoException): void => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(
+      `Error: Port ${requestedPort} is already in use. Stop the existing process or pass --port <num>.`
+    );
+    process.exit(1);
+  }
+  console.error('Server error:', err);
+  process.exit(1);
+});
+
+server.listen(requestedPort, () => {
+  console.log(`Shooter server running on http://localhost:${requestedPort}`);
 });
 
 // ── Graceful shutdown ────────────────────────────────────────────────
