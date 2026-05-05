@@ -107,17 +107,9 @@
       launching = false;
     }
   }
-
-
 </script>
 
-<Sheet
-  bind:open
-  side="bottom"
-  title="New Terminal"
-  onclose={onClose}
-  classes="launch-sheet"
->
+<Sheet bind:open side="bottom" title="New Terminal" onclose={onClose} classes="launch-sheet">
   {#snippet content()}
     <div class="section">
       <span class="section-label">Quick Launch</span>
@@ -126,7 +118,7 @@
           <Choicebox
             mode="radio"
             selected={selectedPreset === i}
-            onclick={() => {
+            onclick={(): void => {
               selectPreset(i);
             }}
             classes="preset-choice"
@@ -145,7 +137,7 @@
           : [{ id: '', label: 'No recent projects' }]}
         value={selectedCwd ? [selectedCwd] : projectPaths.length > 0 ? [projectPaths[0]] : ['']}
         placeholder="Select a project"
-        onchange={(value) => {
+        onchange={(value: string[]): void => {
           selectedCwd = value[0] || '';
         }}
         classes="launch-select"
@@ -193,7 +185,8 @@
     --sheet-title-color: var(--text-primary);
     --sheet-close-button-color: var(--text-secondary);
     --sheet-close-button-hover-background: var(--component-bg-hover);
-    --sheet-content-padding: 0 var(--space-5) calc(var(--space-8, 32px) + env(safe-area-inset-bottom, 0px));
+    --sheet-content-padding: 0 var(--space-5)
+      calc(var(--space-8, 32px) + env(safe-area-inset-bottom, 0px));
   }
 
   /* Desktop: override bottom sheet to appear as centered modal */

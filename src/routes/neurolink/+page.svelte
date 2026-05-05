@@ -1,13 +1,11 @@
 <script lang="ts">
-  import { installFetchProxy } from '$lib/modules/client/neurolink/fetch-proxy';
-  import { Button, Input, Pill } from '@juspay/svelte-ui-components';
-  import { onMount } from 'svelte';
-
-  const NEUROLINK_CDN_URL = 'https://unpkg.com/@juspay/neurolink/dist/browser/neurolink.min.js';
-
   import type { ProviderId } from '$lib/types';
 
+  import { NEUROLINK_CDN_URL } from '$lib/modules/client/neurolink/cdn';
+  import { installFetchProxy } from '$lib/modules/client/neurolink/fetch-proxy';
   import { PROVIDERS } from '$lib/modules/client/neurolink/provider-config';
+  import { Button, Input, Pill } from '@juspay/svelte-ui-components';
+  import { onMount } from 'svelte';
 
   const { data } = $props<{
     data: {

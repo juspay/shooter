@@ -4,10 +4,10 @@
 
 import type { ActivityEvent, ActivitySummaryResult } from '$lib/types';
 
+import { NEUROLINK_CDN_URL } from '$lib/modules/client/neurolink/cdn';
 import { installFetchProxy } from '$lib/modules/client/neurolink/fetch-proxy';
 import { detectActiveProvider } from '$lib/modules/client/neurolink/provider-config';
 
-const NEUROLINK_CDN_URL = 'https://unpkg.com/@juspay/neurolink/dist/browser/neurolink.min.js';
 const LOAD_FAILURE_COOLDOWN_MS = 60_000;
 const MAX_LOAD_ATTEMPTS = 3;
 
