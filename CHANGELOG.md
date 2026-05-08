@@ -1,3 +1,9 @@
+## [1.9.0](https://github.com/juspay/shooter/compare/v1.8.0...v1.9.0) (2026-05-08)
+
+### Features
+
+* **(notifications):**  enrich pushes with session context, drop noise ([845f344](https://github.com/juspay/shooter/commit/845f34492fb0684504e44e246a148db2a3e825f6))
+
 ## [1.8.0](https://github.com/juspay/shooter/compare/v1.7.1...v1.8.0) (2026-04-29)
 
 ### Features
