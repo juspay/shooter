@@ -12,6 +12,10 @@ APN:
       title:
         type: string
         description: Main notification title displayed to user
+      subtitle:
+        type: string
+        nullable: true
+        description: Optional second-line subtitle shown beneath the title (APNs alert.subtitle)
       body:
         type: string
         nullable: true

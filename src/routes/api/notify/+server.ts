@@ -289,6 +289,7 @@ export const POST: RequestHandler = async ({ request }) => {
     const requestDeviceToken = body.deviceToken as string | undefined;
     const message = body.message as string;
     const title = body.title as string;
+    const subtitle = typeof body.subtitle === 'string' ? body.subtitle : undefined;
 
     // Coerce skipPush and waitForResponse to booleans — string "false" would
     // be truthy so we require an actual boolean, defaulting to false otherwise.
@@ -379,6 +380,7 @@ export const POST: RequestHandler = async ({ request }) => {
       },
       message: null,
       sound: 'default' as const,
+      ...(subtitle ? { subtitle } : {}),
       title,
     };
 

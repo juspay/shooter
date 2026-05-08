@@ -36,6 +36,7 @@ export async function sendFCMNotification(
         project: typeof payload.data?.project === 'string' ? payload.data.project : '',
         requestId: typeof payload.data?.requestId === 'string' ? payload.data.requestId : '',
         source: typeof payload.data?.source === 'string' ? payload.data.source : '',
+        subtitle: payload.subtitle ?? '',
         timestamp: new Date().toISOString(),
         title: payload.title,
         toolInput: payload.data?.toolInput ? JSON.stringify(payload.data.toolInput) : '',

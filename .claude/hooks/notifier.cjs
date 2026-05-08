@@ -221,6 +221,10 @@ function createCommonEvent(source, eventType, data = {}) {
 function adaptClaudeCodeEvent(cliArg, stdinData) {
   const data = {};
 
+  // session_id is sent by Claude Code on every hook — capture it once so
+  // getSessionContext() can read the goal + last user msg + last assistant text.
+  data.sessionId = stdinData?.session_id || '';
+
   // --- PermissionRequest: Agent needs user permission to run a tool ---
   if (cliArg === 'PermissionRequest') {
     data.tool = stdinData?.tool_name || process.env.CLAUDE_TOOL_NAME || 'Unknown';
@@ -229,7 +233,6 @@ function adaptClaudeCodeEvent(cliArg, stdinData) {
     data.command = data.toolInput.command || '';
     data.filePath = data.toolInput.file_path || '';
     data.description = data.toolInput.description || '';
-    data.sessionId = stdinData?.session_id || '';
     return createCommonEvent('claude-code', 'permission', data);
   }
 
@@ -623,7 +626,8 @@ async function handlePermission(event) {
   const d = event.data;
   debugLog(`Permission event: tool=${d.tool}, message=${d.message}`);
 
-  const { title, body } = buildPermissionNotification(event);
+  const ctx = getSessionContext(d.sessionId);
+  const { title, subtitle, body } = buildPermissionNotification(event, ctx);
 
   // Check if WebSocket clients are connected — if so, the events channel
   // will broadcast the permission-requested event and we skip the push notification
@@ -655,11 +659,19 @@ async function handlePermission(event) {
         event.source,
         requestId,
         d,
-        { skipPush: true }
+        { skipPush: true, subtitle }
       );
     } else {
       // No WebSocket clients — send push notification and poll
-      result = await sendNotificationAndPoll(title, body, 'permission', event.source, requestId, d);
+      result = await sendNotificationAndPoll(
+        title,
+        body,
+        'permission',
+        event.source,
+        requestId,
+        d,
+        { subtitle }
+      );
     }
 
     if (result && result.decision) {
@@ -684,7 +696,7 @@ async function handlePermission(event) {
   if (wsActive) {
     debugLog(`[Notifier] WebSocket clients connected, skipping push notification for permission`);
   } else {
-    sendNotification(title, body, 'permission', event.source);
+    sendNotification(title, body, 'permission', event.source, subtitle);
   }
 }
 
@@ -706,8 +718,9 @@ async function handlePermissionNotification(event) {
     return;
   }
 
-  const { title, body } = buildPermissionNotification(event);
-  sendNotification(title, body, 'permission', event.source);
+  const ctx = getSessionContext(event.data.sessionId);
+  const { title, subtitle, body } = buildPermissionNotification(event, ctx);
+  sendNotification(title, body, 'permission', event.source, subtitle);
 }
 
 /**
@@ -720,9 +733,10 @@ function handleQuestion(event) {
   const d = event.data;
   debugLog(`Question event: message=${d.message}`);
 
-  const { title, body } = buildQuestionNotification(event);
+  const ctx = getSessionContext(d.sessionId);
+  const { title, subtitle, body } = buildQuestionNotification(event, ctx);
 
-  sendNotification(title, body, 'question', event.source);
+  sendNotification(title, body, 'question', event.source, subtitle);
 }
 
 /**
@@ -734,10 +748,34 @@ function handleIdleInput(event) {
   const d = event.data;
   debugLog(`Idle input event: message=${d.message}`);
 
-  const title = `Waiting for Input`;
-  const body = d.message || `Agent is waiting for your input in ${event.projectName}`;
+  const ctx = getSessionContext(d.sessionId);
+  const title = `${event.projectName} · Waiting for input`;
+  const subtitle = ctx.goal
+    ? `Goal: ${summarize(ctx.goal, 70)}`
+    : summarize(d.message) || 'Agent is idle';
 
-  sendNotification(title, body, 'idle_input', event.source);
+  // Body priority: when Claude's hook message is boilerplate ("waiting for
+  // your input"), the agent's most recent text from the JSONL session carries
+  // the real "current state". Fall back to Claude's message when we can't
+  // read the session, or when the message has substance.
+  const lines = [];
+  const hookIsBoilerplate = isBoilerplate(d.message);
+  if (hookIsBoilerplate && ctx.lastAssistantText) {
+    lines.push(ctx.lastAssistantText);
+  } else if (d.message) {
+    lines.push(d.message);
+  } else if (ctx.lastAssistantText) {
+    lines.push(ctx.lastAssistantText);
+  } else {
+    lines.push('Agent is waiting.');
+  }
+  if (ctx.lastUserMessage && ctx.lastUserMessage !== ctx.goal) {
+    lines.push(`Asked: ${summarize(ctx.lastUserMessage, 120)}`);
+  }
+  let body = lines.join('\n');
+  if (body.length > 600) body = body.substring(0, 600) + '…';
+
+  sendNotification(title, body, 'idle_input', event.source, subtitle);
 }
 
 /**
@@ -749,20 +787,35 @@ function handleIntervention(event) {
   const d = event.data;
   debugLog(`Intervention event: message=${d.message}`);
 
-  const title = d.title || `Needs Attention`;
-  const body = d.message || `Needs your attention in ${event.projectName}`;
+  const ctx = getSessionContext(d.sessionId);
+  const title = `${event.projectName} · Needs attention`;
+  const subtitle = ctx.goal
+    ? `Goal: ${summarize(ctx.goal, 70)}`
+    : summarize(d.message) || summarize(d.title) || 'Intervention required';
 
-  sendNotification(title, body, 'intervention', event.source);
+  const lines = [];
+  if (isBoilerplate(d.message) && ctx.lastAssistantText) {
+    lines.push(ctx.lastAssistantText);
+  } else if (d.message) {
+    lines.push(d.message);
+  } else if (ctx.lastAssistantText) {
+    lines.push(ctx.lastAssistantText);
+  } else {
+    lines.push('Agent needs your attention.');
+  }
+  if (ctx.lastUserMessage && ctx.lastUserMessage !== ctx.goal) {
+    lines.push(`Asked: ${summarize(ctx.lastUserMessage, 120)}`);
+  }
+  let body = lines.join('\n');
+  if (body.length > 600) body = body.substring(0, 600) + '…';
+
+  sendNotification(title, body, 'intervention', event.source, subtitle);
 }
 
 function handleError(event) {
-  debugLog(`Error detected: ${event.data.message}`);
-  sendNotification(
-    `Error in ${event.projectName}`,
-    event.data.message || 'An error occurred',
-    'error',
-    event.source
-  );
+  // Errors are not actionable from the phone — the user can't fix a build error
+  // remotely. Track for telemetry only; do not send a push notification.
+  debugLog(`Error detected (not notifying): ${event.data.message}`);
 }
 
 function handleCheckCompletion(event) {
@@ -804,23 +857,13 @@ function handleUserPrompt(event) {
 }
 
 function handleTeammateIdle(event) {
-  debugLog(`Teammate idle: ${event.data.teammate}`);
-  sendNotification(
-    `Teammate Idle`,
-    `${event.data.teammate} is idle in ${event.projectName}`,
-    'teammate_idle',
-    event.source
-  );
+  // Informational only — no user input required. Skip notification.
+  debugLog(`Teammate idle (not notifying): ${event.data.teammate}`);
 }
 
 function handleTaskCompleted(event) {
-  debugLog(`Task completed: ${event.data.message}`);
-  sendNotification(
-    `Task Completed`,
-    event.data.message || `A task was completed in ${event.projectName}`,
-    'task_completed',
-    event.source
-  );
+  // Informational only — task completion does not require a decision. Skip.
+  debugLog(`Task completed (not notifying): ${event.data.message}`);
 }
 
 // ============================================
@@ -828,18 +871,274 @@ function handleTaskCompleted(event) {
 // ============================================
 
 /**
- * Build permission notification content.
- * Same structure regardless of source (Claude Code or OpenCode).
- *
- * When we have tool details:
- *   Title: "Permission: Bash"
- *   Body:  "npm test" or "Allow: rm -rf /tmp/build"
- *
- * When we only have a message:
- *   Title: "Permission Needed"
- *   Body:  "Claude needs your permission to use Bash"
+ * Map a tool name to a short verb describing what it's about to do.
+ * Used in the subtitle line, e.g. "Bash — run command".
+ * Returns 'use tool' as the catch-all so MCP / unknown tools still render cleanly.
  */
-function buildPermissionNotification(event) {
+function toolVerb(toolName) {
+  switch (toolName) {
+    case 'Bash':
+      return 'run command';
+    case 'BashOutput':
+      return 'read shell output';
+    case 'Edit':
+      return 'modify file';
+    case 'Glob':
+      return 'search files';
+    case 'Grep':
+      return 'search content';
+    case 'KillShell':
+      return 'kill shell';
+    case 'NotebookEdit':
+      return 'edit notebook';
+    case 'Read':
+      return 'read file';
+    case 'Skill':
+      return 'invoke skill';
+    case 'Task':
+      return 'spawn agent';
+    case 'TodoWrite':
+      return 'manage tasks';
+    case 'WebFetch':
+      return 'fetch URL';
+    case 'WebSearch':
+      return 'search web';
+    case 'Write':
+      return 'create file';
+    default:
+      return 'use tool';
+  }
+}
+
+/**
+ * Build the metadata footer appended to every notification body.
+ * Replaces the old "[Claude] [LOCAL]" title prefix with a low-weight suffix
+ * line, e.g. "— claude code" or "— opencode". The local/remote breadcrumb is
+ * intentionally omitted — `data.environment` carries it for debug consumers.
+ */
+function buildFooter(source) {
+  const runtime = source === 'opencode' ? 'opencode' : 'claude code';
+  return `— ${runtime}`;
+}
+
+/** Append the runtime footer to a body, separated by a newline. */
+function withFooter(body, source) {
+  const footer = buildFooter(source);
+  if (!body) return footer;
+  return `${body}\n${footer}`;
+}
+
+/**
+ * Read head and tail chunks from a Claude Code session JSONL file.
+ *
+ * Claude Code stores sessions at ~/.claude/projects/<encoded-cwd>/<session_id>.jsonl
+ * where the encoded cwd replaces every '/' with '-'. Returns parsed lines from
+ * the head (for the goal — first user prompt) and tail (for the last user msg
+ * and last assistant text). For small sessions, both arrays are the same.
+ *
+ * Returns { firstLines, lastLines } as arrays of trimmed line strings.
+ * Returns { firstLines: [], lastLines: [] } on any failure.
+ */
+function readSessionLines(sessionId, cwd) {
+  if (!sessionId) return { firstLines: [], lastLines: [] };
+  try {
+    const projectsDir = path.join(require('os').homedir(), '.claude', 'projects');
+    const encodedCwd = (cwd || process.cwd()).replace(/\//g, '-');
+    const sessionFile = path.join(projectsDir, encodedCwd, `${sessionId}.jsonl`);
+
+    if (!fs.existsSync(sessionFile)) return { firstLines: [], lastLines: [] };
+
+    const stat = fs.statSync(sessionFile);
+    const headSize = 262144; // 256 KB — enough to find the first user message
+    const tailSize = 524288; // 512 KB — enough to find the most recent ones
+    const fd = fs.openSync(sessionFile, 'r');
+
+    let firstLines, lastLines;
+    if (stat.size <= headSize + tailSize) {
+      // Small/medium session — read whole file once
+      const buf = Buffer.alloc(stat.size);
+      fs.readSync(fd, buf, 0, stat.size, 0);
+      fs.closeSync(fd);
+      const all = buf.toString('utf-8').split('\n').filter((l) => l.trim());
+      firstLines = all;
+      lastLines = all;
+    } else {
+      // Huge session — read both ends. Drop the boundary lines (likely partial).
+      const headBuf = Buffer.alloc(headSize);
+      fs.readSync(fd, headBuf, 0, headSize, 0);
+      const tailBuf = Buffer.alloc(tailSize);
+      fs.readSync(fd, tailBuf, 0, tailSize, stat.size - tailSize);
+      fs.closeSync(fd);
+
+      firstLines = headBuf.toString('utf-8').split('\n').filter((l) => l.trim());
+      if (firstLines.length > 0) firstLines.pop(); // drop possibly-partial last line
+      lastLines = tailBuf.toString('utf-8').split('\n').filter((l) => l.trim());
+      if (lastLines.length > 0) lastLines.shift(); // drop possibly-partial first line
+    }
+
+    return { firstLines, lastLines };
+  } catch {
+    return { firstLines: [], lastLines: [] };
+  }
+}
+
+/**
+ * Extract the user prompt text from a parsed JSONL entry, or '' if it isn't a
+ * real user message (tool result, system-injected wrapper, empty, etc.).
+ */
+function extractUserPromptText(entry) {
+  if (!entry || entry.type !== 'user' || !entry.message) return '';
+  const content = entry.message.content;
+  let text = '';
+  if (typeof content === 'string') {
+    text = content;
+  } else if (Array.isArray(content)) {
+    for (const block of content) {
+      if (!block || typeof block !== 'object') continue;
+      if (block.type === 'text' && typeof block.text === 'string') {
+        text = block.text;
+        break;
+      }
+      // tool_result and other non-text blocks are not user prompts
+    }
+  }
+  if (!text) return '';
+  const trimmed = text.replace(/\s+/g, ' ').trim();
+  if (!trimmed) return '';
+
+  // Wrappers Claude Code injects that aren't real user prompts.
+  if (trimmed.startsWith('<system-reminder>')) return '';
+  if (trimmed.startsWith('<command-message>')) return '';
+  if (trimmed.startsWith('<command-name>')) return '';
+  if (trimmed.startsWith('<bash-stdout>')) return '';
+  if (trimmed.startsWith('<bash-stderr>')) return '';
+  if (trimmed.startsWith('Caveat:')) return '';
+  if (trimmed.startsWith('Base directory for this skill:')) return '';
+
+  return trimmed;
+}
+
+/**
+ * Extract user-facing assistant text from a parsed JSONL entry. Skips thinking
+ * blocks and tool_use blocks; returns the first text block's content.
+ */
+function extractAssistantText(entry) {
+  if (!entry || entry.type !== 'assistant' || !entry.message) return '';
+  const content = entry.message.content;
+  if (!Array.isArray(content)) return '';
+  for (const block of content) {
+    if (!block || typeof block !== 'object') continue;
+    if (block.type === 'text' && typeof block.text === 'string' && block.text.trim()) {
+      return block.text.replace(/\s+/g, ' ').trim();
+    }
+  }
+  return '';
+}
+
+/**
+ * Walk session JSONL and surface the three pieces of context we need:
+ *   - goal:              first real user prompt (the original ask)
+ *   - lastUserMessage:   most recent real user prompt (the most recent ask)
+ *   - lastAssistantText: most recent agent text output (current state)
+ *
+ * Cheap enough to call per notification — bounded by readSessionLines's caps.
+ */
+function getSessionContext(sessionId, cwd) {
+  const empty = { goal: '', lastUserMessage: '', lastAssistantText: '' };
+  const { firstLines, lastLines } = readSessionLines(sessionId, cwd);
+  if (firstLines.length === 0 && lastLines.length === 0) return empty;
+
+  // Goal: first user prompt in the head.
+  let goal = '';
+  for (const line of firstLines) {
+    let entry;
+    try {
+      entry = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    const text = extractUserPromptText(entry);
+    if (text) {
+      goal = text;
+      break;
+    }
+  }
+
+  // Last user message and last assistant text: walk tail backwards.
+  let lastUserMessage = '';
+  let lastAssistantText = '';
+  for (let i = lastLines.length - 1; i >= 0; i--) {
+    if (lastUserMessage && lastAssistantText) break;
+    let entry;
+    try {
+      entry = JSON.parse(lastLines[i]);
+    } catch {
+      continue;
+    }
+    if (!lastUserMessage) {
+      const t = extractUserPromptText(entry);
+      if (t) lastUserMessage = t;
+    }
+    if (!lastAssistantText) {
+      const t = extractAssistantText(entry);
+      if (t) lastAssistantText = t;
+    }
+  }
+
+  return { goal, lastUserMessage, lastAssistantText };
+}
+
+/**
+ * Detect Claude Code's boilerplate hook messages — short, generic strings like
+ * "Claude is waiting for your input." that don't tell the user anything new
+ * beyond what the title already says. When a hook message looks like this we
+ * fall back to JSONL-derived assistant text, which carries real context.
+ */
+function isBoilerplate(text) {
+  if (!text) return true;
+  const t = String(text).trim().toLowerCase();
+  if (t.length < 8) return true;
+  if (t.length > 80) return false;
+  return (
+    /\bwaiting\b/.test(t) ||
+    /\bawaiting\b/.test(t) ||
+    /\bidle\b/.test(t) ||
+    /^(claude is|agent is|ready)\b/.test(t) ||
+    /\b(needs your input|input needed|attention required)\b/.test(t)
+  );
+}
+
+/**
+ * Compress a message into a subtitle-sized summary.
+ * Prefers the first sentence; falls back to a hard char limit. Whitespace and
+ * newlines are normalised so multi-line agent prose collapses into one line.
+ */
+function summarize(text, maxLen = 80) {
+  if (!text) return '';
+  const trimmed = String(text).replace(/\s+/g, ' ').trim();
+  if (!trimmed) return '';
+
+  // First sentence: ends in . ? or ! followed by whitespace or end-of-string.
+  // Lookahead avoids slicing at file extensions ("auth.ts") or abbreviations.
+  const sentenceMatch = trimmed.match(/^[^.!?]+[.!?](?=\s|$)/);
+  if (sentenceMatch && sentenceMatch[0].length <= maxLen) {
+    return sentenceMatch[0].trim();
+  }
+
+  if (trimmed.length <= maxLen) return trimmed;
+  return trimmed.substring(0, maxLen).trim() + '…';
+}
+
+/**
+ * Build permission notification content.
+ * Returns a consistent { title, subtitle, body } shape regardless of tool or source.
+ *
+ *   title:    "<project> · Permission needed"
+ *   subtitle: "<Tool> — <verb>"           (e.g. "Bash — run command")
+ *   body:     <description if present>
+ *             <command / file path / argument summary>
+ */
+function buildPermissionNotification(event, ctx = {}) {
   const d = event.data;
   const toolName = d.tool || '';
   const command = d.command || '';
@@ -847,101 +1146,141 @@ function buildPermissionNotification(event) {
   const description = d.description || '';
   const message = d.message || '';
 
-  // Case 1: We know the tool name and have details
-  if (toolName && toolName !== 'Unknown' && toolName !== '') {
-    const title = `Permission: ${toolName}`;
-    let body = '';
+  const goal = ctx.goal || '';
+  const lastUserMessage = ctx.lastUserMessage || '';
 
+  const title = `${event.projectName} · Permission needed`;
+
+  // Layered shape:
+  //   title    = project + kind
+  //   subtitle = original goal (highest-level context)
+  //   body     = "<Tool>: <description>" (what the agent wants to do now)
+  //              "Asked: <last user msg>" (only if distinct from goal)
+  //              <command/file> (the specific data)
+  //              footer (added by sendNotification)
+  if (toolName && toolName !== 'Unknown' && toolName !== '') {
+    const subtitle = goal
+      ? `Goal: ${summarize(goal, 70)}`
+      : description
+        ? `${toolName}: ${summarize(description, 70)}`
+        : `${toolName} — ${toolVerb(toolName)}`;
+
+    let detail = '';
     if (toolName === 'Bash' && command) {
-      // For Bash, show the command
-      body = command.length > 200 ? command.substring(0, 200) + '...' : command;
-    } else if ((toolName === 'Edit' || toolName === 'Write' || toolName === 'Read') && filePath) {
-      // For file operations, show the file path
-      body = filePath;
-    } else if (description) {
-      body = description;
+      detail = command;
+    } else if (
+      (toolName === 'Edit' ||
+        toolName === 'Write' ||
+        toolName === 'Read' ||
+        toolName === 'NotebookEdit') &&
+      filePath
+    ) {
+      detail = filePath;
     } else if (command) {
-      body = command;
+      detail = command;
     } else if (filePath) {
-      body = filePath;
-    } else {
-      body = `Approve ${toolName} in ${event.projectName}`;
+      detail = filePath;
+    }
+    if (detail.length > 500) detail = detail.substring(0, 500) + '…';
+
+    const lines = [];
+    // What the agent wants to do (description) — only push when goal occupies
+    // the subtitle, otherwise it's in the subtitle already.
+    if (goal && description) {
+      lines.push(`${toolName}: ${description}`);
+    }
+    // What the user most recently asked — only when it's a distinct follow-up,
+    // not the original goal restated.
+    if (lastUserMessage && lastUserMessage !== goal) {
+      lines.push(`Asked: ${summarize(lastUserMessage, 120)}`);
+    }
+    if (detail) {
+      lines.push(detail);
+    }
+    if (lines.length === 0) {
+      lines.push(message || `Approve ${toolName}`);
     }
 
-    return { title, body };
+    return { title, subtitle, body: lines.join('\n') };
   }
 
-  // Case 2: We only have a message (e.g., from Notification event)
+  // No tool name (Notification permission_prompt path).
+  const subtitle = goal
+    ? `Goal: ${summarize(goal, 70)}`
+    : summarize(message) || 'Permission';
+
   if (message) {
-    return {
-      title: `Permission Needed`,
-      body: message,
-    };
+    const lines = [message];
+    if (lastUserMessage && lastUserMessage !== goal && lastUserMessage !== message) {
+      lines.push(`Asked: ${summarize(lastUserMessage, 120)}`);
+    }
+    return { title, subtitle, body: lines.join('\n') };
   }
 
-  // Case 3: Minimal fallback
-  return {
-    title: `Permission Needed`,
-    body: `Agent needs permission in ${event.projectName}`,
-  };
+  return { title, subtitle, body: 'Agent needs permission' };
 }
 
 /**
  * Build question/elicitation notification content.
- * Same structure regardless of source.
+ * Returns { title, subtitle, body }.
  *
- * Handles two formats:
- * 1. Claude Code: { message: "question text", title: "..." }
- * 2. OpenCode: { questions: [{ header, options: [{ label, description }] }] }
- *
- * Output is always:
- *   Title: "Question: <header>"  or  "Question"
- *   Body:  "<question text> | Options: A / B / C"
+ *   title:    "<project> · Question"
+ *   subtitle: <question header (truncated)>   (or 'Awaiting answer' fallback)
+ *   body:     <question text>
+ *             [Options: A / B / C]
  */
-function buildQuestionNotification(event) {
+function buildQuestionNotification(event, ctx = {}) {
   const d = event.data;
   const message = d.message || '';
-  const title = d.title || '';
+  const title = `${event.projectName} · Question`;
   const questions = d.questions || [];
+
+  const goal = ctx.goal || '';
+  const lastUserMessage = ctx.lastUserMessage || '';
 
   // Case 1: OpenCode question.asked with structured questions array
   if (questions.length > 0) {
-    const q = questions[0]; // Use first question
+    const q = questions[0];
     const header = q.header || q.question || '';
     const options = (q.options || []).map((o) => o.label).filter(Boolean);
 
-    const notifTitle = header ? `Question: ${header}` : 'Question';
-    let body = q.question || header || '';
+    const subtitle = goal
+      ? `Goal: ${summarize(goal, 70)}`
+      : summarize(header || q.question, 80) || 'Awaiting answer';
 
-    if (options.length > 0) {
-      body = body ? `${body} | Options: ${options.join(' / ')}` : `Options: ${options.join(' / ')}`;
+    const lines = [];
+    if (q.question) lines.push(q.question);
+    else if (header) lines.push(header);
+    if (options.length > 0) lines.push(`Options: ${options.join(' / ')}`);
+    if (lastUserMessage && lastUserMessage !== goal) {
+      lines.push(`Asked: ${summarize(lastUserMessage, 120)}`);
     }
+    if (lines.length === 0) lines.push('Agent is asking a question');
 
-    if (!body) {
-      body = `Agent is asking a question in ${event.projectName}`;
-    }
+    let body = lines.join('\n');
+    if (body.length > 500) body = body.substring(0, 500) + '…';
 
-    return {
-      title: notifTitle,
-      body: body.length > 300 ? body.substring(0, 300) + '...' : body,
-    };
+    return { title, subtitle, body };
   }
 
-  // Case 2: Claude Code notification with message text
-  const notifTitle = title && title !== 'Permission needed' ? title : 'Question';
+  // Case 2: Claude Code Notification (elicitation_dialog). Goal is the original
+  // user prompt; the agent's question itself is the body.
+  const stdinTitle = d.title || '';
+  const subtitle = goal
+    ? `Goal: ${summarize(goal, 70)}`
+    : summarize(message, 80) ||
+      (stdinTitle && stdinTitle !== 'Permission needed' ? summarize(stdinTitle, 80) : '') ||
+      'Awaiting answer';
 
   if (message) {
-    return {
-      title: notifTitle,
-      body: message.length > 300 ? message.substring(0, 300) + '...' : message,
-    };
+    const lines = [message.length > 500 ? message.substring(0, 500) + '…' : message];
+    if (lastUserMessage && lastUserMessage !== goal && lastUserMessage !== message) {
+      lines.push(`Asked: ${summarize(lastUserMessage, 120)}`);
+    }
+    return { title, subtitle, body: lines.join('\n') };
   }
 
-  // Case 3: Minimal fallback
-  return {
-    title: 'Question',
-    body: `Agent is asking a question in ${event.projectName}`,
-  };
+  return { title, subtitle, body: 'Agent is asking a question' };
 }
 
 // ============================================
@@ -996,7 +1335,13 @@ function checkCompletion(projectName, source) {
 
     const message = createCompletionMessage(state, projectName);
 
-    sendNotification(`${projectName} Complete`, message, 'completion', source);
+    sendNotification(
+      `${projectName} · Session complete`,
+      message,
+      'completion',
+      source,
+      'Agent finished'
+    );
 
     state.pendingCompletion = false;
     saveSessionState(state);
@@ -1005,26 +1350,24 @@ function checkCompletion(projectName, source) {
   }
 }
 
-function createCompletionMessage(state, projectName) {
+function createCompletionMessage(state, _projectName) {
   const timestamp = new Date().toLocaleTimeString();
-  let message = `Session completed in ${projectName} at ${timestamp}`;
+  const lines = [`Finished at ${timestamp}.`];
 
   const totalTools = state.totalToolUses || 0;
   if (totalTools > 0) {
-    message += ` | ${totalTools} tools used`;
+    lines.push(`${totalTools} tools used.`);
 
     if (state.recentTools && state.recentTools.length > 0) {
-      const toolSummary = state.recentTools.slice(0, 3).join(', ');
-      message += ` | Recent: ${toolSummary}`;
+      lines.push(`Recent: ${state.recentTools.slice(0, 3).join(', ')}`);
     }
 
     if (state.recentFiles && state.recentFiles.length > 0) {
-      const fileSummary = state.recentFiles.slice(0, 3).join(', ');
-      message += ` | Files: ${fileSummary}`;
+      lines.push(`Files: ${state.recentFiles.slice(0, 3).join(', ')}`);
     }
   }
 
-  return message;
+  return lines.join('\n');
 }
 
 // ============================================
@@ -1044,14 +1387,14 @@ function sendNotificationAndPoll(
   source,
   requestId,
   eventData,
-  { skipPush = false } = {}
+  { skipPush = false, subtitle = '' } = {}
 ) {
   return new Promise((resolve) => {
     const timestamp = new Date().toISOString();
 
-    const runtimePrefix = source === 'opencode' ? '[OpenCode]' : '[Claude]';
-    const envPrefix = USE_LOCAL ? '[LOCAL]' : '';
-    const finalTitle = `${runtimePrefix}${envPrefix ? ' ' + envPrefix : ''} ${title}`;
+    // Title flows through unchanged; runtime/env metadata moves to a body suffix
+    // line so it doesn't eat title space on the lock screen.
+    const finalBody = withFooter(body, source);
 
     // When skipPush is true (WebSocket clients connected), skip the actual
     // POST to /api/notify but still register the pending request and poll.
@@ -1063,8 +1406,9 @@ function sendNotificationAndPoll(
       // We still need to POST with waitForResponse so the server creates
       // the pending-request entry, but we mark it as ws-only.
       const registerPayload = JSON.stringify({
-        title: finalTitle,
-        message: body,
+        title,
+        ...(subtitle ? { subtitle } : {}),
+        message: finalBody,
         waitForResponse: true,
         skipPush: true,
         ...(DEVICE_TOKEN && { deviceToken: DEVICE_TOKEN }),
@@ -1128,11 +1472,12 @@ function sendNotificationAndPoll(
       return;
     }
 
-    debugLog(`Sending bidirectional notification: "${finalTitle}" (requestId: ${requestId})`);
+    debugLog(`Sending bidirectional notification: "${title}" (requestId: ${requestId})`);
 
     const payload = JSON.stringify({
-      title: finalTitle,
-      message: body,
+      title,
+      ...(subtitle ? { subtitle } : {}),
+      message: finalBody,
       waitForResponse: true,
       ...(DEVICE_TOKEN && { deviceToken: DEVICE_TOKEN }),
       data: {
@@ -1168,8 +1513,9 @@ function sendNotificationAndPoll(
       res.on('end', () => {
         if (IS_CLAUDE_CODE) {
           console.error(`\n=== BIDIRECTIONAL NOTIFICATION SENT [${requestId}] ===`);
-          console.error(`Title: ${finalTitle}`);
-          console.error(`Message: ${body}`);
+          console.error(`Title: ${title}`);
+          if (subtitle) console.error(`Subtitle: ${subtitle}`);
+          console.error(`Message: ${finalBody}`);
           console.error(`Status: ${res.statusCode}`);
           console.error(`=== NOW POLLING FOR RESPONSE ===\n`);
         }
@@ -1285,22 +1631,22 @@ function startPolling(requestId, resolve) {
   }, POLL_INTERVAL);
 }
 
-function sendNotification(title, body, category = 'completion', source = RUNTIME) {
+function sendNotification(title, body, category = 'completion', source = RUNTIME, subtitle = '') {
   const requestId = Math.random().toString(36).substring(2, 15);
   const timestamp = new Date().toISOString();
 
-  // Prefix: [Claude] or [OpenCode], optionally [LOCAL]
-  const runtimePrefix = source === 'opencode' ? '[OpenCode]' : '[Claude]';
-  const envPrefix = USE_LOCAL ? '[LOCAL]' : '';
-  const finalTitle = `${runtimePrefix}${envPrefix ? ' ' + envPrefix : ''} ${title}`;
+  // Title flows through unchanged; runtime/env metadata is appended as a low-weight
+  // body suffix (see buildFooter / withFooter in Section 8).
+  const finalBody = withFooter(body, source);
 
-  debugLog(`Sending notification: "${finalTitle}"`);
-  debugLog(`  Message: "${body.substring(0, 100)}..."`);
+  debugLog(`Sending notification: "${title}"`);
+  debugLog(`  Message: "${finalBody.substring(0, 100)}..."`);
   debugLog(`  Category: ${category}, RequestID: ${requestId}`);
 
   const payload = JSON.stringify({
-    title: finalTitle,
-    message: body,
+    title,
+    ...(subtitle ? { subtitle } : {}),
+    message: finalBody,
     ...(DEVICE_TOKEN && { deviceToken: DEVICE_TOKEN }),
     data: {
       category,
@@ -1333,8 +1679,9 @@ function sendNotification(title, body, category = 'completion', source = RUNTIME
         console.error(`\n=== NOTIFICATION SENT [${requestId}] @ ${timestamp} ===`);
         console.error(`Project: ${getProjectName()}`);
         console.error(`Category: ${category}`);
-        console.error(`Title: ${finalTitle}`);
-        console.error(`Message: ${body}`);
+        console.error(`Title: ${title}`);
+        if (subtitle) console.error(`Subtitle: ${subtitle}`);
+        console.error(`Message: ${finalBody}`);
         console.error(`API URL: ${API_URL} (${USE_LOCAL ? 'LOCAL' : 'REMOTE'})`);
         console.error(`Status Code: ${res.statusCode}`);
         console.error(`Response: ${responseData}`);
