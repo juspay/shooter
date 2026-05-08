@@ -75,6 +75,7 @@ export class LibraryAPNsService {
     notification.alert = {
       body: payload.body ?? payload.message ?? '',
       title: payload.title,
+      ...(payload.subtitle ? { subtitle: payload.subtitle } : {}),
     };
 
     notification.badge = payload.badge ?? 1;

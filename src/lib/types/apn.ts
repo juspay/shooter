@@ -23,6 +23,7 @@ export interface NotificationPayload {
   data: null | Record<string, unknown>;
   message: null | string;
   sound: null | string;
+  subtitle?: null | string;
   title: string;
 }
 
