@@ -11,6 +11,16 @@ import type {
   SentDetail,
 } from './generated';
 
+// Result shape returned by LibraryAPNsService.sendNotification — kept narrow
+// because callers (notify endpoint) treat it as a small success/error summary.
+export interface APNsSendResult {
+  details?: unknown[];
+  error?: string;
+  failed: number;
+  sent: number;
+  success: boolean;
+}
+
 export interface LibraryResult {
   failed: LibraryFailedItem[];
   sent: LibrarySentItem[];

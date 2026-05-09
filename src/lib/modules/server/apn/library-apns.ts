@@ -1,17 +1,33 @@
-import type { LibraryResult as APNsLibraryResult, NotificationPayload } from '$lib/types';
+import type { APNsSendResult, NotificationPayload } from '$lib/types';
 
 import { env } from '$env/dynamic/private';
-// APNs service using proven library instead of manual implementation
-import apn from '@parse/node-apn';
+import { execFile, execFileSync } from 'child_process';
+import jwt from 'jsonwebtoken';
+import { promisify } from 'util';
 
 import { toErrorMessage } from '../utils/error';
 
+// APNs delivery via curl. Replaces @parse/node-apn (which times out on Node 24
+// regardless of version: 7.1.0, 8.1.0, both reproduce). Node's native http2 +
+// TLS clients also fail to connect to api.push.apple.com / api.sandbox.push.apple.com
+// while curl, openssl s_client, and nc all succeed — strongly Apple-specific TLS
+// quirk in Node. curl uses libnghttp2 + system TLS and connects in ~1s.
+
+const execFileAsync = promisify(execFile);
+
+const APNS_HOST_PROD = 'api.push.apple.com';
+const APNS_HOST_SANDBOX = 'api.sandbox.push.apple.com';
+const JWT_REFRESH_INTERVAL_MS = 30 * 60 * 1000;
+const REQUEST_TIMEOUT_SECONDS = 15;
+
 export class LibraryAPNsService {
   private bundleId: string | undefined;
+  private cachedJwt: null | string = null;
+  private cachedJwtAt = 0;
   private configured = false;
+  private host = '';
   private keyId: string | undefined;
   private privateKey: string | undefined;
-  private provider: apn.Provider | null = null;
   private teamId: string | undefined;
 
   constructor() {
@@ -29,21 +45,30 @@ export class LibraryAPNsService {
     }
 
     const production = env.APNS_PRODUCTION === 'true';
-    const options = {
-      production,
-      token: {
-        key: this.privateKey,
-        keyId: this.keyId,
-        teamId: this.teamId,
-      },
-    };
+    this.host = production ? APNS_HOST_PROD : APNS_HOST_SANDBOX;
+
+    // Verify curl is available before declaring the service ready. Without this
+    // probe, isConfigured() flips true on a host missing curl and every send
+    // fails with ENOENT at runtime instead of at startup.
+    try {
+      execFileSync('curl', ['--version'], { stdio: 'ignore' });
+    } catch (error) {
+      console.error(
+        '[apns] curl binary not found — install curl to enable APNs delivery:',
+        toErrorMessage(error)
+      );
+      this.configured = false;
+      return;
+    }
 
     try {
-      this.provider = new apn.Provider(options);
+      this.getJwt();
       this.configured = true;
-      console.log(`[apns] Provider initialized (${production ? 'production' : 'sandbox'} mode)`);
+      console.log(
+        `[apns] Provider initialized (${production ? 'production' : 'sandbox'} mode, curl transport)`
+      );
     } catch (error) {
-      console.error('[apns] Failed to create provider:', toErrorMessage(error));
+      console.error('[apns] Failed to initialize:', toErrorMessage(error));
       this.configured = false;
     }
   }
@@ -55,87 +80,122 @@ export class LibraryAPNsService {
   async sendNotification(
     deviceToken: string,
     payload: NotificationPayload
-  ): Promise<{
-    details?: unknown[];
-    error?: string;
-    failed: number;
-    sent: number;
-    success: boolean;
-  }> {
-    if (!this.configured || !this.provider) {
+  ): Promise<APNsSendResult> {
+    if (!this.configured) {
       throw new Error('APNs service not configured properly');
     }
-
     if (!deviceToken || !payload) {
       throw new Error('Device token and payload are required');
     }
 
-    const notification = new apn.Notification();
-
-    notification.alert = {
-      body: payload.body ?? payload.message ?? '',
-      title: payload.title,
-      ...(payload.subtitle ? { subtitle: payload.subtitle } : {}),
+    const aps: Record<string, unknown> = {
+      alert: {
+        body: payload.body ?? payload.message ?? '',
+        title: payload.title,
+        ...(payload.subtitle ? { subtitle: payload.subtitle } : {}),
+      },
+      badge: payload.badge ?? 1,
+      sound: payload.sound ?? 'default',
     };
-
-    notification.badge = payload.badge ?? 1;
-    notification.sound = payload.sound ?? 'default';
-    if (!this.bundleId) {
-      throw new Error('APNs bundleId is required but was not configured');
-    }
-    notification.topic = this.bundleId;
-
     if (payload.category) {
-      notification.aps.category = payload.category;
+      aps.category = payload.category;
     }
 
+    const body: Record<string, unknown> = { aps };
     if (payload.data) {
-      notification.payload = payload.data;
+      // Drop any caller-supplied `aps` so it can't replace the alert envelope
+      // we just built (would otherwise produce silent or malformed pushes).
+      const { aps: _ignoredAps, ...customData } = payload.data;
+      void _ignoredAps;
+      Object.assign(body, customData);
     }
+    const bodyJson = JSON.stringify(body);
+    const jwtToken = this.getJwt();
+    const url = `https://${this.host}/3/device/${deviceToken}`;
 
-    const result = (await this.provider.send(notification, deviceToken)) as APNsLibraryResult;
+    const args = [
+      '-sS',
+      '--http2',
+      '--max-time',
+      String(REQUEST_TIMEOUT_SECONDS),
+      '-X',
+      'POST',
+      '-H',
+      'content-type: application/json',
+      '-H',
+      `apns-topic: ${this.bundleId}`,
+      '-H',
+      `authorization: bearer ${jwtToken}`,
+      '-H',
+      'apns-push-type: alert',
+      '-H',
+      'apns-priority: 10',
+      '-d',
+      bodyJson,
+      '-w',
+      '\n__SHOOTER_HTTP_STATUS__:%{http_code}\n',
+      url,
+    ];
 
-    if (result.failed && result.failed.length > 0) {
-      console.error(`[apns] Full failed result: ${JSON.stringify(result.failed[0])}`);
-      const failedItem = result.failed[0] as unknown as Record<string, unknown>;
-      const rawReason =
-        (failedItem?.response as Record<string, unknown>)?.reason ??
-        failedItem?.status ??
-        failedItem?.error;
-      const reason =
-        typeof rawReason === 'string' ? rawReason : JSON.stringify(rawReason ?? failedItem);
-      console.error(`[apns] Delivery failed: ${reason}`);
+    try {
+      const { stdout } = await execFileAsync('curl', args, {
+        maxBuffer: 1024 * 1024,
+        timeout: (REQUEST_TIMEOUT_SECONDS + 5) * 1000,
+      });
 
-      return {
-        error: reason,
-        failed: result.failed?.length || 0,
-        sent: result.sent?.length || 0,
-        success: false,
-      };
+      const statusMatch = /__SHOOTER_HTTP_STATUS__:(\d+)/.exec(stdout);
+      const status = statusMatch ? parseInt(statusMatch[1], 10) : 0;
+      const bodyText = stdout.replace(/\n?__SHOOTER_HTTP_STATUS__:\d+\n?$/, '').trim();
+
+      if (status === 200) {
+        // Intentionally omit `details` here — including the raw 64-char
+        // device token would leak it through API responses and downstream
+        // logs, undercutting the redaction we do in the notifier.
+        return { failed: 0, sent: 1, success: true };
+      }
+
+      let reason: string = bodyText;
+      try {
+        const parsed: unknown = JSON.parse(bodyText);
+        if (
+          parsed &&
+          typeof parsed === 'object' &&
+          'reason' in parsed &&
+          typeof (parsed as { reason: unknown }).reason === 'string'
+        ) {
+          reason = (parsed as { reason: string }).reason;
+        }
+      } catch {
+        // raw body
+      }
+      console.error(`[apns] Delivery failed (status=${status}): ${reason}`);
+      return { error: reason, failed: 1, sent: 0, success: false };
+    } catch (err) {
+      const msg = toErrorMessage(err);
+      console.error(`[apns] curl transport error: ${msg}`);
+      return { error: msg, failed: 1, sent: 0, success: false };
     }
-
-    if (result.sent && result.sent.length > 0) {
-      return {
-        details: result.sent,
-        failed: 0,
-        sent: result.sent.length,
-        success: true,
-      };
-    }
-
-    return {
-      details: [result as unknown as Record<string, unknown>],
-      error: 'Unexpected result format',
-      failed: 1,
-      sent: 0,
-      success: false,
-    };
   }
 
   shutdown(): void {
-    if (this.provider) {
-      void this.provider.shutdown();
+    // No persistent state to release.
+  }
+
+  private getJwt(): string {
+    const now = Date.now();
+    if (this.cachedJwt && now - this.cachedJwtAt < JWT_REFRESH_INTERVAL_MS) {
+      return this.cachedJwt;
     }
+    if (!this.privateKey || !this.keyId || !this.teamId) {
+      throw new Error('APNs credentials missing');
+    }
+    const token = jwt.sign({ iat: Math.floor(now / 1000), iss: this.teamId }, this.privateKey, {
+      algorithm: 'ES256',
+      header: { alg: 'ES256', kid: this.keyId },
+    });
+    this.cachedJwt = token;
+    this.cachedJwtAt = now;
+    return token;
   }
 }
 
