@@ -1,0 +1,56 @@
+# CodeRabbit configuration — https://docs.coderabbit.ai/reference/yaml-template
+#
+# Repo-level config takes precedence over the CodeRabbit dashboard. We want
+# automatic re-review on every commit pushed to an open PR (incremental
+# reviews) so contributors don't have to manually @coderabbitai full review
+# after each force-push or fix-up.
+
+language: en-US
+early_access: false
+
+reviews:
+  # Tone: 'chill' (informational, non-blocking) vs 'assertive' (more critical).
+  profile: chill
+
+  # Don't have CodeRabbit auto-request changes — humans drive that decision.
+  request_changes_workflow: false
+
+  # Keep the walkthrough summary at the top of the PR.
+  high_level_summary: true
+  poem: true
+  review_status: true
+  collapse_walkthrough: false
+
+  auto_review:
+    # Run a review automatically when a PR is opened.
+    enabled: true
+
+    # Run a review again on every new commit pushed to the PR branch
+    # (default true on most plans; we set it explicitly so it can't be
+    # silently disabled via the dashboard).
+    auto_incremental_review: true
+
+    # Skip PRs marked as draft — we'll request a review manually when ready.
+    drafts: false
+
+    # Regex patterns matching base branches that should be reviewed. Default
+    # CodeRabbit behaviour with an empty list is to only review PRs targeting
+    # the default branch (`release` in this repo) — that would skip stacked
+    # PRs aimed at feature branches. ".*" explicitly opts every base branch
+    # in.
+    base_branches:
+      - '.*'
+
+    # No label gating — review every PR regardless of labels.
+    labels: []
+
+    # Skip PRs whose title contains any of these keywords.
+    ignore_title_keywords:
+      - WIP
+      - DO NOT MERGE
+
+chat:
+  # Allow replies in PR threads without requiring an explicit @coderabbitai
+  # mention every time. Manual @coderabbitai full review still works for
+  # forcing a fresh review.
+  auto_reply: true
