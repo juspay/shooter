@@ -1,3 +1,9 @@
+## [1.9.1](https://github.com/juspay/shooter/compare/v1.9.0...v1.9.1) (2026-05-09)
+
+### Bug Fixes
+
+* **(apn):**  replace @parse/node-apn with curl HTTP/2 transport ([3187014](https://github.com/juspay/shooter/commit/3187014b7f9db9d49bbe2f02ba95ef441c72928f))
+
 ## [1.9.0](https://github.com/juspay/shooter/compare/v1.8.0...v1.9.0) (2026-05-08)
 
 ### Features
