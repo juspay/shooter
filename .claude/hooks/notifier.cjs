@@ -80,6 +80,13 @@ const completionTimers = new Map();
 const DEBUG_ENABLED = process.env.SHOOTER_DEBUG === 'true';
 const DEBUG_LOG_FILE = '/tmp/shooter-debug.log';
 
+// Mask APNs device tokens (64-char hex) and similar long hex secrets in any
+// string before logging. Keeps the first 4 + last 4 chars for debugging.
+function redactSecrets(value) {
+  if (typeof value !== 'string') return value;
+  return value.replace(/[0-9a-f]{40,}/gi, (m) => `${m.slice(0, 4)}…${m.slice(-4)}`);
+}
+
 // ============================================
 // SECTION 1.5: WebSocket Client Detection
 // ============================================
@@ -1684,12 +1691,12 @@ function sendNotification(title, body, category = 'completion', source = RUNTIME
         console.error(`Message: ${finalBody}`);
         console.error(`API URL: ${API_URL} (${USE_LOCAL ? 'LOCAL' : 'REMOTE'})`);
         console.error(`Status Code: ${res.statusCode}`);
-        console.error(`Response: ${responseData}`);
+        console.error(`Response: ${redactSecrets(responseData)}`);
         console.error(`=== END NOTIFICATION ===\n`);
       }
 
       if (res.statusCode !== 200) {
-        debugLog(`HTTP ERROR: ${res.statusCode} ${responseData}`);
+        debugLog(`HTTP ERROR: ${res.statusCode} ${redactSecrets(responseData)}`);
       } else {
         debugLog(`Notification sent successfully`);
       }

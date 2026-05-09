@@ -211,6 +211,17 @@ PID file: `~/.shooter/shooter.pid`. Tunnel PID: `~/.shooter/tunnel.pid`. Logs: `
 5. Setup is now streamlined: `shooter setup` generates API key and builds (~60 seconds)
 6. Push notifications are optional add-ons: `shooter setup --push`
 
+## Branch Policy
+
+**Never commit or push directly to `release`.** Always create a fork branch and open a PR:
+
+- `fix/<short-slug>` for bug fixes
+- `feat/<short-slug>` for new features
+- `docs/<short-slug>` for documentation-only changes
+- `chore/<short-slug>` for tooling, deps, or non-functional cleanup
+
+This applies even to small or "obvious" changes — `release` is the published-version branch and CI runs `semantic-release` against it. Direct commits bypass review and version-bump tooling.
+
 ## Environment Setup
 
 See `.env.example` for the full template. Required environment variables (set in `.env` for local dev):
@@ -292,4 +303,13 @@ The `/api/health` endpoint returns `"healthy"` with a `warnings` array (e.g., wh
 
 ### APNs Environment
 
-The iOS app entitlements declare `aps-environment = production`. The server's `APNS_PRODUCTION` env var controls which APNs gateway is used (default: sandbox). For TestFlight/App Store builds, set `APNS_PRODUCTION=true` in the server environment.
+The iOS app's `aps-environment` entitlement depends on how the app is built:
+
+- **Xcode dev install**: `aps-environment = development` → device token is registered with the APNs **sandbox** gateway. Set `APNS_PRODUCTION=false` in the server environment.
+- **TestFlight / App Store**: `aps-environment = production` → device token is registered with the APNs **production** gateway. Set `APNS_PRODUCTION=true`.
+
+Mismatch produces `BadDeviceToken` (HTTP 400) from APNs. To diagnose which gateway a token belongs to without an iOS device handy, POST a test alert to both gateways with curl: the one that returns 200 (empty body) is correct; the other returns `{"reason":"BadDeviceToken"}`.
+
+### APNs Transport (curl, not @parse/node-apn)
+
+`src/lib/modules/server/apn/library-apns.ts` uses **curl over HTTP/2** as the APNs transport. The earlier implementation imported `@parse/node-apn`, which hangs indefinitely on Node 24 with `apn write timeout` / `ERR_HTTP2_STREAM_CANCEL` regardless of the library version (verified with both 7.1.0 and 8.1.0). Node's native `http2` and `tls` modules are also unable to connect to `api.push.apple.com` / `api.sandbox.push.apple.com` on Node 24 — TLS handshakes time out — while `curl`, `openssl s_client`, and `nc` all succeed against the same hosts. The wrapper signs an ES256 JWT with `jsonwebtoken`, then `execFile`s curl with `--http2` for delivery. Same public API as before (`isConfigured()`, `sendNotification(deviceToken, payload)`).
