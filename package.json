@@ -44,7 +44,14 @@
     "overrides": {
       "devalue": ">=5.8.1",
       "protobufjs": ">=7.5.8 <8",
-      "@protobufjs/utf8": ">=1.1.1"
+      "@protobufjs/utf8": ">=1.1.1",
+      "lodash": ">=4.18.0",
+      "lodash-es": ">=4.18.0",
+      "fast-xml-parser": ">=5.7.0",
+      "fast-xml-builder": ">=1.1.7",
+      "postcss": ">=8.5.10",
+      "cookie": ">=0.7.0 <2",
+      "@tootallnate/once": ">=3.0.1"
     }
   },
   "engines": {
@@ -101,7 +108,7 @@
     "prettier": "^3.8.1",
     "prettier-plugin-svelte": "^3.4.1",
     "semantic-release": "24.2.8",
-    "svelte": "^5.49.1",
+    "svelte": "^5.55.7",
     "svelte-check": "^4.3.6",
     "type-crafter": "^0.10.0",
     "typescript": "^5.9.3",
