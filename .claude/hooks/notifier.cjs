@@ -64,17 +64,10 @@ if (IS_CLAUDE_CODE && !API_KEY) {
   process.exit(1);
 }
 
-// Completion detection timeout
-const COMPLETION_TIMEOUT = 45000; // 45 seconds
-
 // Bidirectional permission response polling
 const PERMISSION_TIMEOUT = parseInt(process.env.SHOOTER_PERMISSION_TIMEOUT || '120') * 1000;
 const POLL_INTERVAL = 2000; // 2 seconds between polls
 const RESPONSE_URL = `${BASE_URL}/api/response`;
-const STATE_DIR = `/tmp/claude_session_tracker`;
-
-// Global timeout tracker per project (for OpenCode)
-const completionTimers = new Map();
 
 // Debug logging flag
 const DEBUG_ENABLED = process.env.SHOOTER_DEBUG === 'true';
@@ -190,18 +183,27 @@ function readStdin() {
 /**
  * Common Event Format - all events normalized to this structure
  *
- * eventType values:
- *   'tool.before'    - Tool is about to execute (activity tracking)
- *   'tool.after'     - Tool finished executing (activity tracking)
- *   'session.idle'   - Agent finished responding (completion timer)
+ * eventType values handled by the dispatcher:
+ *   'tool.before'    - Tool is about to execute (debug log only)
+ *   'tool.after'     - Tool finished executing (debug log only)
  *   'session.start'  - New session started
+ *   'session.end'    - Session terminated
+ *   'subagent.start' - Subagent spawned
+ *   'subagent.stop'  - Subagent finished
+ *   'user.prompt'    - User submitted a prompt
  *   'permission'     - Agent needs permission to run a tool
+ *   'permission_notification' - Permission dialog opened (informational)
  *   'question'       - Agent is asking user a question / presenting options
  *   'idle_input'     - Agent is idle, waiting for user to type
  *   'intervention'   - Generic intervention needed (fallback)
- *   'error'          - An error occurred
- *   'check.completion' - Manual completion check
- *   'session.status' - Internal status update (ignored)
+ *   'error'          - An error occurred (debug log only — not actionable from phone)
+ *   'context.compact' - Context about to be compacted (debug log only)
+ *
+ * Other event types emitted by adapters (e.g. 'session.idle', 'task.completed',
+ * 'teammate.idle', 'check.completion', 'session.status') fall through to the
+ * dispatcher's default case and are silently ignored — agent-idle and
+ * task-completion notifications were intentionally removed because they
+ * aren't actionable remotely.
  */
 function createCommonEvent(source, eventType, data = {}) {
   return {
@@ -412,14 +414,8 @@ function adaptOpenCodeEvent(hookEventType, hookData = {}) {
 }
 
 // ============================================
-// SECTION 5: Session State Management
+// SECTION 5: Project / Session Identification
 // ============================================
-
-function ensureStateDir() {
-  if (!fs.existsSync(STATE_DIR)) {
-    fs.mkdirSync(STATE_DIR, { recursive: true });
-  }
-}
 
 function getProjectName() {
   return path.basename(process.cwd()) || 'unknown';
@@ -430,45 +426,6 @@ function getSessionIdentifier() {
   const runtime = RUNTIME;
   const pid = process.pid;
   return `${projectName}_${runtime}_${pid}`;
-}
-
-function getSessionState() {
-  ensureStateDir();
-  const sessionId = getSessionIdentifier();
-  const stateFile = path.join(STATE_DIR, `session_state_${sessionId}.json`);
-
-  try {
-    if (fs.existsSync(stateFile)) {
-      const data = fs.readFileSync(stateFile, 'utf8');
-      return JSON.parse(data);
-    }
-  } catch (error) {
-    debugLog(`Could not read session state: ${error.message}`);
-  }
-
-  const projectName = getProjectName();
-  return {
-    lastStopTime: null,
-    lastActivityTime: Date.now(),
-    sessionId: sessionId,
-    pendingCompletion: false,
-    project: projectName,
-    recentTools: [],
-    recentFiles: [],
-    totalToolUses: 0,
-  };
-}
-
-function saveSessionState(state) {
-  ensureStateDir();
-  const sessionId = getSessionIdentifier();
-  const stateFile = path.join(STATE_DIR, `session_state_${sessionId}.json`);
-
-  try {
-    fs.writeFileSync(stateFile, JSON.stringify(state, null, 2));
-  } catch (error) {
-    debugLog(`Could not save session state: ${error.message}`);
-  }
 }
 
 // ============================================
@@ -488,10 +445,6 @@ async function processEvent(event) {
 
     case 'tool.after':
       handleToolEnd(event);
-      break;
-
-    case 'session.idle':
-      handleSessionIdle(event);
       break;
 
     case 'session.start':
@@ -524,10 +477,6 @@ async function processEvent(event) {
       handleError(event);
       break;
 
-    case 'check.completion':
-      handleCheckCompletion(event);
-      break;
-
     case 'session.end':
       handleSessionEnd(event);
       break;
@@ -542,14 +491,6 @@ async function processEvent(event) {
 
     case 'user.prompt':
       handleUserPrompt(event);
-      break;
-
-    case 'teammate.idle':
-      handleTeammateIdle(event);
-      break;
-
-    case 'task.completed':
-      handleTaskCompleted(event);
       break;
 
     case 'context.compact':
@@ -571,55 +512,15 @@ async function processEvent(event) {
 // ============================================
 
 function handleToolStart(event) {
-  const state = getSessionState();
-  const now = Date.now();
-
   debugLog(`Tool starting: ${event.data.tool || 'unknown'}`);
-
-  state.lastActivityTime = now;
-  state.pendingCompletion = false;
-
-  if (!state.recentTools) state.recentTools = [];
-  if (!state.totalToolUses) state.totalToolUses = 0;
-
-  state.recentTools.unshift(event.data.tool || 'unknown');
-  state.recentTools = state.recentTools.slice(0, 10);
-  state.totalToolUses++;
-
-  saveSessionState(state);
-
-  cancelCompletionTimer(event.projectName);
-  debugLog(`Activity detected, completion timer cancelled (${state.totalToolUses} tools total)`);
 }
 
 function handleToolEnd(event) {
-  const state = getSessionState();
-  state.lastActivityTime = Date.now();
-  saveSessionState(state);
   debugLog(`Tool complete: ${event.data.tool || 'unknown'}`);
 }
 
-function handleSessionIdle(event) {
-  const state = getSessionState();
-  const now = Date.now();
-
-  debugLog(`Session idle detected - starting ${COMPLETION_TIMEOUT / 1000}s completion timer`);
-
-  state.lastStopTime = now;
-  state.pendingCompletion = true;
-  saveSessionState(state);
-
-  scheduleCompletionTimer(event.projectName);
-}
-
-function handleSessionStart(event) {
-  const state = getSessionState();
-  state.sessionId = Date.now().toString();
-  state.lastActivityTime = Date.now();
-  state.pendingCompletion = false;
-  saveSessionState(state);
-  cancelCompletionTimer(event.projectName);
-  debugLog(`New session started: ${state.sessionId}`);
+function handleSessionStart(_event) {
+  debugLog(`New session started: ${getSessionIdentifier()}`);
 }
 
 /**
@@ -825,52 +726,20 @@ function handleError(event) {
   debugLog(`Error detected (not notifying): ${event.data.message}`);
 }
 
-function handleCheckCompletion(event) {
-  debugLog(`Manual completion check requested`);
-  checkCompletion(event.projectName, event.source);
-}
-
-function handleSessionEnd(event) {
-  const state = getSessionState();
-  state.pendingCompletion = false;
-  saveSessionState(state);
-  cancelCompletionTimer(event.projectName);
-  debugLog('Session ended - cleaned up state');
+function handleSessionEnd(_event) {
+  debugLog('Session ended');
 }
 
 function handleSubagentStart(event) {
-  const state = getSessionState();
-  state.lastActivityTime = Date.now();
-  state.pendingCompletion = false;
-  saveSessionState(state);
-  cancelCompletionTimer(event.projectName);
   debugLog(`Subagent started: ${event.data.agentType}`);
 }
 
 function handleSubagentStop(event) {
-  const state = getSessionState();
-  state.lastActivityTime = Date.now();
-  saveSessionState(state);
   debugLog(`Subagent stopped: ${event.data.agentType}`);
 }
 
-function handleUserPrompt(event) {
-  const state = getSessionState();
-  state.lastActivityTime = Date.now();
-  state.pendingCompletion = false;
-  saveSessionState(state);
-  cancelCompletionTimer(event.projectName);
-  debugLog('User prompt submitted - activity detected');
-}
-
-function handleTeammateIdle(event) {
-  // Informational only — no user input required. Skip notification.
-  debugLog(`Teammate idle (not notifying): ${event.data.teammate}`);
-}
-
-function handleTaskCompleted(event) {
-  // Informational only — task completion does not require a decision. Skip.
-  debugLog(`Task completed (not notifying): ${event.data.message}`);
+function handleUserPrompt(_event) {
+  debugLog('User prompt submitted');
 }
 
 // ============================================
@@ -1291,94 +1160,7 @@ function buildQuestionNotification(event, ctx = {}) {
 }
 
 // ============================================
-// SECTION 9: Completion Timer Management
-// ============================================
-
-function scheduleCompletionTimer(projectName) {
-  if (IS_CLAUDE_CODE) {
-    // Completion timer cannot work in Claude Code (each hook is a separate process)
-    return;
-  }
-  debugLog(`Scheduling completion check for ${projectName}`);
-  cancelCompletionTimer(projectName);
-
-  const timer = setTimeout(() => {
-    debugLog(`Completion timer fired for ${projectName}`);
-    checkCompletion(projectName, RUNTIME);
-  }, COMPLETION_TIMEOUT);
-
-  completionTimers.set(projectName, timer);
-  debugLog(`Completion timer scheduled (45s)`);
-}
-
-function cancelCompletionTimer(projectName) {
-  const existingTimer = completionTimers.get(projectName);
-  if (existingTimer) {
-    clearTimeout(existingTimer);
-    completionTimers.delete(projectName);
-    debugLog(`Completion timer cancelled for ${projectName}`);
-  }
-}
-
-function checkCompletion(projectName, source) {
-  if (IS_CLAUDE_CODE) {
-    return;
-  }
-  const state = getSessionState();
-  const now = Date.now();
-
-  debugLog(`Checking completion status for ${projectName}`);
-  debugLog(`  pendingCompletion: ${state.pendingCompletion}`);
-  debugLog(`  lastStopTime: ${state.lastStopTime}`);
-  debugLog(`  lastActivityTime: ${state.lastActivityTime}`);
-
-  if (
-    state.pendingCompletion &&
-    state.lastStopTime &&
-    state.lastActivityTime <= state.lastStopTime &&
-    now - state.lastStopTime >= COMPLETION_TIMEOUT
-  ) {
-    debugLog(`Conditions met - sending completion notification`);
-
-    const message = createCompletionMessage(state, projectName);
-
-    sendNotification(
-      `${projectName} · Session complete`,
-      message,
-      'completion',
-      source,
-      'Agent finished'
-    );
-
-    state.pendingCompletion = false;
-    saveSessionState(state);
-  } else {
-    debugLog(`No completion notification needed`);
-  }
-}
-
-function createCompletionMessage(state, _projectName) {
-  const timestamp = new Date().toLocaleTimeString();
-  const lines = [`Finished at ${timestamp}.`];
-
-  const totalTools = state.totalToolUses || 0;
-  if (totalTools > 0) {
-    lines.push(`${totalTools} tools used.`);
-
-    if (state.recentTools && state.recentTools.length > 0) {
-      lines.push(`Recent: ${state.recentTools.slice(0, 3).join(', ')}`);
-    }
-
-    if (state.recentFiles && state.recentFiles.length > 0) {
-      lines.push(`Files: ${state.recentFiles.slice(0, 3).join(', ')}`);
-    }
-  }
-
-  return lines.join('\n');
-}
-
-// ============================================
-// SECTION 10: Notification Service
+// SECTION 9: Notification Service
 // ============================================
 
 /**

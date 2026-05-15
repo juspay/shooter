@@ -289,10 +289,6 @@ The plans include comprehensive testing approaches:
 
 Terminal state and pending permission requests are persisted in `~/.shooter/shooter.db` (see `terminal-store.ts` and `pending-requests.ts`) and survive server restarts. WebSocket connections and auth tickets remain in-memory — clients reconnect / re-acquire tickets automatically, so no recovery is needed there.
 
-### Hook Completion Timer
-
-The 45-second completion timer in `notifier.cjs` only works for OpenCode (persistent plugin). For Claude Code, each hook invocation is a separate process, so timers cannot fire across invocations. The code is guarded with `IS_CLAUDE_CODE` checks to skip this path.
-
 ### Hook Timeout Mismatch
 
 The `PermissionRequest` hook has a 180-second timeout in `.claude/settings.json`, but the notifier's internal `PERMISSION_TIMEOUT` defaults to 120 seconds. The 60-second buffer ensures the notifier resolves before Claude Code kills the process.
