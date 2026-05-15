@@ -1,3 +1,9 @@
+## [1.10.0](https://github.com/juspay/shooter/compare/v1.9.3...v1.10.0) (2026-05-15)
+
+### Features
+
+* **(api):**  persist pending permission requests in SQLite ([a06a833](https://github.com/juspay/shooter/commit/a06a833de414d6af367fe941a3406fff89de1c7e))
+
 ## [1.9.3](https://github.com/juspay/shooter/compare/v1.9.2...v1.9.3) (2026-05-15)
 
 ### Bug Fixes
