@@ -1,3 +1,9 @@
+## [1.9.2](https://github.com/juspay/shooter/compare/v1.9.1...v1.9.2) (2026-05-15)
+
+### Bug Fixes
+
+* **(deps):**  dedupe lockfile and consolidate security bumps ([de1b2a4](https://github.com/juspay/shooter/commit/de1b2a45485a039705693c41057f24482c77a1f6)), closes [#61](https://github.com/juspay/shooter/issues/61) [#52](https://github.com/juspay/shooter/issues/52) [#50](https://github.com/juspay/shooter/issues/50) [#61](https://github.com/juspay/shooter/issues/61) [#99](https://github.com/juspay/shooter/issues/99) [#63](https://github.com/juspay/shooter/issues/63) [#64](https://github.com/juspay/shooter/issues/64)
+
 ## [1.9.1](https://github.com/juspay/shooter/compare/v1.9.0...v1.9.1) (2026-05-09)
 
 ### Bug Fixes
