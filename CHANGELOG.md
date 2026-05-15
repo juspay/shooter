@@ -1,3 +1,9 @@
+## [1.9.3](https://github.com/juspay/shooter/compare/v1.9.2...v1.9.3) (2026-05-15)
+
+### Bug Fixes
+
+* **(deps):**  re-bump svelte and add pnpm.overrides for remaining CVEs ([2c98b34](https://github.com/juspay/shooter/commit/2c98b34f6be60b12f046b6ac6a63321a9fd4215b)), closes [#91](https://github.com/juspay/shooter/issues/91) [#92](https://github.com/juspay/shooter/issues/92) [#89](https://github.com/juspay/shooter/issues/89) [#90](https://github.com/juspay/shooter/issues/90) [#103](https://github.com/juspay/shooter/issues/103) [#107](https://github.com/juspay/shooter/issues/107) [#105](https://github.com/juspay/shooter/issues/105) [#39](https://github.com/juspay/shooter/issues/39) [#77](https://github.com/juspay/shooter/issues/77) [#66](https://github.com/juspay/shooter/issues/66) [#67](https://github.com/juspay/shooter/issues/67)
+
 ## [1.9.2](https://github.com/juspay/shooter/compare/v1.9.1...v1.9.2) (2026-05-15)
 
 ### Bug Fixes
