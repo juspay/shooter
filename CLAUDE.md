@@ -287,7 +287,7 @@ The plans include comprehensive testing approaches:
 
 ### In-Memory State (Partial)
 
-Terminal state is now persisted via PTY holder processes + SQLite and survives server restarts. However, pending permission requests, WebSocket connections, and auth tickets are still in-memory. If the server restarts, in-flight permission requests are lost (but terminals reconnect automatically).
+Terminal state and pending permission requests are persisted in `~/.shooter/shooter.db` (see `terminal-store.ts` and `pending-requests.ts`) and survive server restarts. WebSocket connections and auth tickets remain in-memory — clients reconnect / re-acquire tickets automatically, so no recovery is needed there.
 
 ### Hook Completion Timer
 
