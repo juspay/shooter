@@ -1,5 +1,6 @@
-// In-memory notification history store.
-// Same pattern as pending-requests.ts — suitable for single-instance deployments.
+// In-memory notification history store — bounded ring buffer of recent
+// pushes for the /api/notify GET endpoint. Intentionally not persisted:
+// history is a debug/observability aid, not a source of truth.
 
 export type { NotificationRecord } from '$lib/types';
 import type { NotificationRecord } from '$lib/types';
