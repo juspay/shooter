@@ -1,3 +1,9 @@
+## [1.13.0](https://github.com/juspay/shooter/compare/v1.12.0...v1.13.0) (2026-05-24)
+
+### Features
+
+* **(decisions):**  wire plan-mode approval (PR-2 of 3) ([28db718](https://github.com/juspay/shooter/commit/28db7189111893112f5da39ae7605cbbf3b2e566))
+
 ## [1.12.0](https://github.com/juspay/shooter/compare/v1.11.0...v1.12.0) (2026-05-24)
 
 ### Features
