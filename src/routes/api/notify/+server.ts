@@ -1,4 +1,4 @@
-import type { NotificationData } from '$lib/types';
+import type { NotificationData, OptionChoice, ResponseKind } from '$lib/types';
 
 import { env } from '$env/dynamic/private';
 import { LibraryAPNsService } from '$lib/modules/server/apn/library-apns';
@@ -266,6 +266,11 @@ function recordNotification(title: string, message: string, data?: NotificationD
   notificationCache.set(key, Date.now());
 }
 
+// TODO(refactor): extract body parsing, filtering, and platform routing into
+// helpers. This handler grew past the 300-line guideline organically; PR-2
+// adds 4 lines for dynamic-options fields. A dedicated cleanup PR is the
+// right place to split it, not a feature PR.
+// eslint-disable-next-line max-lines-per-function
 export const POST: RequestHandler = async ({ request }) => {
   try {
     // Use singleton APNs client to reuse HTTP/2 connection
@@ -296,6 +301,29 @@ export const POST: RequestHandler = async ({ request }) => {
     const skipPush = typeof body.skipPush === 'boolean' ? body.skipPush : false;
     const waitForResponse =
       typeof body.waitForResponse === 'boolean' ? body.waitForResponse : false;
+
+    // Dynamic-options fields (PR-2/PR-3). When the caller wants to drive
+    // a richer notification category — plan-mode approval, MCP
+    // elicitation, AskUserQuestion choices — these arrive in the top
+    // level of the body so they can be persisted in pending_requests
+    // and surfaced to the iOS Decide screen via /api/decide/[id].
+    //
+    // Backward-compat: when these are omitted, the existing CLAUDE_
+    // PERMISSION binary flow is unchanged.
+    const notificationCategory =
+      typeof body.notificationCategory === 'string' && body.notificationCategory.length > 0
+        ? body.notificationCategory
+        : undefined;
+    const question = typeof body.question === 'string' ? body.question : undefined;
+    const options =
+      Array.isArray(body.options) && body.options.every((o) => o && typeof o === 'object')
+        ? (body.options as OptionChoice[])
+        : undefined;
+    const responseKindRaw = body.responseKind;
+    const responseKind: ResponseKind | undefined =
+      responseKindRaw === 'hook' || responseKindRaw === 'pty' || responseKindRaw === 'info'
+        ? responseKindRaw
+        : undefined;
 
     // Broadcast to /ws/events for real-time activity feed
     try {
@@ -350,6 +378,9 @@ export const POST: RequestHandler = async ({ request }) => {
     if (skipPush) {
       if (waitForResponse) {
         createPendingRequest(canonicalRequestId, {
+          options,
+          question: question ?? null,
+          responseKind: responseKind ?? 'hook',
           sessionId: (data?.sessionId as string) || '',
           toolInput: (data?.toolInput as Record<string, unknown>) || {},
           toolName: (data?.toolName as string) || '',
@@ -370,7 +401,11 @@ export const POST: RequestHandler = async ({ request }) => {
     const payload = {
       badge: 1,
       body: message,
-      category: waitForResponse ? 'CLAUDE_PERMISSION' : undefined,
+      // notificationCategory wins when explicitly set so plan-mode /
+      // elicitation flows can pick CLAUDE_PLAN_APPROVAL / CHOICE_2..4.
+      // Falls back to CLAUDE_PERMISSION for the legacy bidirectional
+      // permission flow when only waitForResponse is provided.
+      category: notificationCategory ?? (waitForResponse ? 'CLAUDE_PERMISSION' : undefined),
       data: {
         ...data,
         requestId: canonicalRequestId,
@@ -429,6 +464,9 @@ export const POST: RequestHandler = async ({ request }) => {
 
         if (waitForResponse) {
           createPendingRequest(canonicalRequestId, {
+            options,
+            question: question ?? null,
+            responseKind: responseKind ?? 'hook',
             sessionId: (data?.sessionId as string) || '',
             toolInput: (data?.toolInput as Record<string, unknown>) || {},
             toolName: (data?.toolName as string) || '',
@@ -505,6 +543,9 @@ export const POST: RequestHandler = async ({ request }) => {
         // only after confirming APNs delivery succeeded
         if (waitForResponse) {
           createPendingRequest(canonicalRequestId, {
+            options,
+            question: question ?? null,
+            responseKind: responseKind ?? 'hook',
             sessionId: (data?.sessionId as string) || '',
             toolInput: (data?.toolInput as Record<string, unknown>) || {},
             toolName: (data?.toolName as string) || '',
