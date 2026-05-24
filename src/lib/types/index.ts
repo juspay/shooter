@@ -6,6 +6,7 @@ export type * from './apn';
 export type * from './cli';
 export type * from './common';
 export type * from './dashboard';
+export * from './decision';
 export * from './generated';
 export type * from './neurolink';
 export type * from './server';
