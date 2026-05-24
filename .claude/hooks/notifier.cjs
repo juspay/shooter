@@ -524,18 +524,123 @@ function handleSessionStart(_event) {
 }
 
 /**
+ * Plan-mode approval options surfaced when Claude calls ExitPlanMode.
+ *
+ * iOS shows the first 3 + Open-in-Shooter on the lock screen (4 button
+ * cap); plan_keep is reachable via the Decide screen.
+ */
+const PLAN_MODE_OPTIONS = [
+  { id: 'plan_auto', label: 'Auto Mode', hint: 'Bypass permissions for the rest of the session' },
+  {
+    id: 'plan_accept',
+    label: 'Accept Edits',
+    hint: 'Auto-accept file edits; still ask for risky operations',
+  },
+  { id: 'plan_review', label: 'Review Each', hint: 'Default — ask for each tool invocation' },
+  { id: 'plan_keep', label: 'Keep Planning', hint: 'Stay in plan mode without exiting' },
+];
+
+/**
+ * Map plan_* decisions to the hookSpecificOutput shape Claude Code's
+ * PermissionRequest hook expects:
+ *   plan_auto/accept/review → allow + updatedPermissions.setMode
+ *   plan_keep                → deny (stay in plan mode)
+ *
+ * Exported via test hook for unit testing without spinning up CC.
+ */
+function planDecisionToHookResponse(decision) {
+  const modeMap = {
+    plan_auto: 'bypassPermissions',
+    plan_accept: 'acceptEdits',
+    plan_review: 'default',
+  };
+  if (decision === 'plan_keep') {
+    return {
+      hookSpecificOutput: {
+        hookEventName: 'PermissionRequest',
+        permissionDecision: 'deny',
+        permissionDecisionReason: 'User chose to keep planning',
+      },
+    };
+  }
+  const mode = modeMap[decision];
+  if (!mode) return null;
+  return {
+    hookSpecificOutput: {
+      hookEventName: 'PermissionRequest',
+      decision: {
+        behavior: 'allow',
+        updatedPermissions: [{ type: 'setMode', mode, destination: 'session' }],
+      },
+    },
+  };
+}
+
+/**
+ * Map a binary allow|deny decision to the hookSpecificOutput shape.
+ */
+function binaryDecisionToHookResponse(decision, wsActive) {
+  return {
+    hookSpecificOutput: {
+      hookEventName: 'PermissionRequest',
+      permissionDecision: decision,
+      permissionDecisionReason: `User ${decision === 'allow' ? 'approved' : 'denied'} via ${wsActive ? 'WebSocket' : 'iPhone notification'}`,
+    },
+  };
+}
+
+/**
+ * Detect whether this permission request is the plan-mode approval
+ * (ExitPlanMode tool). Plan-mode gets a richer 4-option notification
+ * instead of binary allow/deny.
+ */
+function isPlanModePermission(d) {
+  return d.tool === 'ExitPlanMode' || d.toolName === 'ExitPlanMode';
+}
+
+/**
+ * Build the notification body for a plan-mode approval. The plan
+ * content itself sits in body + question so the iOS Decide screen can
+ * show it; the body also lists the numbered options for lock-screen
+ * users who don't open the app.
+ */
+function buildPlanModeNotification(event) {
+  const d = event.data;
+  const toolInput = d.toolInput || {};
+  const plan = typeof toolInput.plan === 'string' ? toolInput.plan : '';
+  const planSummary = summarize(plan, 300) || 'Plan ready for approval';
+
+  const title = `${event.projectName} · Plan ready`;
+  const subtitle = summarize(plan, 70) || 'Review and choose how to proceed';
+  const body = [
+    planSummary,
+    '',
+    '1. Auto Mode  2. Accept Edits  3. Review Each  4. Keep Planning',
+  ].join('\n');
+
+  return { title, subtitle, body, question: plan };
+}
+
+/**
  * Handle permission events (agent needs user to approve a tool)
  *
  * Builds a rich notification with tool name + details when available,
  * falls back to the message text when tool details aren't available.
  * Content is identical between Claude Code and OpenCode.
+ *
+ * Plan-mode (ExitPlanMode tool) gets a special 4-option flow instead
+ * of binary allow/deny — see PLAN_MODE_OPTIONS + planDecisionToHookResponse.
  */
 async function handlePermission(event) {
   const d = event.data;
   debugLog(`Permission event: tool=${d.tool}, message=${d.message}`);
 
+  const planMode = isPlanModePermission(d);
+
   const ctx = getSessionContext(d.sessionId);
-  const { title, subtitle, body } = buildPermissionNotification(event, ctx);
+  const { title, subtitle, body } = planMode
+    ? buildPlanModeNotification(event)
+    : buildPermissionNotification(event, ctx);
 
   // Check if WebSocket clients are connected — if so, the events channel
   // will broadcast the permission-requested event and we skip the push notification
@@ -544,12 +649,20 @@ async function handlePermission(event) {
   // For Claude Code PermissionRequest: block and poll for iPhone response
   if (IS_CLAUDE_CODE && event.source === 'claude-code') {
     const requestId = Math.random().toString(36).substring(2, 15);
-    debugLog(`Starting bidirectional permission flow (requestId: ${requestId})`);
+    debugLog(
+      `Starting bidirectional permission flow (requestId: ${requestId}, planMode: ${planMode})`
+    );
 
-    let result;
+    const extras = { skipPush: wsActive, subtitle };
+    if (planMode) {
+      extras.notificationCategory = 'CLAUDE_PLAN_APPROVAL';
+      extras.options = PLAN_MODE_OPTIONS;
+      extras.question =
+        typeof d.toolInput?.plan === 'string' ? d.toolInput.plan : 'Approve plan and proceed?';
+      extras.responseKind = 'hook';
+    }
+
     if (wsActive) {
-      // WebSocket clients connected — skip push notification, but still register
-      // the pending request on the server so polling can find it.
       debugLog(`[Notifier] WebSocket clients connected, skipping push notification`);
       if (IS_CLAUDE_CODE) {
         console.error(`\n=== WEBSOCKET ACTIVE — SKIPPING PUSH [${requestId}] ===`);
@@ -557,42 +670,32 @@ async function handlePermission(event) {
         console.error(`Message: ${body}`);
         console.error(`=== REGISTERING REQUEST & POLLING VIA WEBSOCKET CHANNEL ===\n`);
       }
-
-      // Register the pending request but skip the actual push notification —
-      // the events channel will broadcast the permission to connected clients.
-      result = await sendNotificationAndPoll(
-        title,
-        body,
-        'permission',
-        event.source,
-        requestId,
-        d,
-        { skipPush: true, subtitle }
-      );
-    } else {
-      // No WebSocket clients — send push notification and poll
-      result = await sendNotificationAndPoll(
-        title,
-        body,
-        'permission',
-        event.source,
-        requestId,
-        d,
-        { subtitle }
-      );
     }
 
+    const result = await sendNotificationAndPoll(
+      title,
+      body,
+      'permission',
+      event.source,
+      requestId,
+      d,
+      extras
+    );
+
     if (result && result.decision) {
-      const hookResponse = {
-        hookSpecificOutput: {
-          hookEventName: 'PermissionRequest',
-          permissionDecision: result.decision,
-          permissionDecisionReason: `User ${result.decision === 'allow' ? 'approved' : 'denied'} via ${wsActive ? 'WebSocket' : 'iPhone notification'}`,
-        },
-      };
-      // Write decision to stdout for Claude Code to read
-      process.stdout.write(JSON.stringify(hookResponse));
-      debugLog(`Wrote hook decision to stdout: ${result.decision}`);
+      // Plan-mode decisions (plan_auto/accept/review/keep) need the
+      // richer hookSpecificOutput shape with updatedPermissions.setMode.
+      // Binary allow/deny falls through the legacy path.
+      const hookResponse = planMode
+        ? planDecisionToHookResponse(result.decision)
+        : binaryDecisionToHookResponse(result.decision, wsActive);
+
+      if (hookResponse) {
+        process.stdout.write(JSON.stringify(hookResponse));
+        debugLog(`Wrote hook decision to stdout: ${result.decision}`);
+      } else {
+        debugLog(`Unknown decision shape '${result.decision}' — falling through to local dialog`);
+      }
     } else {
       debugLog('No response received - falling through to local permission dialog');
       // Output nothing → Claude Code shows normal permission dialog
@@ -607,6 +710,11 @@ async function handlePermission(event) {
     sendNotification(title, body, 'permission', event.source, subtitle);
   }
 }
+
+// Pure helpers above are also re-exported alongside OpenCodePlugin at
+// the bottom of this file for unit testing. The single module.exports
+// block lives at the end of the file (see "Exports and Main Execution"
+// section).
 
 /**
  * Handle permission_notification events (Notification hook with permission_prompt type).
@@ -1176,8 +1284,47 @@ function sendNotificationAndPoll(
   source,
   requestId,
   eventData,
-  { skipPush = false, subtitle = '' } = {}
+  {
+    skipPush = false,
+    subtitle = '',
+    // Dynamic-options extras forwarded to /api/notify body so the server
+    // can persist them on the pending_requests row + set the right APNs
+    // category. Undefined → server falls back to the binary CLAUDE_PERMISSION
+    // flow (preserves legacy behavior).
+    notificationCategory,
+    question,
+    options,
+    responseKind,
+  } = {}
 ) {
+  // Common body shared between the skipPush (register-only) and the
+  // full push paths. Splitting reduces drift between the two.
+  const buildNotifyBody = (timestamp, finalBody) => ({
+    title,
+    ...(subtitle ? { subtitle } : {}),
+    message: finalBody,
+    waitForResponse: true,
+    ...(skipPush ? { skipPush: true } : {}),
+    ...(DEVICE_TOKEN && { deviceToken: DEVICE_TOKEN }),
+    ...(notificationCategory && { notificationCategory }),
+    ...(question !== undefined && { question }),
+    ...(options && { options }),
+    ...(responseKind && { responseKind }),
+    data: {
+      category,
+      project: getProjectName(),
+      timestamp,
+      requestId,
+      clientTimestamp: timestamp,
+      source: 'shooter-completion-detector',
+      environment: USE_LOCAL ? 'local' : 'remote',
+      runtime: source,
+      toolName: eventData.tool || '',
+      toolInput: eventData.toolInput || {},
+      sessionId: eventData.sessionId || '',
+    },
+  });
+
   return new Promise((resolve) => {
     const timestamp = new Date().toISOString();
 
@@ -1194,27 +1341,7 @@ function sendNotificationAndPoll(
       // Register the pending request on the server so polling finds it.
       // We still need to POST with waitForResponse so the server creates
       // the pending-request entry, but we mark it as ws-only.
-      const registerPayload = JSON.stringify({
-        title,
-        ...(subtitle ? { subtitle } : {}),
-        message: finalBody,
-        waitForResponse: true,
-        skipPush: true,
-        ...(DEVICE_TOKEN && { deviceToken: DEVICE_TOKEN }),
-        data: {
-          category,
-          project: getProjectName(),
-          timestamp,
-          requestId,
-          clientTimestamp: timestamp,
-          source: 'shooter-completion-detector',
-          environment: USE_LOCAL ? 'local' : 'remote',
-          runtime: source,
-          toolName: eventData.tool || '',
-          toolInput: eventData.toolInput || {},
-          sessionId: eventData.sessionId || '',
-        },
-      });
+      const registerPayload = JSON.stringify(buildNotifyBody(timestamp, finalBody));
 
       const registerOptions = {
         method: 'POST',
@@ -1263,26 +1390,7 @@ function sendNotificationAndPoll(
 
     debugLog(`Sending bidirectional notification: "${title}" (requestId: ${requestId})`);
 
-    const payload = JSON.stringify({
-      title,
-      ...(subtitle ? { subtitle } : {}),
-      message: finalBody,
-      waitForResponse: true,
-      ...(DEVICE_TOKEN && { deviceToken: DEVICE_TOKEN }),
-      data: {
-        category,
-        project: getProjectName(),
-        timestamp,
-        requestId,
-        clientTimestamp: timestamp,
-        source: 'shooter-completion-detector',
-        environment: USE_LOCAL ? 'local' : 'remote',
-        runtime: source,
-        toolName: eventData.tool || '',
-        toolInput: eventData.toolInput || {},
-        sessionId: eventData.sessionId || '',
-      },
-    });
+    const payload = JSON.stringify(buildNotifyBody(timestamp, finalBody));
 
     const options = {
       method: 'POST',
@@ -1643,11 +1751,21 @@ const OpenCodePlugin = async (ctx) => {
 // Exports and Main Execution
 // ============================================
 
-// Export for OpenCode plugin system
+// Export for OpenCode plugin system + unit tests.
+//
+// The default export remains OpenCodePlugin so the OpenCode plugin
+// loader (which does `require(notifier.cjs)()`) keeps working. Pure
+// helpers (plan-mode routing, etc.) are attached as named properties
+// so tests/ can require them without spawning the full hook script.
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = OpenCodePlugin;
   module.exports.OpenCodePlugin = OpenCodePlugin;
   module.exports.ShooterNotifier = OpenCodePlugin;
+  // Pure-function exports for unit tests (tests/plan-mode-routing.test.cjs).
+  module.exports.PLAN_MODE_OPTIONS = PLAN_MODE_OPTIONS;
+  module.exports.binaryDecisionToHookResponse = binaryDecisionToHookResponse;
+  module.exports.isPlanModePermission = isPlanModePermission;
+  module.exports.planDecisionToHookResponse = planDecisionToHookResponse;
 }
 
 // Run main() when called directly from CLI (Claude Code)
