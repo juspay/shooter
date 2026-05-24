@@ -7,8 +7,14 @@
 
 const os = require('os');
 const path = require('path');
-const { spawn, execSync } = require('child_process');
+const { spawn, execSync, execFileSync } = require('child_process');
 const fs = require('fs');
+const {
+  discoverNamedTunnels,
+  healAndEnsureRunning,
+  probeReachability,
+  xmlEscapeText,
+} = require('./lib/tunnel-discovery.cjs');
 
 // ── Resolve paths ───────────────────────────────────────────────────
 const PKG_ROOT = path.resolve(__dirname, '..');
@@ -176,7 +182,7 @@ function parsePortFlag() {
 
 function isCloudflaredAvailable() {
   try {
-    execSync('which cloudflared', { stdio: 'ignore' });
+    execFileSync('which', ['cloudflared'], { stdio: 'ignore' });
     return true;
   } catch {
     return false;
@@ -222,6 +228,23 @@ function startTunnel(port) {
   return cf.pid;
 }
 
+// Polls for ~/.shooter/.tunnel_url written by the URL detector inside
+// startTunnel. Async so it yields control to the event loop between
+// reads — letting startTunnel's setInterval actually fire to write the
+// file. Resolves to the URL on success, or null on timeout.
+async function waitForPersistedTunnelUrl(timeoutMs) {
+  const file = path.join(SHOOTER_HOME, '.tunnel_url');
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const url = fs.readFileSync(file, 'utf8').trim();
+      if (url) return url;
+    } catch {}
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  return null;
+}
+
 function stopTunnel() {
   const tunnelPidFile = path.join(SHOOTER_HOME, 'tunnel.pid');
   const tunnelUrlFile = path.join(SHOOTER_HOME, '.tunnel_url');
@@ -239,6 +262,48 @@ function stopTunnel() {
       fs.unlinkSync(tunnelUrlFile);
     } catch {}
   } catch {}
+}
+
+// Returns:
+//   { kind: 'named', url, label }  – a pre-configured named tunnel is now
+//                                    managed (healed/started as needed)
+//   { kind: 'quick' }              – no named tunnel found; caller should
+//                                    fall back to startTunnel()
+function ensureNamedTunnelOrFallback(port) {
+  let tunnels;
+  try {
+    tunnels = discoverNamedTunnels(parseInt(port, 10));
+  } catch (err) {
+    console.warn(`(named-tunnel discovery failed: ${err.message})`);
+    return { kind: 'quick' };
+  }
+  if (!tunnels.length) return { kind: 'quick' };
+
+  // Prefer the first match — port + hostname combination is typically unique.
+  const tunnel = tunnels[0];
+  const result = healAndEnsureRunning(tunnel);
+
+  if (result.action === 'failed') {
+    console.warn(`Named tunnel ${tunnel.label} could not be managed: ${result.reason}`);
+    console.warn('Falling back to a quick tunnel.');
+    return { kind: 'quick' };
+  }
+  if (result.action === 'healed') {
+    console.log(`Tunnel plist binary path updated: ${result.from} → ${result.to}`);
+  } else if (result.action === 'started') {
+    console.log(`Tunnel ${tunnel.label} started.`);
+  } else if (result.action === 'reloaded') {
+    console.log(`Tunnel ${tunnel.label} kickstarted.`);
+  }
+
+  const url = tunnel.hostname ? `https://${tunnel.hostname}` : null;
+  if (url) {
+    try {
+      fs.mkdirSync(SHOOTER_HOME, { recursive: true });
+      fs.writeFileSync(path.join(SHOOTER_HOME, '.tunnel_url'), url);
+    } catch {}
+  }
+  return { kind: 'named', url, label: tunnel.label };
 }
 
 function startServer() {
@@ -319,11 +384,21 @@ function startServer() {
     console.log(`  API key: ${apiKey ? '(set)' : '(not set — run shooter setup)'}`);
     console.log(`  Logs:    ${LOG_FILE}`);
 
-    // Start tunnel in background if available; it writes URL to ~/.shooter/.tunnel_url
+    // Start tunnel in background if available; it writes URL to ~/.shooter/.tunnel_url.
+    // startTunnel spawns cloudflared detached + unref'd, so the child survives the
+    // CLI's process.exit(0) below — a setTimeout would have been killed before it
+    // fires. For the quick-tunnel branch we briefly wait for the URL-detection
+    // poller inside startTunnel to write .tunnel_url so `shooter status` and the
+    // user can see the URL after the daemon detaches.
+    let waitForQuickTunnel = false;
     if (!noTunnel && isCloudflaredAvailable()) {
-      setTimeout(() => {
+      const t = ensureNamedTunnelOrFallback(port);
+      if (t.kind === 'named') {
+        if (t.url) console.log(`  Tunnel:  ${t.url} (named: ${t.label})`);
+      } else {
         startTunnel(port);
-      }, 3000);
+        waitForQuickTunnel = true;
+      }
     } else if (!noTunnel && !isCloudflaredAvailable()) {
       console.log('  (cloudflared not found — no tunnel. Install: brew install cloudflared)');
     }
@@ -331,8 +406,15 @@ function startServer() {
     // Spawn auto-update guard (detached) — only when launchd is managing
     spawnGuard(child.pid, port);
 
-    // Exit immediately — daemon is running, tunnel starts async
-    process.exit(0);
+    if (waitForQuickTunnel) {
+      // Hand control back to the event loop so the URL poller inside
+      // startTunnel can write .tunnel_url. The poller has its own 15s
+      // ceiling and will clearInterval itself; once it does, no event
+      // sources remain and the daemon process exits naturally.
+      waitForPersistedTunnelUrl(15000).then(() => process.exit(0));
+    } else {
+      process.exit(0);
+    }
   } else {
     // ── Foreground mode: inherit stdio ──
     const tsxLoader = path.join(PKG_ROOT, 'node_modules', 'tsx', 'dist', 'loader.mjs');
@@ -355,20 +437,38 @@ function startServer() {
     // Clean up any stale tunnel from previous run (important for LaunchAgent restart)
     stopTunnel();
 
-    // Start tunnel in foreground mode too (unless --no-tunnel)
+    // Start tunnel in foreground mode too (unless --no-tunnel). We capture
+    // the timer handle so signal/exit/error paths can cancel it — otherwise
+    // a Ctrl-C between t=0 and t=3s would let the deferred startTunnel fire
+    // after the server has begun shutting down, spawning a cloudflared that
+    // points at a dead local port (the eventual exit handler reaps it via
+    // pidfile, but the brief spawn is wasteful and confusing in logs).
     let tunnelStarted = false;
+    let tunnelTimer = null;
     if (!noTunnel && isCloudflaredAvailable()) {
-      // Give server 3s to start before launching tunnel
-      setTimeout(() => {
-        startTunnel(port);
-        tunnelStarted = true;
-      }, 3000);
+      const t = ensureNamedTunnelOrFallback(port);
+      if (t.kind === 'named') {
+        if (t.url) console.log(`Tunnel: ${t.url} (named: ${t.label})`);
+      } else {
+        tunnelTimer = setTimeout(() => {
+          tunnelTimer = null;
+          startTunnel(port);
+          tunnelStarted = true;
+        }, 3000);
+      }
     }
+    const cancelTunnelTimer = () => {
+      if (tunnelTimer) {
+        clearTimeout(tunnelTimer);
+        tunnelTimer = null;
+      }
+    };
 
     // Spawn auto-update guard (detached) — only when launchd is managing
     spawnGuard(child.pid, port);
 
     child.on('error', (err) => {
+      cancelTunnelTimer();
       removePid();
       if (tunnelStarted) stopTunnel();
       stopGuard();
@@ -377,6 +477,7 @@ function startServer() {
     });
 
     child.on('exit', (code, signal) => {
+      cancelTunnelTimer();
       removePid();
       stopTunnel();
       stopGuard();
@@ -389,6 +490,7 @@ function startServer() {
     // Forward signals to the child so graceful shutdown works
     for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP']) {
       process.on(sig, () => {
+        cancelTunnelTimer();
         child.kill(sig);
         stopTunnel();
         stopGuard();
@@ -464,11 +566,38 @@ function showStatus() {
     tunnelUrl = fs.readFileSync(tunnelUrlFile, 'utf8').trim();
   } catch {}
 
+  let namedTunnel = null;
+  try {
+    const list = discoverNamedTunnels(parseInt(port, 10));
+    if (list.length) namedTunnel = list[0];
+  } catch (err) {
+    console.warn(`(named-tunnel discovery failed: ${err.message})`);
+  }
+
   if (pid) {
     console.log(`Shooter is running`);
     console.log(`  PID:        ${pid}`);
     console.log(`  URL:        http://localhost:${port}`);
-    if (tunnelUrl) {
+    if (namedTunnel) {
+      const url = namedTunnel.hostname ? `https://${namedTunnel.hostname}` : null;
+      const ls = namedTunnel.launch || {};
+      if (url) {
+        const reach = probeReachability(url, 1500);
+        const reachStr = reach.ok
+          ? `reachable (${reach.status})`
+          : `unreachable${reach.status ? ` (${reach.status})` : ''}`;
+        console.log(`  Tunnel:     ${url}  [${reachStr}]`);
+      }
+      console.log(
+        `  Agent:      ${namedTunnel.label} ` +
+          `(state=${ls.state ?? 'unknown'}, last exit=${ls.lastExitCode ?? 'n/a'})`
+      );
+      if (!namedTunnel.binaryPathHealthy) {
+        console.log(
+          `  WARNING:    cloudflared at ${namedTunnel.binaryPath} not found — will self-heal on next start`
+        );
+      }
+    } else if (tunnelUrl) {
       console.log(`  Tunnel:     ${tunnelUrl}`);
     }
     console.log(`  Autostart:  ${autostartEnabled ? 'enabled' : 'disabled'}`);
@@ -476,6 +605,16 @@ function showStatus() {
     console.log(`  Home:       ${SHOOTER_HOME}`);
   } else {
     console.log('Shooter is not running.');
+    if (namedTunnel) {
+      console.log(
+        `  Tunnel:     named (${namedTunnel.label}) at https://${namedTunnel.hostname || '?'}`
+      );
+      if (!namedTunnel.binaryPathHealthy) {
+        console.log(
+          `  WARNING:    cloudflared at ${namedTunnel.binaryPath} not found — will self-heal on next start`
+        );
+      }
+    }
     console.log(`  Autostart:  ${autostartEnabled ? 'enabled' : 'disabled'}`);
     console.log(`  Home:       ${SHOOTER_HOME}`);
     console.log('\nRun "shooter start" to start the server.');
@@ -543,6 +682,11 @@ function enableLaunchAgent() {
   const shooterBin = resolveShooterBin();
   const nodeBin = process.execPath;
 
+  // All five interpolations below are system-derived paths (no user
+  // input), but XML-escaping them keeps the plist well-formed if any
+  // path ever contains `&`, `<`, or `>` — same hardening as the named-
+  // tunnel rewrite path.
+  const e = xmlEscapeText;
   const plist = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
   "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -552,18 +696,18 @@ function enableLaunchAgent() {
   <string>${LAUNCHD_LABEL}</string>
   <key>ProgramArguments</key>
   <array>
-    <string>${nodeBin}</string>
-    <string>${shooterBin}</string>
+    <string>${e(nodeBin)}</string>
+    <string>${e(shooterBin)}</string>
     <string>start</string>
   </array>
   <key>WorkingDirectory</key>
-  <string>${PKG_ROOT}</string>
+  <string>${e(PKG_ROOT)}</string>
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
-    <string>${path.dirname(nodeBin)}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <string>${e(path.dirname(nodeBin))}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
     <key>SHOOTER_HOME</key>
-    <string>${SHOOTER_HOME}</string>
+    <string>${e(SHOOTER_HOME)}</string>
   </dict>
   <key>KeepAlive</key>
   <dict>
@@ -573,9 +717,9 @@ function enableLaunchAgent() {
   <key>RunAtLoad</key>
   <true/>
   <key>StandardOutPath</key>
-  <string>${LOG_FILE}</string>
+  <string>${e(LOG_FILE)}</string>
   <key>StandardErrorPath</key>
-  <string>${LOG_FILE}</string>
+  <string>${e(LOG_FILE)}</string>
   <key>ThrottleInterval</key>
   <integer>10</integer>
 </dict>
@@ -588,12 +732,12 @@ function enableLaunchAgent() {
   // Unload existing if present
   if (fs.existsSync(LAUNCHD_PLIST)) {
     try {
-      execSync(`launchctl unload "${LAUNCHD_PLIST}" 2>/dev/null`);
+      execFileSync('launchctl', ['unload', LAUNCHD_PLIST], { stdio: 'ignore' });
     } catch {}
   }
 
   fs.writeFileSync(LAUNCHD_PLIST, plist);
-  execSync(`launchctl load "${LAUNCHD_PLIST}"`);
+  execFileSync('launchctl', ['load', LAUNCHD_PLIST], { stdio: 'ignore' });
 
   console.log('Autostart enabled (macOS LaunchAgent).');
   console.log(`  Plist:  ${LAUNCHD_PLIST}`);
@@ -609,7 +753,7 @@ function disableLaunchAgent() {
   }
 
   try {
-    execSync(`launchctl unload "${LAUNCHD_PLIST}" 2>/dev/null`);
+    execFileSync('launchctl', ['unload', LAUNCHD_PLIST], { stdio: 'ignore' });
   } catch {}
   fs.unlinkSync(LAUNCHD_PLIST);
   console.log('Autostart disabled. LaunchAgent removed.');
@@ -620,15 +764,19 @@ function disableLaunchAgent() {
 function enableSystemdUnit() {
   const shooterBin = resolveShooterBin();
 
+  // Quote interpolated paths so systemd's word-splitter doesn't treat
+  // a space inside e.g. "/Users/John Doe/.local/bin/shooter" as an
+  // argument separator. systemd supports double-quoting per token in
+  // ExecStart= and the whole RHS in Environment=.
   const unit = `[Unit]
 Description=Shooter — Mobile dev notifications & remote terminal
 After=network.target
 
 [Service]
 Type=simple
-ExecStart=${process.execPath} ${shooterBin} start
-WorkingDirectory=${PKG_ROOT}
-Environment=SHOOTER_HOME=${SHOOTER_HOME}
+ExecStart="${process.execPath}" "${shooterBin}" start
+WorkingDirectory="${PKG_ROOT}"
+Environment="SHOOTER_HOME=${SHOOTER_HOME}"
 Restart=on-failure
 RestartSec=10
 
@@ -640,9 +788,9 @@ WantedBy=default.target
   fs.mkdirSync(LOG_DIR, { recursive: true });
   fs.writeFileSync(SYSTEMD_UNIT, unit);
 
-  execSync('systemctl --user daemon-reload');
-  execSync('systemctl --user enable shooter.service');
-  execSync('systemctl --user start shooter.service');
+  execFileSync('systemctl', ['--user', 'daemon-reload'], { stdio: 'inherit' });
+  execFileSync('systemctl', ['--user', 'enable', 'shooter.service'], { stdio: 'inherit' });
+  execFileSync('systemctl', ['--user', 'start', 'shooter.service'], { stdio: 'inherit' });
 
   console.log('Autostart enabled (systemd user unit).');
   console.log(`  Unit:   ${SYSTEMD_UNIT}`);
@@ -657,14 +805,14 @@ function disableSystemdUnit() {
   }
 
   try {
-    execSync('systemctl --user stop shooter.service 2>/dev/null');
+    execFileSync('systemctl', ['--user', 'stop', 'shooter.service'], { stdio: 'ignore' });
   } catch {}
   try {
-    execSync('systemctl --user disable shooter.service 2>/dev/null');
+    execFileSync('systemctl', ['--user', 'disable', 'shooter.service'], { stdio: 'ignore' });
   } catch {}
   fs.unlinkSync(SYSTEMD_UNIT);
   try {
-    execSync('systemctl --user daemon-reload');
+    execFileSync('systemctl', ['--user', 'daemon-reload'], { stdio: 'inherit' });
   } catch {}
   console.log('Autostart disabled. systemd unit removed.');
 }
@@ -745,7 +893,9 @@ function runSetup() {
 
 function runUpdate(subcommand) {
   const { checkForUpdate } = require(path.join(PKG_ROOT, 'scripts', 'update-checker.cjs'));
-  const { recordCheck, isVersionSuppressed } = require(path.join(PKG_ROOT, 'scripts', 'update-state.cjs'));
+  const { recordCheck, isVersionSuppressed } = require(
+    path.join(PKG_ROOT, 'scripts', 'update-state.cjs')
+  );
 
   const result = checkForUpdate(PKG_ROOT);
   if (!result.checkFailed) recordCheck(result.latestVersion);
@@ -760,7 +910,9 @@ function runUpdate(subcommand) {
       console.log(`  Current commit: ${result.currentCommit}`);
       console.log(`  Latest commit:  ${result.latestCommit}`);
       if (isVersionSuppressed(result.latestVersion)) {
-        console.log(`  (version ${result.latestVersion} is temporarily suppressed — will retry in <24h)`);
+        console.log(
+          `  (version ${result.latestVersion} is temporarily suppressed — will retry in <24h)`
+        );
       }
     } else {
       console.log(`Already up to date: v${result.currentVersion} (${result.currentCommit})`);
@@ -783,7 +935,9 @@ function runUpdate(subcommand) {
   const { getCurrentBranch } = require(path.join(PKG_ROOT, 'scripts', 'update-checker.cjs'));
   const branch = getCurrentBranch(PKG_ROOT);
   if (branch !== 'release') {
-    console.log(`Cannot update: currently on branch '${branch || 'unknown'}', updates only apply to 'release'.`);
+    console.log(
+      `Cannot update: currently on branch '${branch || 'unknown'}', updates only apply to 'release'.`
+    );
     console.log('Switch to the release branch and try again.');
     return;
   }
@@ -805,9 +959,9 @@ function runUpdate(subcommand) {
       if (isLaunchdManaging()) {
         const uid = process.getuid ? process.getuid() : 501;
         try {
-          execSync(`launchctl kickstart -k gui/${uid}/${LAUNCHD_LABEL}`, {
+          execFileSync('launchctl', ['kickstart', '-k', `gui/${uid}/${LAUNCHD_LABEL}`], {
             timeout: 10_000,
-            stdio: 'pipe',
+            stdio: ['ignore', 'pipe', 'ignore'],
           });
           console.log('Signaled launchd to restart the server.');
         } catch {
@@ -828,7 +982,9 @@ function runUpdate(subcommand) {
  * Returns true on success. On failure, rolls back and returns false.
  */
 function performUpdate(result) {
-  const { suppressVersion, recordSuccessfulUpdate } = require(path.join(PKG_ROOT, 'scripts', 'update-state.cjs'));
+  const { suppressVersion, recordSuccessfulUpdate } = require(
+    path.join(PKG_ROOT, 'scripts', 'update-state.cjs')
+  );
 
   // Save current HEAD for rollback
   let savedHead = '';
@@ -987,7 +1143,7 @@ function isLaunchdManaging() {
   if (os.platform() !== 'darwin') return false;
   try {
     const uid = process.getuid ? process.getuid() : 501;
-    execSync(`launchctl print gui/${uid}/${LAUNCHD_LABEL} 2>/dev/null`, {
+    execFileSync('launchctl', ['print', `gui/${uid}/${LAUNCHD_LABEL}`], {
       stdio: ['ignore', 'pipe', 'ignore'],
       timeout: 5_000,
     });
@@ -1016,13 +1172,12 @@ function runGuard() {
     process.exit(1);
   }
 
-  const { checkForUpdate, getCurrentBranch } = require(path.join(PKG_ROOT, 'scripts', 'update-checker.cjs'));
-  const {
-    recordCheck,
-    isVersionSuppressed,
-    suppressVersion,
-    recordSuccessfulUpdate,
-  } = require(path.join(PKG_ROOT, 'scripts', 'update-state.cjs'));
+  const { checkForUpdate, getCurrentBranch } = require(
+    path.join(PKG_ROOT, 'scripts', 'update-checker.cjs')
+  );
+  const { recordCheck, isVersionSuppressed, suppressVersion, recordSuccessfulUpdate } = require(
+    path.join(PKG_ROOT, 'scripts', 'update-state.cjs')
+  );
 
   const log = (msg) => console.log(`[guard] ${new Date().toISOString()} ${msg}`);
 
@@ -1135,9 +1290,9 @@ function runGuard() {
       log('restarting via launchctl...');
       const uid = process.getuid ? process.getuid() : 501;
       try {
-        execSync(`launchctl kickstart -k gui/${uid}/${LAUNCHD_LABEL}`, {
+        execFileSync('launchctl', ['kickstart', '-k', `gui/${uid}/${LAUNCHD_LABEL}`], {
           timeout: 10_000,
-          stdio: 'pipe',
+          stdio: ['ignore', 'pipe', 'ignore'],
         });
       } catch {
         log('WARNING: launchctl kickstart failed');
