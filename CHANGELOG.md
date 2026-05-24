@@ -1,3 +1,9 @@
+## [1.11.0](https://github.com/juspay/shooter/compare/v1.10.0...v1.11.0) (2026-05-24)
+
+### Features
+
+* **(cli):**  auto-discover and self-heal named cloudflared tunnels ([bea460d](https://github.com/juspay/shooter/commit/bea460d1c3fa7a5f0a938bd9da3fa965bc712157))
+
 ## [1.10.0](https://github.com/juspay/shooter/compare/v1.9.3...v1.10.0) (2026-05-15)
 
 ### Features
