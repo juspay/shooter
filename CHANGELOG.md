@@ -1,3 +1,9 @@
+## [1.12.0](https://github.com/juspay/shooter/compare/v1.11.0...v1.12.0) (2026-05-24)
+
+### Features
+
+* **(decisions):**  shared infrastructure for dynamic-option notifications ([f7a4b77](https://github.com/juspay/shooter/commit/f7a4b77f54de3d53873f10b26fcd4570268b8ddf))
+
 ## [1.11.0](https://github.com/juspay/shooter/compare/v1.10.0...v1.11.0) (2026-05-24)
 
 ### Features
