@@ -9,12 +9,187 @@ struct ContentView: View {
         WebView(url: serverURL, notificationManager: notificationManager)
             .ignoresSafeArea(edges: .bottom)
             .background(Color(red: 10/255, green: 10/255, blue: 10/255))
+            // @EnvironmentObject doesn't project a Binding via `$`, so
+            // bridge the @Published String? manually for .sheet(item:).
+            .sheet(item: Binding(
+                get: { notificationManager.decideRequestId },
+                set: { notificationManager.decideRequestId = $0 }
+            )) { requestId in
+                DecideView(requestId: requestId.value)
+                    .environmentObject(notificationManager)
+            }
     }
 
     private var serverURL: URL {
         let saved = UserDefaults.standard.string(forKey: "serverUrl") ?? ""
         let urlString = saved.isEmpty ? AppConfig.defaultServerURL : saved
         return URL(string: urlString) ?? URL(string: AppConfig.defaultServerURL)!
+    }
+}
+
+// MARK: - Decide Screen
+//
+// Presented when the user taps the notification body OR the
+// "Open in Shooter" action on a dynamic-options push. Fetches the
+// full options list from /api/decide/<requestId> and renders a
+// proper button per option — works for any option count, any label,
+// and shows the full question text without the lock-screen 4-line
+// truncation.
+
+private struct DecidePayloadDTO: Decodable {
+    let requestId: String
+    let question: String
+    let options: [OptionChoiceDTO]
+    let responseKind: String
+    let toolName: String?
+}
+
+private struct OptionChoiceDTO: Decodable, Identifiable {
+    let id: String
+    let label: String
+    let hint: String?
+}
+
+private enum DecideLoadState {
+    case loading
+    case loaded(DecidePayloadDTO)
+    case error(String)
+}
+
+struct DecideView: View {
+    let requestId: String
+
+    @EnvironmentObject var notificationManager: NotificationManager
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var state: DecideLoadState = .loading
+    @State private var submitting = false
+
+    private var serverUrl: String {
+        UserDefaults.standard.string(forKey: "serverUrl") ?? AppConfig.defaultServerURL
+    }
+
+    private var apiKey: String {
+        KeychainHelper.read(key: "apiKey") ?? ""
+    }
+
+    var body: some View {
+        NavigationStack {
+            content
+                .navigationTitle("Decide")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Close") { dismiss() }
+                    }
+                }
+        }
+        .task { await load() }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch state {
+        case .loading:
+            ProgressView("Loading…")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        case .error(let message):
+            VStack(spacing: 16) {
+                Text("Couldn't load")
+                    .font(.headline)
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+                Button("Retry") {
+                    state = .loading
+                    Task { await load() }
+                }
+                .buttonStyle(.borderedProminent)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding()
+        case .loaded(let payload):
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    if let toolName = payload.toolName, !toolName.isEmpty {
+                        Text(toolName)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .textCase(.uppercase)
+                    }
+                    Text(payload.question.isEmpty ? "Choose an option" : payload.question)
+                        .font(.title3.weight(.semibold))
+
+                    ForEach(payload.options) { option in
+                        Button { submit(decision: option.id) } label: {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(option.label)
+                                    .font(.body.weight(.medium))
+                                if let hint = option.hint, !hint.isEmpty {
+                                    Text(hint)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding()
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(Color(white: 0.15))
+                            )
+                        }
+                        .disabled(submitting)
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding()
+            }
+        }
+    }
+
+    @MainActor
+    private func load() async {
+        guard let url = URL(string: "\(serverUrl)\(AppConfig.Endpoints.decide)/\(requestId)") else {
+            state = .error("Invalid server URL")
+            return
+        }
+        guard !apiKey.isEmpty else {
+            state = .error("No API key configured. Open Settings and re-scan the QR code.")
+            return
+        }
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                state = .error("No HTTP response")
+                return
+            }
+            if http.statusCode == 404 {
+                state = .error("Request not found or already answered.")
+                return
+            }
+            if !(200...299).contains(http.statusCode) {
+                state = .error("Server returned HTTP \(http.statusCode)")
+                return
+            }
+            let payload = try JSONDecoder().decode(DecidePayloadDTO.self, from: data)
+            state = .loaded(payload)
+        } catch {
+            state = .error(error.localizedDescription)
+        }
+    }
+
+    private func submit(decision: String) {
+        submitting = true
+        notificationManager.sendDecisionResponse(requestId: requestId, decision: decision)
+        // Optimistic dismiss — NotificationManager retries with backoff if
+        // the POST fails, so the user shouldn't have to wait for HTTP.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            dismiss()
+        }
     }
 }
 
