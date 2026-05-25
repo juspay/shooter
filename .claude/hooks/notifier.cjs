@@ -261,7 +261,12 @@ function adaptClaudeCodeEvent(cliArg, stdinData) {
         return createCommonEvent('claude-code', 'permission_notification', data);
 
       case 'elicitation_dialog':
-        // Agent is presenting a question/dialog to the user
+        // Agent is presenting a question/dialog to the user. Forward
+        // choices/fields from stdin so extractElicitationChoices can
+        // surface CHOICE_N buttons (otherwise the question lands as a
+        // plain notification with no options).
+        if (Array.isArray(stdinData?.choices)) data.choices = stdinData.choices;
+        if (Array.isArray(stdinData?.fields)) data.fields = stdinData.fields;
         return createCommonEvent('claude-code', 'question', data);
 
       case 'idle_prompt':
@@ -284,6 +289,9 @@ function adaptClaudeCodeEvent(cliArg, stdinData) {
     data.tool = stdinData?.tool_name || process.env.CLAUDE_TOOL_NAME || 'Unknown';
     data.files = process.env.CLAUDE_FILE_PATHS || '';
     data.command = stdinData?.tool_input?.command || process.env.CLAUDE_COMMAND_LINE || '';
+    // tool_input is needed by handleAskUserQuestion to extract the
+    // question + options array. Forward it so handlers have access.
+    data.toolInput = stdinData?.tool_input || {};
     return createCommonEvent('claude-code', 'tool.before', data);
   }
 
@@ -513,6 +521,64 @@ async function processEvent(event) {
 
 function handleToolStart(event) {
   debugLog(`Tool starting: ${event.data.tool || 'unknown'}`);
+  // AskUserQuestion is a built-in tool whose answer we cannot intercept
+  // via any hook, but PreToolUse fires with the question + options in
+  // tool_input. Surface those on the phone (info-only) so the user can
+  // see what's being asked before walking back to the laptop.
+  if (event.data.tool === 'AskUserQuestion') {
+    handleAskUserQuestion(event);
+  }
+}
+
+/**
+ * Render an AskUserQuestion call as a rich, info-only notification.
+ *
+ * The hook can't intercept the answer (PreToolUse for non-permission
+ * tools is informational), so the iOS notification carries the
+ * question + options for awareness; the user picks at the laptop.
+ * Tapping an option button on the phone fires a POST to /api/response
+ * which the server records under responseKind='info' (no routing
+ * back to Claude Code in PR-3 — PTY routing is a follow-up).
+ */
+function handleAskUserQuestion(event) {
+  const d = event.data;
+  const toolInput = d.toolInput || {};
+  const extracted = extractAskUserQuestionOptions(toolInput);
+  if (!extracted) {
+    debugLog('AskUserQuestion did not yield extractable options — skipping');
+    return;
+  }
+
+  const category = categoryForOptionCount(extracted.options.length);
+  if (!category) {
+    debugLog(`AskUserQuestion option count outside lock-screen range — skipping`);
+    return;
+  }
+
+  const title = `${event.projectName} · Claude is asking`;
+  const subtitle = summarize(extracted.header || extracted.question, 70) || 'Awaiting answer';
+
+  const lines = [extracted.question || extracted.header || 'Choose an option:'];
+  const numbered = extracted.options.map((o, i) => `${i + 1}. ${o.label}`).join('   ');
+  lines.push('', numbered, '', 'Answer at your laptop.');
+  const body = lines.join('\n');
+
+  const requestId = Math.random().toString(36).substring(2, 15);
+
+  sendNotification(title, body, 'question', event.source, subtitle, {
+    notificationCategory: category,
+    options: extracted.options,
+    question: extracted.question,
+    requestId,
+    responseKind: 'info',
+    sessionId: d.sessionId,
+    toolInput,
+    toolName: 'AskUserQuestion',
+    // Need waitForResponse so /api/notify creates a pending_requests row
+    // (otherwise /api/decide/[id] won't find it when the user opens the
+    // Decide screen from the phone).
+    waitForResponse: true,
+  });
 }
 
 function handleToolEnd(event) {
@@ -596,6 +662,89 @@ function binaryDecisionToHookResponse(decision, wsActive) {
  */
 function isPlanModePermission(d) {
   return d.tool === 'ExitPlanMode' || d.toolName === 'ExitPlanMode';
+}
+
+/**
+ * Pick the right CHOICE_N notification category for an N-option push.
+ * Returns null when the count is outside the supported range (1 or
+ * >4) so the caller can fall back to info-only / open-in-app.
+ *
+ * iOS notification categories are pre-registered at app launch with
+ * fixed labels (see NotificationManager.swift); only counts 2/3/4 have
+ * dedicated registered categories.
+ */
+function categoryForOptionCount(n) {
+  if (n === 2) return 'CLAUDE_CHOICE_2';
+  if (n === 3) return 'CLAUDE_CHOICE_3';
+  if (n === 4) return 'CLAUDE_CHOICE_4';
+  return null;
+}
+
+/**
+ * Extract OptionChoice[] from AskUserQuestion's tool_input.
+ *
+ * AskUserQuestion's schema:
+ *   { questions: [{ question, header, multiSelect, options: [{label, description}] }] }
+ *
+ * Returns null when the tool_input doesn't look like a single-select
+ * multi-choice question with 2-4 options (the range we can render on
+ * iOS lock-screen buttons). The caller then falls through to the
+ * generic info notification.
+ */
+function extractAskUserQuestionOptions(toolInput) {
+  const questions = Array.isArray(toolInput?.questions) ? toolInput.questions : [];
+  if (questions.length === 0) return null;
+  const q = questions[0];
+  const rawOpts = Array.isArray(q?.options) ? q.options : [];
+  if (rawOpts.length < 2) return null;
+
+  // Cap at 4 — iOS lock-screen actions max out there. Anything beyond
+  // is reachable via the Decide screen which has no cap.
+  const trimmed = rawOpts.slice(0, 4);
+  const options = trimmed.map((o, i) => {
+    const label = typeof o?.label === 'string' && o.label.length > 0 ? o.label : `Option ${i + 1}`;
+    const hint =
+      typeof o?.description === 'string' && o.description.length > 0 ? o.description : undefined;
+    return hint ? { id: `option_${i + 1}`, label, hint } : { id: `option_${i + 1}`, label };
+  });
+
+  return {
+    options,
+    question: typeof q.question === 'string' ? q.question : '',
+    header: typeof q.header === 'string' ? q.header : '',
+  };
+}
+
+/**
+ * Extract choices from a Notification hook payload of type
+ * `elicitation_dialog`. MCP elicitation forms put a select field's
+ * choices in `fields[].choices` per the elicitation spec; some
+ * implementations also surface a flatter `choices` array directly on
+ * the notification data. We try both shapes.
+ *
+ * Returns null when no select-field with 2-4 choices is found.
+ */
+function extractElicitationChoices(data) {
+  const directChoices = Array.isArray(data?.choices) ? data.choices : null;
+  const fields = Array.isArray(data?.fields) ? data.fields : [];
+  const selectField = fields.find(
+    (f) => f && f.type === 'select' && Array.isArray(f.choices) && f.choices.length >= 2
+  );
+
+  const choices =
+    directChoices && directChoices.length >= 2 ? directChoices : (selectField?.choices ?? null);
+  if (!choices || choices.length < 2) return null;
+
+  const trimmed = choices.slice(0, 4);
+  const options = trimmed.map((c, i) => {
+    const label = typeof c === 'string' ? c : c?.label || c?.value || `Option ${i + 1}`;
+    return { id: `option_${i + 1}`, label };
+  });
+
+  return {
+    options,
+    fieldName: selectField?.name ?? null,
+  };
 }
 
 /**
@@ -752,7 +901,26 @@ function handleQuestion(event) {
   const ctx = getSessionContext(d.sessionId);
   const { title, subtitle, body } = buildQuestionNotification(event, ctx);
 
-  sendNotification(title, body, 'question', event.source, subtitle);
+  // If the elicitation payload has dynamic choices (MCP select field),
+  // surface them as a CHOICE_N category so the iOS Decide screen can
+  // render proper option buttons. Still info-only — the Notification
+  // hook can't return a decision, so any user tap on phone is recorded
+  // for awareness only.
+  const choiceData = extractElicitationChoices(d);
+  const extras = { sessionId: d.sessionId };
+  if (choiceData) {
+    const category = categoryForOptionCount(choiceData.options.length);
+    if (category) {
+      extras.notificationCategory = category;
+      extras.options = choiceData.options;
+      extras.question = d.message || d.title || '';
+      extras.responseKind = 'info';
+      extras.waitForResponse = true;
+      debugLog(`Elicitation choice surfaced: ${choiceData.options.length} options → ${category}`);
+    }
+  }
+
+  sendNotification(title, body, 'question', event.source, subtitle, extras);
 }
 
 /**
@@ -943,7 +1111,10 @@ function readSessionLines(sessionId, cwd) {
       const buf = Buffer.alloc(stat.size);
       fs.readSync(fd, buf, 0, stat.size, 0);
       fs.closeSync(fd);
-      const all = buf.toString('utf-8').split('\n').filter((l) => l.trim());
+      const all = buf
+        .toString('utf-8')
+        .split('\n')
+        .filter((l) => l.trim());
       firstLines = all;
       lastLines = all;
     } else {
@@ -954,9 +1125,15 @@ function readSessionLines(sessionId, cwd) {
       fs.readSync(fd, tailBuf, 0, tailSize, stat.size - tailSize);
       fs.closeSync(fd);
 
-      firstLines = headBuf.toString('utf-8').split('\n').filter((l) => l.trim());
+      firstLines = headBuf
+        .toString('utf-8')
+        .split('\n')
+        .filter((l) => l.trim());
       if (firstLines.length > 0) firstLines.pop(); // drop possibly-partial last line
-      lastLines = tailBuf.toString('utf-8').split('\n').filter((l) => l.trim());
+      lastLines = tailBuf
+        .toString('utf-8')
+        .split('\n')
+        .filter((l) => l.trim());
       if (lastLines.length > 0) lastLines.shift(); // drop possibly-partial first line
     }
 
@@ -1189,9 +1366,7 @@ function buildPermissionNotification(event, ctx = {}) {
   }
 
   // No tool name (Notification permission_prompt path).
-  const subtitle = goal
-    ? `Goal: ${summarize(goal, 70)}`
-    : summarize(message) || 'Permission';
+  const subtitle = goal ? `Goal: ${summarize(goal, 70)}` : summarize(message) || 'Permission';
 
   if (message) {
     const lines = [message];
@@ -1528,8 +1703,22 @@ function startPolling(requestId, resolve) {
   }, POLL_INTERVAL);
 }
 
-function sendNotification(title, body, category = 'completion', source = RUNTIME, subtitle = '') {
-  const requestId = Math.random().toString(36).substring(2, 15);
+function sendNotification(
+  title,
+  body,
+  category = 'completion',
+  source = RUNTIME,
+  subtitle = '',
+  // PR-3: extras carries the dynamic-options fields (notificationCategory,
+  // question, options, responseKind) for AskUserQuestion / elicitation
+  // pushes that need to render proper action buttons + populate the
+  // /api/decide/[id] payload. Optionally setting waitForResponse=true
+  // tells the server to persist a pending_requests row even though this
+  // is a fire-and-forget call (no polling) — needed so the iOS Decide
+  // screen can fetch the question + options afterward.
+  extras = {}
+) {
+  const requestId = extras.requestId || Math.random().toString(36).substring(2, 15);
   const timestamp = new Date().toISOString();
 
   // Title flows through unchanged; runtime/env metadata is appended as a low-weight
@@ -1545,6 +1734,11 @@ function sendNotification(title, body, category = 'completion', source = RUNTIME
     ...(subtitle ? { subtitle } : {}),
     message: finalBody,
     ...(DEVICE_TOKEN && { deviceToken: DEVICE_TOKEN }),
+    ...(extras.waitForResponse && { waitForResponse: true }),
+    ...(extras.notificationCategory && { notificationCategory: extras.notificationCategory }),
+    ...(extras.question !== undefined && { question: extras.question }),
+    ...(extras.options && { options: extras.options }),
+    ...(extras.responseKind && { responseKind: extras.responseKind }),
     data: {
       category,
       project: getProjectName(),
@@ -1554,6 +1748,12 @@ function sendNotification(title, body, category = 'completion', source = RUNTIME
       source: 'shooter-completion-detector',
       environment: USE_LOCAL ? 'local' : 'remote',
       runtime: source,
+      // Echo toolName/toolInput/sessionId when the caller knows them so
+      // the server-side row + Decide screen have full context (matches
+      // the eventData spread in sendNotificationAndPoll).
+      ...(extras.toolName && { toolName: extras.toolName }),
+      ...(extras.toolInput && { toolInput: extras.toolInput }),
+      ...(extras.sessionId && { sessionId: extras.sessionId }),
     },
   });
 
@@ -1766,6 +1966,11 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports.binaryDecisionToHookResponse = binaryDecisionToHookResponse;
   module.exports.isPlanModePermission = isPlanModePermission;
   module.exports.planDecisionToHookResponse = planDecisionToHookResponse;
+  // PR-3 helpers (tests/dynamic-options-extraction.test.cjs).
+  module.exports.adaptClaudeCodeEvent = adaptClaudeCodeEvent;
+  module.exports.categoryForOptionCount = categoryForOptionCount;
+  module.exports.extractAskUserQuestionOptions = extractAskUserQuestionOptions;
+  module.exports.extractElicitationChoices = extractElicitationChoices;
 }
 
 // Run main() when called directly from CLI (Claude Code)
