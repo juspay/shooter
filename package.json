@@ -76,7 +76,7 @@
     "format:generated": "prettier --write ./src/lib/types/generated/*",
     "quality:all": "pnpm run lint && pnpm run format:check && pnpm run check",
     "gen:types": "npx type-crafter generate typescript-with-decoders ./specs/types/index.yaml ./src/lib/types/generated SingleFile SingleFile && bash scripts/postgen-types.sh && pnpm run format:generated",
-    "test": "node tests/terminal-store.test.cjs && node tests/pending-requests.test.cjs && node tests/tunnel-discovery.test.cjs && node tests/plan-mode-routing.test.cjs",
+    "test": "node tests/terminal-store.test.cjs && node tests/pending-requests.test.cjs && node tests/tunnel-discovery.test.cjs && node tests/plan-mode-routing.test.cjs && node tests/dynamic-options-extraction.test.cjs",
     "setup": "node scripts/setup.cjs",
     "prepare": "husky || true",
     "prepublishOnly": "pnpm build"
