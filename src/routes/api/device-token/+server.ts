@@ -1,4 +1,3 @@
-import { env } from '$env/dynamic/private';
 import { validateAuth } from '$lib/modules/server/auth';
 import { json } from '@sveltejs/kit';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
@@ -70,9 +69,14 @@ export const POST: RequestHandler = async ({ request }) => {
   tokens[platform] = token;
   writeTokens(tokens);
 
-  // Update in-memory env so APNs can use it immediately (iOS is the primary APNs target)
+  // Update in-memory env so APNs can use it immediately (iOS is the primary APNs target).
+  // SvelteKit's $env/dynamic/private exposes a Proxy whose getter reads process.env at
+  // access time but whose setter does NOT propagate to process.env. Assigning via the
+  // Proxy is a silent no-op, so subsequent /api/notify calls still read the stale value
+  // from .env. Write straight to process.env so env.DEVICE_TOKEN picks up the new token
+  // on the next read.
   if (platform === 'ios') {
-    (env as Record<string, string>).DEVICE_TOKEN = token;
+    process.env.DEVICE_TOKEN = token;
   }
 
   console.log(`[device-token] Registered ${platform} token (length: ${token.length})`);
