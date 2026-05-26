@@ -1,3 +1,9 @@
+## [1.14.0](https://github.com/juspay/shooter/compare/v1.13.0...v1.14.0) (2026-05-26)
+
+### Features
+
+* **(decisions):**  surface AskUserQuestion + MCP elicitation choices on phone (PR-3 of 3) ([36ef117](https://github.com/juspay/shooter/commit/36ef117879699a7389ddeff2479332daf38a9bf0))
+
 ## [1.13.0](https://github.com/juspay/shooter/compare/v1.12.0...v1.13.0) (2026-05-24)
 
 ### Features
