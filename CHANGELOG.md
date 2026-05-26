@@ -1,3 +1,9 @@
+## [1.15.0](https://github.com/juspay/shooter/compare/v1.14.0...v1.15.0) (2026-05-26)
+
+### Features
+
+* **(ios):**  native pairing fallback + WebView load-failure overlay ([cda6f1d](https://github.com/juspay/shooter/commit/cda6f1d7ec13ecddc4e7270c7c4929d3c0257c3a)), closes [#0a0a0a](https://github.com/juspay/shooter/issues/0a0a0a)
+
 ## [1.14.0](https://github.com/juspay/shooter/compare/v1.13.0...v1.14.0) (2026-05-26)
 
 ### Features
