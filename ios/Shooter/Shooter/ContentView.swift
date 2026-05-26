@@ -2,28 +2,182 @@ import AVFoundation
 import SwiftUI
 import WebKit
 
+extension Notification.Name {
+    /// Posted by the WebView coordinator when the load fails. ContentView
+    /// listens to flip `webViewLoadFailed` so a stale-but-non-empty
+    /// serverUrl/apiKey no longer leaves the user stuck on the error
+    /// page — needsPairing flips true and PairingView takes over.
+    static let shooterWebViewLoadFailed = Notification.Name("ShooterWebViewLoadFailed")
+}
+
 struct ContentView: View {
     @EnvironmentObject var notificationManager: NotificationManager
 
+    // Bumps when PairingView saves so the WebView reads fresh values
+    // and re-instantiates with the new URL.
+    @State private var pairingRevision: Int = 0
+
+    // Set to true when the WebView reports a load failure (didFail or
+    // didFailProvisionalNavigation). Forces needsPairing true so the
+    // user can re-pair instead of being trapped on the error overlay.
+    // Reset whenever PairingView appears.
+    @State private var webViewLoadFailed: Bool = false
+
+    // Last WebView failure surfaced in PairingView as a banner so users
+    // know WHY they got booted back to pairing.
+    @State private var lastWebViewError: String?
+
     var body: some View {
-        WebView(url: serverURL, notificationManager: notificationManager)
-            .ignoresSafeArea(edges: .bottom)
-            .background(Color(red: 10/255, green: 10/255, blue: 10/255))
-            // @EnvironmentObject doesn't project a Binding via `$`, so
-            // bridge the @Published String? manually for .sheet(item:).
-            .sheet(item: Binding(
-                get: { notificationManager.decideRequestId },
-                set: { notificationManager.decideRequestId = $0 }
-            )) { requestId in
-                DecideView(requestId: requestId.value)
-                    .environmentObject(notificationManager)
+        Group {
+            if needsPairing {
+                PairingView(
+                    lastError: lastWebViewError,
+                    onPaired: {
+                        pairingRevision += 1
+                        webViewLoadFailed = false
+                        lastWebViewError = nil
+                    }
+                )
+            } else {
+                WebView(url: serverURL, notificationManager: notificationManager)
+                    .ignoresSafeArea(edges: .bottom)
+                    .background(Color(red: 10/255, green: 10/255, blue: 10/255))
+                    .id(pairingRevision)
             }
+        }
+        .sheet(item: Binding(
+            get: { notificationManager.decideRequestId },
+            set: { notificationManager.decideRequestId = $0 }
+        )) { requestId in
+            DecideView(requestId: requestId.value)
+                .environmentObject(notificationManager)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .shooterWebViewLoadFailed)) { note in
+            lastWebViewError = note.userInfo?["message"] as? String
+            webViewLoadFailed = true
+        }
+    }
+
+    private var needsPairing: Bool {
+        _ = pairingRevision // force re-evaluate when pairing saves
+        if webViewLoadFailed { return true }
+        let savedUrl = UserDefaults.standard.string(forKey: "serverUrl") ?? ""
+        let savedKey = KeychainHelper.read(key: "apiKey") ?? ""
+        return savedUrl.isEmpty || savedKey.isEmpty
     }
 
     private var serverURL: URL {
         let saved = UserDefaults.standard.string(forKey: "serverUrl") ?? ""
         let urlString = saved.isEmpty ? AppConfig.defaultServerURL : saved
         return URL(string: urlString) ?? URL(string: AppConfig.defaultServerURL)!
+    }
+}
+
+// MARK: - Pairing View (native fallback when WebView pairing is unavailable)
+//
+// Shown when serverUrl or apiKey are missing from UserDefaults / Keychain.
+// Lets the user pair without relying on the WebView (which has been
+// observed to silently fail to load on some builds). Pre-fills the URL
+// with AppConfig.defaultServerURL so the user usually only needs to
+// paste the API key.
+
+struct PairingView: View {
+    let lastError: String?
+    let onPaired: () -> Void
+
+    @State private var serverUrl: String = {
+        let saved = UserDefaults.standard.string(forKey: "serverUrl") ?? ""
+        return saved.isEmpty ? AppConfig.defaultServerURL : saved
+    }()
+    @State private var apiKey: String = KeychainHelper.read(key: "apiKey") ?? ""
+    @State private var checking: Bool = false
+    @State private var errorMessage: String?
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                if let lastError = lastError, !lastError.isEmpty {
+                    Section {
+                        Text(lastError)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } header: {
+                        Text("Previous load failed")
+                    }
+                }
+                Section {
+                    TextField("Server URL", text: $serverUrl)
+                        .keyboardType(.URL)
+                        .textContentType(.URL)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                    SecureField("API Key", text: $apiKey)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                } header: {
+                    Text("Connect to your Shooter server")
+                } footer: {
+                    if let msg = errorMessage {
+                        Text(msg).foregroundStyle(.red)
+                    } else {
+                        Text("Find your API key in ~/.shooter/.env on the host machine, or run `shooter setup` to print it.")
+                    }
+                }
+
+                Section {
+                    Button {
+                        Task { await save() }
+                    } label: {
+                        HStack {
+                            Spacer()
+                            if checking {
+                                ProgressView().controlSize(.small)
+                                Text("  Connecting…")
+                            } else {
+                                Text("Connect")
+                            }
+                            Spacer()
+                        }
+                    }
+                    .disabled(checking || serverUrl.isEmpty || apiKey.isEmpty)
+                }
+            }
+            .navigationTitle("Pair Shooter")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+
+    @MainActor
+    private func save() async {
+        errorMessage = nil
+        checking = true
+        defer { checking = false }
+
+        let trimmedUrl = serverUrl.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard let healthUrl = URL(string: "\(trimmedUrl)/api/health") else {
+            errorMessage = "Server URL doesn't parse as a URL"
+            return
+        }
+        // URLSession.shared inherits a ~60s default timeout; an 8s ceiling
+        // keeps the "Connecting…" state responsive when the URL is wrong.
+        var request = URLRequest(url: healthUrl)
+        request.timeoutInterval = 8
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+                errorMessage = "Server returned HTTP \(http.statusCode) — check the URL."
+                return
+            }
+        } catch {
+            errorMessage = "Can't reach server: \(error.localizedDescription)"
+            return
+        }
+
+        UserDefaults.standard.set(trimmedUrl, forKey: "serverUrl")
+        KeychainHelper.save(key: "apiKey", value: trimmedKey)
+        onPaired()
     }
 }
 
@@ -462,6 +616,88 @@ struct WebView: UIViewRepresentable {
 
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
             webView.scrollView.refreshControl?.endRefreshing()
+            print("[Shooter WebView] didFail: \(error.localizedDescription)")
+            renderLoadError(in: webView, error: error)
+            postLoadFailure(error: error)
+        }
+
+        // Fires when the initial network request fails (DNS, TLS,
+        // connection refused, ATS, etc.) — the more common failure path
+        // for a black-screen WebView. Previously this fired silently;
+        // now we surface the error inline AND broadcast to ContentView
+        // so it can route back to PairingView (otherwise a stale-but-
+        // non-empty serverUrl would leave the user trapped on the error
+        // overlay with no native recovery path).
+        func webView(
+            _ webView: WKWebView,
+            didFailProvisionalNavigation navigation: WKNavigation!,
+            withError error: Error
+        ) {
+            webView.scrollView.refreshControl?.endRefreshing()
+            print("[Shooter WebView] didFailProvisionalNavigation: \(error.localizedDescription)")
+            renderLoadError(in: webView, error: error)
+            postLoadFailure(error: error)
+        }
+
+        private func postLoadFailure(error: Error) {
+            let nsError = error as NSError
+            let message = "\(nsError.domain) (\(nsError.code)): \(nsError.localizedDescription)"
+            NotificationCenter.default.post(
+                name: .shooterWebViewLoadFailed,
+                object: nil,
+                userInfo: ["message": message]
+            )
+        }
+
+        // Escape a string for safe interpolation inside an HTML text node
+        // or attribute value. The values rendered in the error overlay —
+        // NSError.domain, .localizedDescription, and the failing URL —
+        // can contain attacker-controlled content (e.g. a crafted
+        // serverUrl from the pairing form). Without escaping, the
+        // loadHTMLString below would allow script injection into a
+        // context where the ShooterBridge JS bridge is still attached.
+        private func htmlEscape(_ s: String) -> String {
+            s.replacingOccurrences(of: "&", with: "&amp;")
+                .replacingOccurrences(of: "<", with: "&lt;")
+                .replacingOccurrences(of: ">", with: "&gt;")
+                .replacingOccurrences(of: "\"", with: "&quot;")
+                .replacingOccurrences(of: "'", with: "&#39;")
+        }
+
+        private func renderLoadError(in webView: WKWebView, error: Error) {
+            let nsError = error as NSError
+            let domain = htmlEscape(nsError.domain)
+            let code = String(nsError.code) // integer — safe
+            let description = htmlEscape(nsError.localizedDescription)
+            let failingUrlRaw =
+                (nsError.userInfo[NSURLErrorFailingURLStringErrorKey] as? String)
+                ?? webView.url?.absoluteString
+                ?? "unknown"
+            let failingUrl = htmlEscape(failingUrlRaw)
+            let html = """
+            <!doctype html>
+            <html><head><meta name=viewport content="width=device-width,initial-scale=1">
+            <style>
+              body{background:#0a0a0a;color:#eee;font:14px -apple-system,sans-serif;
+                   margin:0;padding:24px;}
+              h1{font-size:18px;margin:0 0 12px;}
+              .box{background:#1a1a1a;border:1px solid #333;border-radius:8px;
+                   padding:16px;margin-top:12px;}
+              code{display:block;background:#000;padding:8px;border-radius:4px;
+                   white-space:pre-wrap;word-break:break-all;font-size:12px;}
+              .muted{color:#888;font-size:12px;margin-top:8px;}
+            </style></head><body>
+            <h1>Couldn't load Shooter</h1>
+            <p>WKWebView reported a load failure:</p>
+            <div class=box>
+              <code>\(domain) (\(code))
+            \(description)</code>
+              <div class=muted>Failing URL: \(failingUrl)</div>
+            </div>
+            <p class=muted>Returning to the pairing screen so you can fix the server URL or API key.</p>
+            </body></html>
+            """
+            webView.loadHTMLString(html, baseURL: nil)
         }
 
         func webView(
