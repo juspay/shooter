@@ -1,6 +1,7 @@
 import type { NotificationData, OptionChoice, ResponseKind } from '$lib/types';
 
 import { env } from '$env/dynamic/private';
+import { readPersistedDeviceToken, resolveDeviceToken } from '$lib/modules/server/apn/device-token';
 import { LibraryAPNsService } from '$lib/modules/server/apn/library-apns';
 import { addNotification, getNotifications } from '$lib/modules/server/apn/notification-history';
 import { createPendingRequest } from '$lib/modules/server/apn/pending-requests';
@@ -9,30 +10,8 @@ import { isFCMConfigured, sendFCMNotification } from '$lib/modules/server/fcm/fc
 import { toErrorMessage } from '$lib/modules/server/utils/error';
 import { broadcastEvent } from '$lib/modules/server/ws/server';
 import { json } from '@sveltejs/kit';
-import { existsSync, readFileSync } from 'fs';
-import { homedir } from 'os';
-import { join } from 'path';
 
 import type { RequestHandler } from './$types';
-
-// Reads tokens persisted by /api/device-token — populated automatically when
-// the Android or iOS app registers on first launch.
-function readPersistedDeviceToken(platform: 'android' | 'ios'): string | undefined {
-  const tokensFile = join(homedir(), '.shooter', 'device-tokens.json');
-  if (!existsSync(tokensFile)) {
-    return undefined;
-  }
-  try {
-    const parsed: unknown = JSON.parse(readFileSync(tokensFile, 'utf-8'));
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      const value = (parsed as Record<string, unknown>)[platform];
-      return typeof value === 'string' && value ? value : undefined;
-    }
-  } catch {
-    // corrupt / unreadable — fall through
-  }
-  return undefined;
-}
 
 // Singleton APNs client - reuses HTTP/2 connection across requests
 let apnsSingleton: LibraryAPNsService | null = null;
@@ -457,15 +436,15 @@ export const POST: RequestHandler = async ({ request }) => {
         );
       }
 
-      // Honor request-scoped deviceToken, then the Android-specific env var,
-      // then the token auto-registered by the Android app via /api/device-token.
-      // env.DEVICE_TOKEN is intentionally NOT in this chain: the iOS branch
-      // treats it as an APNs token (see below), and letting it bleed into the
-      // FCM path would ship an APNs token to FCM in mixed-platform setups.
-      const androidToken =
-        requestDeviceToken?.trim() ||
-        env.ANDROID_DEVICE_TOKEN?.trim() ||
-        readPersistedDeviceToken('android');
+      // Resolve the FCM target: explicit request token, then the token the
+      // Android app persisted on launch, then the Android-specific env var.
+      // env.DEVICE_TOKEN is intentionally NOT in this chain — it holds the iOS
+      // APNs token, which must never be shipped to FCM in mixed-platform setups.
+      const androidToken = resolveDeviceToken(
+        requestDeviceToken,
+        readPersistedDeviceToken('android'),
+        env.ANDROID_DEVICE_TOKEN
+      );
 
       if (!androidToken) {
         return json(
@@ -541,15 +520,21 @@ export const POST: RequestHandler = async ({ request }) => {
         );
       }
 
-      // Honor request-scoped deviceToken (e.g., from config page test),
-      // falling back to the server-wide environment variable.
-      const deviceToken = requestDeviceToken?.trim() || env.DEVICE_TOKEN?.trim();
+      // Resolve the APNs target: explicit request token (e.g. config-page test),
+      // then the token the iOS app persisted on launch, then the env fallback.
+      // Persisted beats env so a stale .env DEVICE_TOKEN can't shadow the live
+      // device token after a restart (the BadDeviceToken trap this fixes).
+      const deviceToken = resolveDeviceToken(
+        requestDeviceToken,
+        readPersistedDeviceToken('ios'),
+        env.DEVICE_TOKEN
+      );
 
       if (!deviceToken) {
         return json(
           {
             details:
-              'DEVICE_TOKEN environment variable is missing and no deviceToken in request body',
+              'No iOS device token available — pass deviceToken in the request body, ensure ~/.shooter/device-tokens.json contains an ios token, or set DEVICE_TOKEN.',
             error: 'No device token configured',
           },
           { status: 500 }
