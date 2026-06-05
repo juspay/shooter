@@ -1,6 +1,7 @@
 import type { ProjectGroup } from '$lib/types';
 
 import { validateAuth } from '$lib/modules/server/auth';
+import { getCodexConversation, listCodexProjects } from '$lib/modules/server/sessions/codex-reader';
 import {
   getSessionConversation,
   listProjectsWithSessions,
@@ -26,27 +27,35 @@ function getMergedProjects(): ProjectGroup[] {
 
   const claudeProjects = listProjectsWithSessions();
   const openCodeProjects = listOpenCodeProjects();
+  const codexProjects = listCodexProjects();
   const projectsByPath = new Map<string, ProjectGroup>();
 
   for (const p of claudeProjects) {
     projectsByPath.set(p.fullPath, { ...p });
   }
 
-  for (const op of openCodeProjects) {
-    const existing = projectsByPath.get(op.fullPath);
-    if (existing) {
-      existing.sessions.push(...op.sessions);
-      existing.sessions.sort(
-        (a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime()
-      );
-      existing.sessionCount = existing.sessions.length;
-      existing.lastModified = existing.sessions[0]?.modified || existing.lastModified;
-      existing.name = existing.name.replace(' (OpenCode)', '');
-    } else {
-      op.name = op.name.replace(' (OpenCode)', '');
-      projectsByPath.set(op.fullPath, { ...op });
+  // Merge a provider's projects into the map, deduplicating by absolute path so
+  // sessions from different agents in the same directory group under one project.
+  const mergeProvider = (incoming: ProjectGroup[], stripSuffix?: string): void => {
+    for (const group of incoming) {
+      const cleanName = stripSuffix ? group.name.replace(stripSuffix, '') : group.name;
+      const existing = projectsByPath.get(group.fullPath);
+      if (existing) {
+        existing.sessions.push(...group.sessions);
+        existing.sessions.sort(
+          (a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime()
+        );
+        existing.sessionCount = existing.sessions.length;
+        existing.lastModified = existing.sessions[0]?.modified || existing.lastModified;
+        existing.name = existing.name.replace(stripSuffix ?? '', '');
+      } else {
+        projectsByPath.set(group.fullPath, { ...group, name: cleanName });
+      }
     }
-  }
+  };
+
+  mergeProvider(openCodeProjects, ' (OpenCode)');
+  mergeProvider(codexProjects);
 
   cachedProjects = [...projectsByPath.values()].sort(
     (a, b) => new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime()
@@ -88,9 +97,12 @@ export const GET: RequestHandler = ({ request, url }) => {
       : undefined;
     let messages = getSessionConversation(sessionId, offset, limit, claudeProjectDir);
 
-    // If Claude Code reader found nothing, try OpenCode
+    // If Claude Code reader found nothing, try OpenCode, then Codex.
     if (messages.length === 0) {
       messages = getOpenCodeConversation(sessionId, offset, limit);
+    }
+    if (messages.length === 0) {
+      messages = getCodexConversation(sessionId, offset, limit);
     }
 
     // Find session info — short-circuit when project is already resolved

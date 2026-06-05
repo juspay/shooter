@@ -4,6 +4,7 @@
 export type * from './activity';
 export type * from './apn';
 export type * from './cli';
+export type * from './codex';
 export type * from './common';
 export type * from './dashboard';
 export * from './decision';

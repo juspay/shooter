@@ -11,6 +11,8 @@ Sessions:
     enum:
       - claude-code
       - opencode
+      - codex
+      - gemini
     description: Source tool that produced the session
 
   MessageRole:

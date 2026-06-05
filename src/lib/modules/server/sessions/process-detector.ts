@@ -1,5 +1,6 @@
 import type { ClaudeSessionFile, DetectedProcess } from '$lib/types';
 
+import { detectActiveCodexSessions } from '$lib/modules/server/sessions/codex-reader';
 import { resolveOpenCodeDbPath } from '$lib/modules/server/sessions/opencode-db-path';
 import Database from 'better-sqlite3';
 import { execSync } from 'child_process';
@@ -44,6 +45,9 @@ const CLAUDE_SESSIONS_DIR = join(homedir(), '.claude', 'sessions');
 
 // OpenCode sessions updated within this window are considered "live"
 const OPENCODE_ACTIVE_THRESHOLD_MS = 3 * 60_000; // 3 minutes
+
+// Codex rollout files written within this window are considered "live"
+const CODEX_ACTIVE_THRESHOLD_MS = 3 * 60_000; // 3 minutes
 
 /**
  * Scan ~/.claude/sessions/*.json to find running Claude Code processes,
@@ -135,6 +139,25 @@ export function detectRunningAISessions(): DetectedProcess[] {
     } catch {
       // OpenCode DB missing or unreadable — skip silently
     }
+  }
+
+  // --- Codex sessions ---
+  // Codex has no PID file; a rollout file written in the last few minutes
+  // indicates an active session. cwd/id come from its session_meta line.
+  try {
+    for (const s of detectActiveCodexSessions(CODEX_ACTIVE_THRESHOLD_MS)) {
+      results.push({
+        command: 'codex',
+        cwd: s.cwd,
+        kind: 'interactive',
+        pid: 0, // Codex doesn't expose a per-session PID
+        projectPath: cwdToProjectPath(s.cwd),
+        sessionId: s.id,
+        startedAt: s.startedAt,
+      });
+    }
+  } catch {
+    // ~/.codex/sessions missing or unreadable — skip silently
   }
 
   // Sort by startedAt descending (most recent first)

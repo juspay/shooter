@@ -21,7 +21,7 @@
 
   const POLL_INTERVAL_MS = 10_000;
   const CACHE_KEY = 'shooter_terminals';
-  const AI_COMMANDS = ['claude', 'opencode'];
+  const AI_COMMANDS = ['claude', 'opencode', 'codex', 'gemini'];
   const SHELL_COMMANDS = ['zsh', 'bash', 'sh', 'fish'];
 
   let terminals = $state<TerminalListItem[]>([]);

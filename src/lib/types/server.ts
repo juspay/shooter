@@ -8,10 +8,21 @@
 import type { FSWatcher } from 'chokidar';
 import type WebSocket from 'ws';
 
+import type { CodexStreamParser } from '../modules/server/sessions/codex-parser';
 import type { HolderClient } from '../modules/server/terminal/holder-client';
 import type { ConversationMessage } from './sessions';
 
 // ── holder-client types ─────────────────────────────────────────────
+
+export interface CodexWatchState {
+  callbacks: Set<(messages: ConversationMessage[]) => void>;
+  idleTimer: null | ReturnType<typeof setTimeout>;
+  /** Incomplete trailing line buffered between reads. */
+  lineBuffer: string;
+  offset: number;
+  parser: CodexStreamParser;
+  watcher: FSWatcher;
+}
 
 /** Messages received from the holder process (local ndjson protocol). */
 export type HolderIncomingMessage =
@@ -22,18 +33,20 @@ export type HolderIncomingMessage =
   | { exitCode: null | number; exited: boolean; pid: number; type: 'info' }
   | { path: string; type: 'cwd' };
 
+// ── pty-manager types ───────────────────────────────────────────────
+
 /** Messages sent to the holder process (local ndjson protocol). */
 export type HolderOutgoingMessage =
   | { cols: number; rows: number; type: 'resize' }
   | { data: string; type: 'input' }
   | { signal?: string; type: 'kill' };
 
-// ── pty-manager types ───────────────────────────────────────────────
-
 /**
  * Callback invoked when new JSONL entries are parsed from a watched file.
  */
 export type OnNewEntries = (entries: ConversationMessage[]) => void;
+
+// ── session-watcher types ───────────────────────────────────────────
 
 export interface OpenCodeWatchState {
   callbacks: Set<(messages: ConversationMessage[]) => void>;
@@ -48,8 +61,6 @@ export interface OpenCodeWatchState {
   lastPartTime: number;
   sessionId: string;
 }
-
-// ── session-watcher types ───────────────────────────────────────────
 
 export interface PtyManagedTerminal {
   args: string[];
@@ -78,12 +89,14 @@ export interface PtyManagedTerminal {
   watcherOffset: number;
 }
 
+// ── opencode-watcher types ──────────────────────────────────────────
+
 export interface PtyOutputBuffer {
   data: string[];
   size: number;
 }
 
-// ── opencode-watcher types ──────────────────────────────────────────
+// ── codex-watcher types ─────────────────────────────────────────────
 
 export interface SessionWatchedFile {
   callbacks: Set<OnNewEntries>;

@@ -30,7 +30,7 @@
 
   // ------- Constants -------
 
-  const AI_COMMANDS = ['claude', 'opencode'];
+  const AI_COMMANDS = ['claude', 'opencode', 'codex', 'gemini'];
 
   // ------- Reactive state -------
 
