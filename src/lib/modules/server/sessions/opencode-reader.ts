@@ -2,16 +2,6 @@ import Database from 'better-sqlite3';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 
-function shortHash(input: string): string {
-  return crypto.createHash('sha256').update(input).digest('hex').slice(0, 8);
-}
-
-import type { ConversationMessage, MessagePart, ProjectGroup, SessionInfo } from '$lib/types';
-
-import { resolveOpenCodeDbPath } from './opencode-db-path';
-
-const OPENCODE_DB_PATH = resolveOpenCodeDbPath();
-
 export function getOpenCodeConversation(
   sessionId: string,
   offset = 0,
@@ -126,6 +116,10 @@ export function getOpenCodeConversation(
     db.close();
   }
 }
+
+import type { ConversationMessage, MessagePart, ProjectGroup, SessionInfo } from '$lib/types';
+
+import { resolveOpenCodeDbPath } from './opencode-db-path';
 
 export function listOpenCodeProjects(): ProjectGroup[] {
   const db = getDb();
@@ -251,12 +245,19 @@ function convertOpenCodePart(data: Record<string, unknown>): MessagePart | null 
 }
 
 function getDb(): Database.Database | null {
-  if (!fs.existsSync(OPENCODE_DB_PATH)) {
+  // Resolve per call (not at module load) so a DB created after server start —
+  // or an XDG_DATA_HOME change — is still picked up.
+  const dbPath = resolveOpenCodeDbPath();
+  if (!fs.existsSync(dbPath)) {
     return null;
   }
   try {
-    return new Database(OPENCODE_DB_PATH, { readonly: true });
+    return new Database(dbPath, { readonly: true });
   } catch {
     return null;
   }
+}
+
+function shortHash(input: string): string {
+  return crypto.createHash('sha256').update(input).digest('hex').slice(0, 8);
 }

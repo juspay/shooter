@@ -1,6 +1,9 @@
 import type { ClaudeSessionFile, DetectedProcess } from '$lib/types';
 
+import { detectActiveAmpSessions } from '$lib/modules/server/sessions/amp-reader';
 import { detectActiveCodexSessions } from '$lib/modules/server/sessions/codex-reader';
+import { detectActiveCopilotSessions } from '$lib/modules/server/sessions/copilot-reader';
+import { detectActiveCursorSessions } from '$lib/modules/server/sessions/cursor-reader';
 import { detectActiveGeminiSessions } from '$lib/modules/server/sessions/gemini-reader';
 import { resolveOpenCodeDbPath } from '$lib/modules/server/sessions/opencode-db-path';
 import { detectActiveQwenSessions } from '$lib/modules/server/sessions/qwen-reader';
@@ -48,14 +51,22 @@ const CLAUDE_SESSIONS_DIR = join(homedir(), '.claude', 'sessions');
 // OpenCode sessions updated within this window are considered "live"
 const OPENCODE_ACTIVE_THRESHOLD_MS = 3 * 60_000; // 3 minutes
 
-// Codex rollout files written within this window are considered "live"
-const CODEX_ACTIVE_THRESHOLD_MS = 3 * 60_000; // 3 minutes
+// File-based providers: a session file written within this window = "live".
+const FILE_PROVIDER_ACTIVE_THRESHOLD_MS = 3 * 60_000; // 3 minutes
 
-// Gemini session files written within this window are considered "live"
-const GEMINI_ACTIVE_THRESHOLD_MS = 3 * 60_000; // 3 minutes
-
-// Qwen session files written within this window are considered "live"
-const QWEN_ACTIVE_THRESHOLD_MS = 3 * 60_000; // 3 minutes
+// File-based providers (no PID file) share one detection shape:
+// detectActive<P>Sessions(thresholdMs) -> { cwd, id, startedAt }[].
+const FILE_PROVIDER_DETECTORS: {
+  command: DetectedProcess['command'];
+  detect: (thresholdMs: number) => { cwd: string; id: string; startedAt: number }[];
+}[] = [
+  { command: 'codex', detect: detectActiveCodexSessions },
+  { command: 'gemini', detect: detectActiveGeminiSessions },
+  { command: 'qwen', detect: detectActiveQwenSessions },
+  { command: 'cursor-agent', detect: detectActiveCursorSessions },
+  { command: 'copilot', detect: detectActiveCopilotSessions },
+  { command: 'amp', detect: detectActiveAmpSessions },
+];
 
 /**
  * Scan ~/.claude/sessions/*.json to find running Claude Code processes,
@@ -149,59 +160,25 @@ export function detectRunningAISessions(): DetectedProcess[] {
     }
   }
 
-  // --- Codex sessions ---
-  // Codex has no PID file; a rollout file written in the last few minutes
-  // indicates an active session. cwd/id come from its session_meta line.
-  try {
-    for (const s of detectActiveCodexSessions(CODEX_ACTIVE_THRESHOLD_MS)) {
-      results.push({
-        command: 'codex',
-        cwd: s.cwd,
-        kind: 'interactive',
-        pid: 0, // Codex doesn't expose a per-session PID
-        projectPath: cwdToProjectPath(s.cwd),
-        sessionId: s.id,
-        startedAt: s.startedAt,
-      });
+  // --- File-based providers (Codex/Gemini/Qwen/Cursor/Copilot/Amp) ---
+  // None expose a PID; a recently-written session file means "live". cwd/id come
+  // from each provider's reader. One loop instead of a block per provider.
+  for (const { command, detect } of FILE_PROVIDER_DETECTORS) {
+    try {
+      for (const s of detect(FILE_PROVIDER_ACTIVE_THRESHOLD_MS)) {
+        results.push({
+          command,
+          cwd: s.cwd,
+          kind: 'interactive',
+          pid: 0,
+          projectPath: cwdToProjectPath(s.cwd),
+          sessionId: s.id,
+          startedAt: s.startedAt,
+        });
+      }
+    } catch {
+      // provider session dir missing/unreadable — skip silently
     }
-  } catch {
-    // ~/.codex/sessions missing or unreadable — skip silently
-  }
-
-  // --- Gemini sessions ---
-  // Gemini has no PID file; a logs.json / chat file written in the last few
-  // minutes indicates an active session. cwd is reverse-mapped where possible.
-  try {
-    for (const s of detectActiveGeminiSessions(GEMINI_ACTIVE_THRESHOLD_MS)) {
-      results.push({
-        command: 'gemini',
-        cwd: s.cwd,
-        kind: 'interactive',
-        pid: 0, // Gemini doesn't expose a per-session PID
-        projectPath: cwdToProjectPath(s.cwd),
-        sessionId: s.id,
-        startedAt: s.startedAt,
-      });
-    }
-  } catch {
-    // ~/.gemini/tmp missing or unreadable — skip silently
-  }
-
-  // --- Qwen sessions ---
-  try {
-    for (const s of detectActiveQwenSessions(QWEN_ACTIVE_THRESHOLD_MS)) {
-      results.push({
-        command: 'qwen',
-        cwd: s.cwd,
-        kind: 'interactive',
-        pid: 0,
-        projectPath: cwdToProjectPath(s.cwd),
-        sessionId: s.id,
-        startedAt: s.startedAt,
-      });
-    }
-  } catch {
-    // ~/.qwen/projects missing or unreadable — skip silently
   }
 
   // Sort by startedAt descending (most recent first)

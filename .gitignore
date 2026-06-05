@@ -186,3 +186,7 @@ yarn.lock
 *.p12
 *.pem
 *.key
+
+# E2E smoke-test scratch
+.shooter-e2e-ws-*.mjs
+.e2e-allfeat-*.mjs

@@ -12,7 +12,10 @@
 
 import type { ConversationMessage, ProjectGroup, ProviderDef } from '$lib/types';
 
+import { getAmpConversation, listAmpProjects } from './amp-reader';
 import { getCodexConversation, listCodexProjects } from './codex-reader';
+import { getCopilotConversation, listCopilotProjects } from './copilot-reader';
+import { getCursorConversation, listCursorProjects } from './cursor-reader';
 import { getGeminiConversation, listGeminiProjects } from './gemini-reader';
 import { getSessionConversation, listProjectsWithSessions } from './jsonl-reader';
 import { getOpenCodeConversation, listOpenCodeProjects } from './opencode-reader';
@@ -70,6 +73,33 @@ export const PROVIDERS: ProviderDef[] = [
     resumeArgs: () => [],
     source: 'qwen',
   },
+  {
+    command: 'cursor-agent',
+    getConversation: getCursorConversation,
+    isAI: true,
+    label: 'Cursor',
+    listProjects: listCursorProjects,
+    resumeArgs: () => [],
+    source: 'cursor',
+  },
+  {
+    command: 'copilot',
+    getConversation: getCopilotConversation,
+    isAI: true,
+    label: 'Copilot',
+    listProjects: listCopilotProjects,
+    resumeArgs: () => [],
+    source: 'copilot',
+  },
+  {
+    command: 'amp',
+    getConversation: getAmpConversation,
+    isAI: true,
+    label: 'Amp',
+    listProjects: listAmpProjects,
+    resumeArgs: () => [],
+    source: 'amp',
+  },
 ];
 
 /** AI-agent binary names (for AI_COMMANDS-style checks). */
@@ -93,9 +123,13 @@ export function getProviderConversation(
     if (provider.source === 'claude-code') {
       continue;
     }
-    const messages = provider.getConversation(sessionId, offset, limit);
-    if (messages.length > 0) {
-      return messages;
+    try {
+      const messages = provider.getConversation(sessionId, offset, limit);
+      if (messages.length > 0) {
+        return messages;
+      }
+    } catch {
+      // a failing provider reader must not break resolution — try the next
     }
   }
   return [];
@@ -112,17 +146,24 @@ export function listAllProviderProjects(): ProjectGroup[] {
       continue; // a broken provider must not take down the whole listing
     }
     for (const group of groups) {
-      const name = provider.nameSuffix ? group.name.replace(provider.nameSuffix, '') : group.name;
-      const existing = byPath.get(group.fullPath);
-      if (existing) {
-        existing.sessions.push(...group.sessions);
-        existing.sessions.sort(
-          (a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime()
-        );
-        existing.sessionCount = existing.sessions.length;
-        existing.lastModified = existing.sessions[0]?.modified || existing.lastModified;
-      } else {
-        byPath.set(group.fullPath, { ...group, name });
+      try {
+        const name =
+          provider.nameSuffix && typeof group.name === 'string'
+            ? group.name.replace(provider.nameSuffix, '')
+            : group.name;
+        const existing = byPath.get(group.fullPath);
+        if (existing) {
+          existing.sessions.push(...group.sessions);
+          existing.sessions.sort(
+            (a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime()
+          );
+          existing.sessionCount = existing.sessions.length;
+          existing.lastModified = existing.sessions[0]?.modified || existing.lastModified;
+        } else {
+          byPath.set(group.fullPath, { ...group, name });
+        }
+      } catch {
+        // skip a malformed group rather than dropping the rest of the provider
       }
     }
   }

@@ -12,7 +12,6 @@ const SOURCE_COMMAND: Record<SessionSource, string> = {
   copilot: 'copilot',
   cursor: 'cursor-agent',
   gemini: 'gemini',
-  iflow: 'iflow',
   opencode: 'opencode',
   qwen: 'qwen',
 };
@@ -24,7 +23,6 @@ const SOURCE_LABEL: Record<SessionSource, string> = {
   copilot: 'Copilot',
   cursor: 'Cursor',
   gemini: 'Gemini',
-  iflow: 'iFlow',
   opencode: 'OpenCode',
   qwen: 'Qwen',
 };

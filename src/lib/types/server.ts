@@ -24,6 +24,23 @@ export interface CodexWatchState {
   watcher: FSWatcher;
 }
 
+/**
+ * Watch state for the generic re-read-on-change watcher used by the
+ * read-only providers (cursor, copilot, qwen, gemini, amp). Unlike the
+ * byte-offset watchers, it re-parses the whole file on each change and
+ * dedupes by message ID — robust for both append-only JSONL and
+ * whole-document JSON formats.
+ */
+export interface GenericWatchedFile {
+  callbacks: Set<OnNewEntries>;
+  /** Message IDs already delivered, so re-reads only emit genuinely new messages. */
+  emittedMessageIds: Set<string>;
+  filePath: string;
+  watcher: FSWatcher;
+}
+
+// ── pty-manager types ───────────────────────────────────────────────
+
 /** Messages received from the holder process (local ndjson protocol). */
 export type HolderIncomingMessage =
   | { active: boolean; type: 'activity' }
@@ -33,20 +50,18 @@ export type HolderIncomingMessage =
   | { exitCode: null | number; exited: boolean; pid: number; type: 'info' }
   | { path: string; type: 'cwd' };
 
-// ── pty-manager types ───────────────────────────────────────────────
-
 /** Messages sent to the holder process (local ndjson protocol). */
 export type HolderOutgoingMessage =
   | { cols: number; rows: number; type: 'resize' }
   | { data: string; type: 'input' }
   | { signal?: string; type: 'kill' };
 
+// ── session-watcher types ───────────────────────────────────────────
+
 /**
  * Callback invoked when new JSONL entries are parsed from a watched file.
  */
 export type OnNewEntries = (entries: ConversationMessage[]) => void;
-
-// ── session-watcher types ───────────────────────────────────────────
 
 export interface OpenCodeWatchState {
   callbacks: Set<(messages: ConversationMessage[]) => void>;
@@ -61,6 +76,8 @@ export interface OpenCodeWatchState {
   lastPartTime: number;
   sessionId: string;
 }
+
+// ── opencode-watcher types ──────────────────────────────────────────
 
 export interface PtyManagedTerminal {
   args: string[];
@@ -89,14 +106,14 @@ export interface PtyManagedTerminal {
   watcherOffset: number;
 }
 
-// ── opencode-watcher types ──────────────────────────────────────────
+// ── codex-watcher types ─────────────────────────────────────────────
 
 export interface PtyOutputBuffer {
   data: string[];
   size: number;
 }
 
-// ── codex-watcher types ─────────────────────────────────────────────
+// ── generic-session-watcher types ───────────────────────────────────
 
 export interface SessionWatchedFile {
   callbacks: Set<OnNewEntries>;

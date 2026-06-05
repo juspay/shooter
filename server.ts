@@ -23,7 +23,9 @@ if (!existsSync(handlerPath)) {
 }
 
 const { handler } = await import('./build/handler.js');
+import { isReadOnlyProviderPath } from './src/lib/modules/server/sessions/provider-paths.js';
 import { codexWatcher } from './src/lib/modules/server/terminal/codex-watcher.js';
+import { genericSessionWatcher } from './src/lib/modules/server/terminal/generic-session-watcher.js';
 import { openCodeWatcher } from './src/lib/modules/server/terminal/opencode-watcher.js';
 import { ptyManager } from './src/lib/modules/server/terminal/pty-manager.js';
 import { sessionWatcher } from './src/lib/modules/server/terminal/session-watcher.js';
@@ -74,6 +76,12 @@ const sessionWatcherAdapter = {
     if (sessionFile.includes('/.codex/')) {
       return codexWatcher.getHistory(sessionFile);
     }
+    // Read-only providers (cursor/copilot/qwen/gemini/amp) are re-read whole
+    // by the generic watcher — checked before the claude fallback because
+    // their JSONL paths would otherwise be mis-parsed as Claude JSONL.
+    if (isReadOnlyProviderPath(sessionFile)) {
+      return genericSessionWatcher.getHistory(sessionFile);
+    }
     return sessionWatcher.getHistory(sessionFile);
   },
   subscribe(sessionFile: string, callback: Parameters<typeof sessionWatcher.watch>[1]) {
@@ -87,6 +95,9 @@ const sessionWatcherAdapter = {
         sessionFile,
         callback as (messages: ConversationMessage[]) => void
       );
+    }
+    if (isReadOnlyProviderPath(sessionFile)) {
+      return genericSessionWatcher.subscribe(sessionFile, callback);
     }
     // Use subscribe() which returns a ref-counted unsubscribe function.
     // The watcher is only torn down when the last subscriber disconnects.
@@ -221,6 +232,7 @@ function shutdown(signal: string): void {
   sessionWatcher.stopAll();
   openCodeWatcher.stopAll();
   codexWatcher.stopAll();
+  genericSessionWatcher.stopAll();
 
   // Terminate all remaining WebSocket clients (/ws/session, /ws/events)
   // so wss.close() doesn't hang waiting for them to disconnect.

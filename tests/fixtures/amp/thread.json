@@ -1,0 +1,27 @@
+{
+  "id": "T-amptest",
+  "title": "Read the file task",
+  "created": "2025-01-15T10:00:00Z",
+  "messages": [
+    { "role": "user", "content": [{ "type": "text", "text": "Read the file." }] },
+    {
+      "role": "assistant",
+      "content": [
+        { "type": "thinking", "thinking": "Let me plan this." },
+        {
+          "type": "tool_use",
+          "complete": true,
+          "id": "tu1",
+          "name": "Read",
+          "input": { "file_path": "main.go" }
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "content": [{ "type": "tool_result", "tool_use_id": "tu1", "content": "package main" }]
+    }
+  ],
+  "meta": { "traces": [{ "endTime": "2025-01-15T10:00:09Z" }] },
+  "env": { "initial": { "trees": [{ "displayName": "myrepo" }] } }
+}

@@ -527,8 +527,7 @@
 }
 
 /* Additional providers reuse the existing colour families (cosmetic only). */
-.pill-source-qwen,
-.pill-source-iflow {
+.pill-source-qwen {
   --pill-background: var(--ds-red-100);
   --pill-color: var(--ds-red-900);
   --pill-font-size: 10px;

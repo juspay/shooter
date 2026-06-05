@@ -17,7 +17,6 @@ Sessions:
       - cursor
       - copilot
       - amp
-      - iflow
     description: Source tool that produced the session
 
   MessageRole:
