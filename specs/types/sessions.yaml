@@ -13,6 +13,11 @@ Sessions:
       - opencode
       - codex
       - gemini
+      - qwen
+      - cursor
+      - copilot
+      - amp
+      - iflow
     description: Source tool that produced the session
 
   MessageRole:

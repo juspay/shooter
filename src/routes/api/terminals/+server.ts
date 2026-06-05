@@ -1,13 +1,15 @@
 import { validateAuth } from '$lib/modules/server/auth';
+import { PROVIDER_COMMANDS } from '$lib/modules/server/sessions/registry';
 import { ptyManager } from '$lib/modules/server/terminal/pty-manager';
 import { toErrorMessage } from '$lib/modules/server/utils/error';
 import { json } from '@sveltejs/kit';
 import { realpathSync, statSync } from 'fs';
-import { basename, isAbsolute, relative } from 'path';
+import { isAbsolute, relative } from 'path';
 
 import type { RequestHandler } from './$types';
 
-const ALLOWED_COMMANDS = ['zsh', 'bash', 'sh', 'fish', 'claude', 'opencode', 'codex', 'gemini'];
+// Plain shells + every registered AI-agent binary.
+const ALLOWED_COMMANDS = ['zsh', 'bash', 'sh', 'fish', ...PROVIDER_COMMANDS];
 
 /** Extract the last non-empty line from a scrollback string. */
 function lastScrollbackLine(scrollback: string): null | string {
@@ -86,9 +88,9 @@ export const POST: RequestHandler = async ({ request }) => {
       return json({ error: 'command is required' }, { status: 400 });
     }
 
-    // Issue 4: Command allowlist — only allow known safe commands
-    const commandBasename = basename(command);
-    if (!ALLOWED_COMMANDS.includes(commandBasename)) {
+    // Command allowlist — only bare allowlisted binary names. Reject any path
+    // component so an absolute path like "/tmp/bash" (basename "bash") can't slip through.
+    if (command.includes('/') || command.includes('\\') || !ALLOWED_COMMANDS.includes(command)) {
       return json(
         { error: `Command not allowed. Allowed: ${ALLOWED_COMMANDS.join(', ')}` },
         { status: 400 }

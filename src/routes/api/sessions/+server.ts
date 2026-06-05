@@ -1,15 +1,10 @@
 import type { ProjectGroup } from '$lib/types';
 
 import { validateAuth } from '$lib/modules/server/auth';
-import { getCodexConversation, listCodexProjects } from '$lib/modules/server/sessions/codex-reader';
 import {
-  getSessionConversation,
-  listProjectsWithSessions,
-} from '$lib/modules/server/sessions/jsonl-reader';
-import {
-  getOpenCodeConversation,
-  listOpenCodeProjects,
-} from '$lib/modules/server/sessions/opencode-reader';
+  getProviderConversation,
+  listAllProviderProjects,
+} from '$lib/modules/server/sessions/registry';
 import { json } from '@sveltejs/kit';
 
 import type { RequestHandler } from './$types';
@@ -25,41 +20,7 @@ function getMergedProjects(): ProjectGroup[] {
     return cachedProjects;
   }
 
-  const claudeProjects = listProjectsWithSessions();
-  const openCodeProjects = listOpenCodeProjects();
-  const codexProjects = listCodexProjects();
-  const projectsByPath = new Map<string, ProjectGroup>();
-
-  for (const p of claudeProjects) {
-    projectsByPath.set(p.fullPath, { ...p });
-  }
-
-  // Merge a provider's projects into the map, deduplicating by absolute path so
-  // sessions from different agents in the same directory group under one project.
-  const mergeProvider = (incoming: ProjectGroup[], stripSuffix?: string): void => {
-    for (const group of incoming) {
-      const cleanName = stripSuffix ? group.name.replace(stripSuffix, '') : group.name;
-      const existing = projectsByPath.get(group.fullPath);
-      if (existing) {
-        existing.sessions.push(...group.sessions);
-        existing.sessions.sort(
-          (a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime()
-        );
-        existing.sessionCount = existing.sessions.length;
-        existing.lastModified = existing.sessions[0]?.modified || existing.lastModified;
-        existing.name = existing.name.replace(stripSuffix ?? '', '');
-      } else {
-        projectsByPath.set(group.fullPath, { ...group, name: cleanName });
-      }
-    }
-  };
-
-  mergeProvider(openCodeProjects, ' (OpenCode)');
-  mergeProvider(codexProjects);
-
-  cachedProjects = [...projectsByPath.values()].sort(
-    (a, b) => new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime()
-  );
+  cachedProjects = listAllProviderProjects();
   cacheTimestamp = now;
   return cachedProjects;
 }
@@ -95,15 +56,7 @@ export const GET: RequestHandler = ({ request, url }) => {
     const claudeProjectDir = matchedProject
       ? matchedProject.fullPath.replace(/\//g, '-')
       : undefined;
-    let messages = getSessionConversation(sessionId, offset, limit, claudeProjectDir);
-
-    // If Claude Code reader found nothing, try OpenCode, then Codex.
-    if (messages.length === 0) {
-      messages = getOpenCodeConversation(sessionId, offset, limit);
-    }
-    if (messages.length === 0) {
-      messages = getCodexConversation(sessionId, offset, limit);
-    }
+    const messages = getProviderConversation(sessionId, offset, limit, claudeProjectDir);
 
     // Find session info — short-circuit when project is already resolved
     let sessionInfo = matchedProject?.sessions.find((s) => s.id === sessionId) ?? null;

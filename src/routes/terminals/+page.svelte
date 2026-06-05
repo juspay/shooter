@@ -5,7 +5,13 @@
   import RefreshSvg from '$lib/assets/icons/refresh.svg?raw';
   import SettingsSvg from '$lib/assets/icons/settings.svg?raw';
   import TerminalSvg from '$lib/assets/icons/terminal.svg?raw';
-  import { clearCache, getCached, isShooterConfig, setCache } from '$lib/modules/client/common';
+  import {
+    AI_COMMANDS,
+    clearCache,
+    getCached,
+    isShooterConfig,
+    setCache,
+  } from '$lib/modules/client/common';
   import LaunchSheet from '$lib/modules/client/terminal/LaunchSheet.svelte';
   import {
     Banner,
@@ -21,7 +27,6 @@
 
   const POLL_INTERVAL_MS = 10_000;
   const CACHE_KEY = 'shooter_terminals';
-  const AI_COMMANDS = ['claude', 'opencode', 'codex', 'gemini'];
   const SHELL_COMMANDS = ['zsh', 'bash', 'sh', 'fish'];
 
   let terminals = $state<TerminalListItem[]>([]);

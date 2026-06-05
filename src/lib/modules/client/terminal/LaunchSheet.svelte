@@ -11,6 +11,7 @@
     { args: [], command: 'claude', label: 'Claude Code' },
     { args: [], command: 'codex', label: 'Codex' },
     { args: [], command: 'gemini', label: 'Gemini' },
+    { args: [], command: 'qwen', label: 'Qwen' },
     { args: [], command: 'opencode', label: 'OpenCode' },
     { args: [], command: 'zsh', label: 'Shell / zsh' },
     { args: [], command: 'bash', label: 'Bash' },

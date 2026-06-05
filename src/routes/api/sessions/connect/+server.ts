@@ -1,4 +1,5 @@
 import { validateAuth } from '$lib/modules/server/auth';
+import { PROVIDER_COMMANDS, resumeArgsForCommand } from '$lib/modules/server/sessions/registry';
 import { ptyManager } from '$lib/modules/server/terminal/pty-manager';
 import { toErrorMessage } from '$lib/modules/server/utils/error';
 import { json } from '@sveltejs/kit';
@@ -34,13 +35,21 @@ export const POST: RequestHandler = async ({ request }) => {
     return json({ error: 'sessionId is required (string)' }, { status: 400 });
   }
 
+  // sessionId becomes a process argument (e.g. `codex resume <id>`); restrict it
+  // to safe identifier characters to prevent argument/path injection.
+  if (!/^[A-Za-z0-9_-]+$/.test(sessionId)) {
+    return json({ error: 'Invalid sessionId format' }, { status: 400 });
+  }
+
   if (!cwd || typeof cwd !== 'string') {
     return json({ error: 'cwd is required (string)' }, { status: 400 });
   }
 
-  const VALID_COMMANDS = ['claude', 'opencode', 'codex', 'gemini'];
-  if (!command || !VALID_COMMANDS.includes(command)) {
-    return json({ error: `command must be one of: ${VALID_COMMANDS.join(', ')}` }, { status: 400 });
+  if (!command || !PROVIDER_COMMANDS.includes(command)) {
+    return json(
+      { error: `command must be one of: ${PROVIDER_COMMANDS.join(', ')}` },
+      { status: 400 }
+    );
   }
 
   // --- Validate cwd (same checks as POST /api/terminals) ---
@@ -98,13 +107,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
   // --- Build args based on command (resume convention differs per agent CLI) ---
 
-  const resumeArgs: Record<string, string[]> = {
-    claude: ['--resume', sessionId],
-    codex: ['resume', sessionId],
-    gemini: [], // Gemini CLI has no session-resume flag; launch fresh in the cwd.
-    opencode: ['--session', sessionId],
-  };
-  const args: string[] = resumeArgs[command] ?? [];
+  const args: string[] = resumeArgsForCommand(command, sessionId);
 
   try {
     const terminal = await ptyManager.create(command, args, realCwd, 120, 40);

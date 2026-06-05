@@ -6,18 +6,31 @@
 import type { SessionSource } from '$lib/types';
 
 const SOURCE_COMMAND: Record<SessionSource, string> = {
+  amp: 'amp',
   'claude-code': 'claude',
   codex: 'codex',
+  copilot: 'copilot',
+  cursor: 'cursor-agent',
   gemini: 'gemini',
+  iflow: 'iflow',
   opencode: 'opencode',
+  qwen: 'qwen',
 };
 
 const SOURCE_LABEL: Record<SessionSource, string> = {
+  amp: 'Amp',
   'claude-code': 'Claude Code',
   codex: 'Codex',
+  copilot: 'Copilot',
+  cursor: 'Cursor',
   gemini: 'Gemini',
+  iflow: 'iFlow',
   opencode: 'OpenCode',
+  qwen: 'Qwen',
 };
+
+/** Every AI-agent CLI binary name (all SessionSources are AI agents, not shells). */
+export const AI_COMMANDS: string[] = Object.values(SOURCE_COMMAND);
 
 /** Human-readable label for a session source. */
 export function sourceLabel(source: SessionSource): string {

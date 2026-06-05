@@ -1,26 +1,35 @@
+import { existsSync } from 'fs';
 import * as path from 'path';
 
 /**
  * Resolve the path to the OpenCode SQLite database.
  *
- * Checks in this order:
+ * Probes candidate locations and returns the first that EXISTS (the previous
+ * version returned the macOS path unconditionally on darwin, which hid the DB
+ * for installs that use the XDG ~/.local/share path — observed in the wild).
+ * Candidate order:
  * 1. XDG_DATA_HOME/opencode/opencode.db (honours XDG override)
- * 2. ~/Library/Application Support/opencode/opencode.db (legacy macOS path)
- * 3. ~/.local/share/opencode/opencode.db (XDG default)
+ * 2. ~/.local/share/opencode/opencode.db (XDG default — common even on macOS)
+ * 3. ~/Library/Application Support/opencode/opencode.db (legacy macOS path)
  */
 export function resolveOpenCodeDbPath(): string {
   const home = process.env.HOME || '';
+  const candidates: string[] = [];
 
-  // 1. If XDG_DATA_HOME is explicitly set, use it
   if (process.env.XDG_DATA_HOME) {
-    return path.join(process.env.XDG_DATA_HOME, 'opencode', 'opencode.db');
+    candidates.push(path.join(process.env.XDG_DATA_HOME, 'opencode', 'opencode.db'));
   }
-
-  // 2. Legacy macOS path (~/Library/Application Support/opencode/)
+  candidates.push(path.join(home, '.local', 'share', 'opencode', 'opencode.db'));
   if (process.platform === 'darwin') {
-    return path.join(home, 'Library', 'Application Support', 'opencode', 'opencode.db');
+    candidates.push(path.join(home, 'Library', 'Application Support', 'opencode', 'opencode.db'));
   }
 
-  // 3. XDG default (~/.local/share/opencode/)
-  return path.join(home, '.local', 'share', 'opencode', 'opencode.db');
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  // None exist yet — return the preferred default; callers tolerate a missing file.
+  return candidates[0] ?? path.join(home, '.local', 'share', 'opencode', 'opencode.db');
 }

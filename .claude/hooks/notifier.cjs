@@ -24,12 +24,17 @@ const path = require('path');
 // ============================================
 
 // Detect runtime environment
+// Codex mode: invoked as `node notifier.cjs codex <HookEventName>`
+const IS_CODEX =
+  require.main === module &&
+  process.argv[2] === 'codex';
 const IS_OPENCODE =
-  typeof process.env.OPENCODE_VERSION !== 'undefined' ||
-  require.main !== module ||
-  process.argv[1]?.includes('opencode');
-const IS_CLAUDE_CODE = !IS_OPENCODE && require.main === module;
-const RUNTIME = IS_OPENCODE ? 'opencode' : 'claude-code';
+  !IS_CODEX &&
+  (typeof process.env.OPENCODE_VERSION !== 'undefined' ||
+    require.main !== module ||
+    process.argv[1]?.includes('opencode'));
+const IS_CLAUDE_CODE = !IS_OPENCODE && !IS_CODEX && require.main === module;
+const RUNTIME = IS_OPENCODE ? 'opencode' : IS_CODEX ? 'codex' : 'claude-code';
 
 // Environment configuration
 const USE_LOCAL = process.env.SHOOTER_USE_LOCAL === 'true';
@@ -58,8 +63,8 @@ const API_KEY = process.env.API_KEY || process.env.SHOOTER_API_KEY;
 const DEVICE_TOKEN = process.env.SHOOTER_DEVICE_TOKEN || null;
 const AUTH_KEY = API_KEY || '';
 
-// Validate required environment variables ONLY for Claude Code CLI mode
-if (IS_CLAUDE_CODE && !API_KEY) {
+// Validate required environment variables for Claude Code and Codex CLI modes
+if ((IS_CLAUDE_CODE || IS_CODEX) && !API_KEY) {
   console.error('API_KEY environment variable is required');
   process.exit(1);
 }
@@ -419,6 +424,97 @@ function adaptOpenCodeEvent(hookEventType, hookData = {}) {
   };
 
   return createCommonEvent('opencode', eventType, data);
+}
+
+/**
+ * Adapter: Codex CLI hooks.json hook payload -> Common Event Format
+ *
+ * Codex delivers a JSON payload via stdin with at minimum:
+ *   { hook_event_name, session_id, turn_id, transcript_path,
+ *     model, permission_mode, cwd }
+ *
+ * The second CLI arg (`process.argv[3]`) is the HookEventName and
+ * duplicates `hook_event_name` in the payload — either works for routing.
+ *
+ * Event name mapping (Codex → common vocabulary):
+ *   SessionStart      → session.start
+ *   UserPromptSubmit  → user.prompt
+ *   PreToolUse        → tool.before
+ *   PostToolUse       → tool.after
+ *   Stop              → session.idle
+ *   PermissionRequest → permission
+ *   SubagentStart     → subagent.start
+ *   SubagentStop      → subagent.stop
+ *   PreCompact        → context.compact
+ *   (unknown)         → unknown
+ */
+function adaptCodexEvent(stdinData) {
+  // Prefer the payload field; fall back to the CLI arg (argv[3]).
+  const hookEventName =
+    (stdinData && stdinData.hook_event_name) ||
+    process.argv[3] ||
+    'Unknown';
+
+  const data = {};
+  data.sessionId = stdinData?.session_id || '';
+  data.turnId = stdinData?.turn_id || '';
+  data.cwd = stdinData?.cwd || process.cwd();
+  data.model = stdinData?.model || '';
+  data.permissionMode = stdinData?.permission_mode || '';
+  data.transcriptPath = stdinData?.transcript_path || '';
+
+  switch (hookEventName) {
+    case 'SessionStart':
+      data.source = stdinData?.source || '';
+      return createCommonEvent('codex', 'session.start', data);
+
+    case 'UserPromptSubmit':
+      data.message = stdinData?.prompt || '';
+      return createCommonEvent('codex', 'user.prompt', data);
+
+    case 'PreToolUse':
+      data.tool = stdinData?.tool_name || 'Unknown';
+      data.toolInput = stdinData?.tool_input || {};
+      data.command = data.toolInput.command || data.toolInput.cmd || '';
+      data.filePath = data.toolInput.file_path || '';
+      return createCommonEvent('codex', 'tool.before', data);
+
+    case 'PostToolUse':
+      data.tool = stdinData?.tool_name || 'Unknown';
+      data.toolInput = stdinData?.tool_input || {};
+      data.command = data.toolInput.command || data.toolInput.cmd || '';
+      data.filePath = data.toolInput.file_path || '';
+      data.toolResponse = stdinData?.tool_response || '';
+      return createCommonEvent('codex', 'tool.after', data);
+
+    case 'PermissionRequest':
+      data.tool = stdinData?.tool_name || 'Unknown';
+      data.toolInput = stdinData?.tool_input || {};
+      data.command = data.toolInput.command || data.toolInput.cmd || '';
+      data.filePath = data.toolInput.file_path || '';
+      data.description = data.toolInput.description || '';
+      return createCommonEvent('codex', 'permission', data);
+
+    case 'Stop':
+      data.lastAssistantMessage = stdinData?.last_assistant_message || '';
+      return createCommonEvent('codex', 'session.idle', data);
+
+    case 'SubagentStart':
+      data.agentType = stdinData?.agent_type || 'unknown';
+      data.source = stdinData?.source || '';
+      return createCommonEvent('codex', 'subagent.start', data);
+
+    case 'SubagentStop':
+      data.agentType = stdinData?.agent_type || 'unknown';
+      return createCommonEvent('codex', 'subagent.stop', data);
+
+    case 'PreCompact':
+      return createCommonEvent('codex', 'context.compact', data);
+
+    default:
+      data.rawHookEventName = hookEventName;
+      return createCommonEvent('codex', 'unknown', data);
+  }
 }
 
 // ============================================
@@ -1069,7 +1165,16 @@ function toolVerb(toolName) {
  * intentionally omitted — `data.environment` carries it for debug consumers.
  */
 function buildFooter(source) {
-  const runtime = source === 'opencode' ? 'opencode' : 'claude code';
+  let runtime;
+  if (source === 'opencode') {
+    runtime = 'opencode';
+  } else if (source === 'codex') {
+    runtime = 'codex cli';
+  } else if (source === 'gemini') {
+    runtime = 'gemini cli';
+  } else {
+    runtime = 'claude code';
+  }
   return `— ${runtime}`;
 }
 
@@ -1948,6 +2053,36 @@ const OpenCodePlugin = async (ctx) => {
 };
 
 // ============================================
+// 11C: Codex CLI Entry Point
+// ============================================
+
+async function codexMain() {
+  if (!USE_LOCAL && !REMOTE_BASE_URL) {
+    console.error(
+      'SHOOTER_API_URL environment variable is required when SHOOTER_USE_LOCAL is not true'
+    );
+    process.exit(1);
+  }
+
+  const hookEventName = process.argv[3] || 'Unknown';
+
+  debugLog(`Shooter Notifier Codex CLI invoked: ${hookEventName}`);
+  debugLog(`  Runtime: ${RUNTIME}`);
+  debugLog(`  Environment: ${USE_LOCAL ? 'LOCAL' : 'REMOTE'}`);
+
+  const stdinData = await readStdin();
+  if (stdinData) {
+    debugLog(`  Stdin data received: ${JSON.stringify(stdinData).substring(0, 500)}`);
+  } else {
+    debugLog(`  No stdin data`);
+  }
+
+  const event = adaptCodexEvent(stdinData);
+
+  await processEvent(event);
+}
+
+// ============================================
 // Exports and Main Execution
 // ============================================
 
@@ -1971,6 +2106,8 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports.categoryForOptionCount = categoryForOptionCount;
   module.exports.extractAskUserQuestionOptions = extractAskUserQuestionOptions;
   module.exports.extractElicitationChoices = extractElicitationChoices;
+  // Codex adapter (tests + wiring).
+  module.exports.adaptCodexEvent = adaptCodexEvent;
 }
 
 // Run main() when called directly from CLI (Claude Code)
@@ -1985,4 +2122,17 @@ if (IS_CLAUDE_CODE) {
   });
 
   claudeCodeMain();
+}
+
+// Run Codex main when invoked as `node notifier.cjs codex <HookEventName>`
+if (IS_CODEX) {
+  process.on('SIGINT', () => {
+    process.exit(0);
+  });
+
+  process.on('SIGTERM', () => {
+    process.exit(0);
+  });
+
+  codexMain();
 }

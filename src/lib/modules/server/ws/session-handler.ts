@@ -22,6 +22,8 @@ import type { WebSocket } from 'ws';
 import * as fs from 'fs';
 import * as path from 'path';
 
+import { findCodexRolloutById } from '../sessions/codex-reader';
+
 // ── Module-level references ──────────────────────────────────────────
 
 let _ptyManager: null | PtyManagerLike = null;
@@ -171,34 +173,36 @@ function conversationToLive(msg: ConversationMessage): ServerMessage[] {
  * Returns the absolute path if found, or null.
  */
 function findJsonlFileForSession(sessionId: string): null | string {
-  const claudeProjectsDir = path.join(process.env.HOME || '', '.claude', 'projects');
-
-  if (!fs.existsSync(claudeProjectsDir)) {
+  // Reject anything that could traverse out of the session directories before
+  // it is interpolated into a filesystem path.
+  if (!/^[A-Za-z0-9_-]+$/.test(sessionId)) {
     return null;
   }
 
-  try {
-    const projectDirs = fs.readdirSync(claudeProjectsDir);
-    for (const dir of projectDirs) {
-      const fullDir = path.join(claudeProjectsDir, dir);
-      try {
-        if (!fs.statSync(fullDir).isDirectory()) {
+  const claudeProjectsDir = path.join(process.env.HOME || '', '.claude', 'projects');
+  if (fs.existsSync(claudeProjectsDir)) {
+    try {
+      for (const dir of fs.readdirSync(claudeProjectsDir)) {
+        const fullDir = path.join(claudeProjectsDir, dir);
+        try {
+          if (!fs.statSync(fullDir).isDirectory()) {
+            continue;
+          }
+        } catch {
           continue;
         }
-      } catch {
-        continue;
+        const jsonlPath = path.join(fullDir, `${sessionId}.jsonl`);
+        if (fs.existsSync(jsonlPath)) {
+          return jsonlPath;
+        }
       }
-
-      const jsonlPath = path.join(fullDir, `${sessionId}.jsonl`);
-      if (fs.existsSync(jsonlPath)) {
-        return jsonlPath;
-      }
+    } catch {
+      // Ignore filesystem errors
     }
-  } catch {
-    // Ignore filesystem errors
   }
 
-  return null;
+  // Fall back to an external Codex session: ~/.codex/sessions/**/rollout-*-<id>.jsonl
+  return findCodexRolloutById(sessionId);
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
