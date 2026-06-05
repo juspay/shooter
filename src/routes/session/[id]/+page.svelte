@@ -10,7 +10,7 @@
 
   import { browser } from '$app/environment';
   import { page } from '$app/state';
-  import { getCached, setCache } from '$lib/modules/client/common';
+  import { getCached, setCache, sourceToCommand } from '$lib/modules/client/common';
   import ChatView from '$lib/modules/client/terminal/ChatView.svelte';
   import { Button } from '@juspay/svelte-ui-components';
   import { onMount } from 'svelte';
@@ -315,7 +315,7 @@
     sendStatus = 'connecting';
 
     try {
-      const command = session.source === 'opencode' ? 'opencode' : 'claude';
+      const command = sourceToCommand(session.source);
       const res = await fetch('/api/sessions/connect', {
         body: JSON.stringify({ command, cwd: session.projectPath, sessionId }),
         headers: {
@@ -510,7 +510,7 @@
       }
 
       try {
-        const command = session.source === 'opencode' ? 'opencode' : 'claude';
+        const command = sourceToCommand(session.source);
         const res = await fetch('/api/sessions/connect', {
           body: JSON.stringify({
             command,

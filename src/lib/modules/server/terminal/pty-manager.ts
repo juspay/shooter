@@ -12,6 +12,7 @@ import { existsSync, readdirSync, readFileSync, statSync, unlinkSync } from 'fs'
 import path from 'path';
 import { fileURLToPath } from 'url';
 
+import { findCodexRolloutForCwd } from '../sessions/codex-reader';
 import { broadcastEvent } from '../ws/server.js';
 import { HolderClient } from './holder-client';
 import { openCodeWatcher } from './opencode-watcher';
@@ -960,6 +961,46 @@ class PtyManager {
         () => {
           clearInterval(pollInterval);
           terminal.pollTimer = null;
+        },
+        5 * 60 * 1000
+      );
+    }
+
+    // For Codex: poll ~/.codex/sessions for the rollout file created after
+    // launch whose session_meta.cwd matches. Codex reuses the sessionFile
+    // field (a JSONL path, like Claude); the WS adapter routes it to the
+    // Codex watcher by its /.codex/ path.
+    if (command === 'codex') {
+      const launchTime = terminal.createdAt.getTime();
+      terminal.pollTimer = setInterval(() => {
+        if (terminal.status === 'exited' || terminal.sessionFile) {
+          if (terminal.pollTimer) {
+            clearInterval(terminal.pollTimer);
+            terminal.pollTimer = null;
+          }
+          return;
+        }
+        try {
+          const rollout = findCodexRolloutForCwd(cwd, launchTime);
+          if (rollout) {
+            terminal.sessionFile = rollout;
+            if (terminal.pollTimer) {
+              clearInterval(terminal.pollTimer);
+              terminal.pollTimer = null;
+            }
+            terminalStore.update(id, { sessionFile: rollout });
+          }
+        } catch {
+          // ignore filesystem errors
+        }
+      }, 1500);
+
+      setTimeout(
+        () => {
+          if (terminal.pollTimer) {
+            clearInterval(terminal.pollTimer);
+            terminal.pollTimer = null;
+          }
         },
         5 * 60 * 1000
       );

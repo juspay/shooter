@@ -12,6 +12,8 @@
     getCached,
     isShooterConfig,
     setCache,
+    sourceLabel,
+    sourceToCommand,
   } from '$lib/modules/client/common';
   import { Banner, Button, EmptyState, Icon, Pill, Shimmer } from '@juspay/svelte-ui-components';
   import { onDestroy, onMount } from 'svelte';
@@ -246,10 +248,7 @@
         Back to Projects
       </a>
     </div>
-    <EmptyState
-      title="Project Not Found"
-      description="The requested project could not be found."
-    >
+    <EmptyState title="Project Not Found" description="The requested project could not be found.">
       {#snippet icon()}<Icon svg={AlertTriangleSvg} classes="icon-24" />{/snippet}
     </EmptyState>
   {:else}
@@ -269,10 +268,7 @@
     </div>
 
     {#if project.sessions.length === 0}
-      <EmptyState
-        title="No sessions yet"
-        description="Sessions for this project will appear here"
-      >
+      <EmptyState title="No sessions yet" description="Sessions for this project will appear here">
         {#snippet icon()}<Icon svg={BellSvg} classes="icon-24" />{/snippet}
       </EmptyState>
     {:else}
@@ -292,11 +288,7 @@
                   <Button
                     classes="btn-connect btn-xs"
                     onclick={(e: MouseEvent): void =>
-                      void connectToSession(
-                        e,
-                        session.id,
-                        session.source === 'opencode' ? 'opencode' : 'claude'
-                      )}
+                      void connectToSession(e, session.id, sourceToCommand(session.source))}
                     disabled={connectingSessionId === session.id}
                     showLoader={connectingSessionId === session.id}
                   >
@@ -307,11 +299,7 @@
                   <Button
                     classes="btn-resume btn-xs"
                     onclick={(e: MouseEvent): void =>
-                      void connectToSession(
-                        e,
-                        session.id,
-                        session.source === 'opencode' ? 'opencode' : 'claude'
-                      )}
+                      void connectToSession(e, session.id, sourceToCommand(session.source))}
                     disabled={connectingSessionId === session.id}
                     showLoader={connectingSessionId === session.id}
                     text="Resume"
@@ -324,11 +312,7 @@
               {#if session.gitBranch}
                 <Pill text="🌿 {session.gitBranch}" classes="pill-git-branch" />
               {/if}
-              {#if session.source === 'opencode'}
-                <Pill text="OpenCode" classes="pill-source-opencode" />
-              {:else}
-                <Pill text="Claude Code" classes="pill-source-claude" />
-              {/if}
+              <Pill text={sourceLabel(session.source)} classes="pill-source-{session.source}" />
             </div>
             <div class="session-meta-row">
               <span class="session-modified">Last updated {formatDate(session.modified)}</span>

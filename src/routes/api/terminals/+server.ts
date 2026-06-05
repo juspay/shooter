@@ -7,7 +7,7 @@ import { basename, isAbsolute, relative } from 'path';
 
 import type { RequestHandler } from './$types';
 
-const ALLOWED_COMMANDS = ['zsh', 'bash', 'sh', 'fish', 'claude', 'opencode'];
+const ALLOWED_COMMANDS = ['zsh', 'bash', 'sh', 'fish', 'claude', 'opencode', 'codex', 'gemini'];
 
 /** Extract the last non-empty line from a scrollback string. */
 function lastScrollbackLine(scrollback: string): null | string {

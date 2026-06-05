@@ -23,6 +23,7 @@ if (!existsSync(handlerPath)) {
 }
 
 const { handler } = await import('./build/handler.js');
+import { codexWatcher } from './src/lib/modules/server/terminal/codex-watcher.js';
 import { openCodeWatcher } from './src/lib/modules/server/terminal/opencode-watcher.js';
 import { ptyManager } from './src/lib/modules/server/terminal/pty-manager.js';
 import { sessionWatcher } from './src/lib/modules/server/terminal/session-watcher.js';
@@ -69,6 +70,10 @@ const sessionWatcherAdapter = {
     if (!sessionFile.includes('/') && !sessionFile.includes('.jsonl')) {
       return openCodeWatcher.getHistory(sessionFile);
     }
+    // Codex rollout files live under ~/.codex/sessions (or archived_sessions).
+    if (sessionFile.includes('/.codex/')) {
+      return codexWatcher.getHistory(sessionFile);
+    }
     return sessionWatcher.getHistory(sessionFile);
   },
   subscribe(sessionFile: string, callback: Parameters<typeof sessionWatcher.watch>[1]) {
@@ -76,6 +81,12 @@ const sessionWatcherAdapter = {
       openCodeWatcher.watch(sessionFile, callback as (messages: ConversationMessage[]) => void);
       return () =>
         openCodeWatcher.stop(sessionFile, callback as (messages: ConversationMessage[]) => void);
+    }
+    if (sessionFile.includes('/.codex/')) {
+      return codexWatcher.subscribe(
+        sessionFile,
+        callback as (messages: ConversationMessage[]) => void
+      );
     }
     // Use subscribe() which returns a ref-counted unsubscribe function.
     // The watcher is only torn down when the last subscriber disconnects.
@@ -209,6 +220,7 @@ function shutdown(signal: string): void {
   ptyManager.disconnectAll();
   sessionWatcher.stopAll();
   openCodeWatcher.stopAll();
+  codexWatcher.stopAll();
 
   // Terminate all remaining WebSocket clients (/ws/session, /ws/events)
   // so wss.close() doesn't hang waiting for them to disconnect.

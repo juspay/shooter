@@ -1,0 +1,17 @@
+{"timestamp":"2026-05-29T10:00:00.000Z","type":"session_meta","payload":{"id":"fixture-uuid-0001","timestamp":"2026-05-29T10:00:00.000Z","cwd":"/Users/dev/proj","originator":"codex-tui","cli_version":"0.133.0","source":"cli","model":"gpt-5.5","model_provider":"openai"}}
+{"timestamp":"2026-05-29T10:00:01.000Z","type":"turn_context","payload":{"cwd":"/Users/dev/proj","approval_policy":"never"}}
+{"timestamp":"2026-05-29T10:00:01.000Z","type":"event_msg","payload":{"type":"task_started","turn_id":"t1"}}
+{"timestamp":"2026-05-29T10:00:02.000Z","type":"response_item","payload":{"type":"message","role":"developer","content":[{"type":"input_text","text":"<permissions instructions> sandbox ..."}]}}
+{"timestamp":"2026-05-29T10:00:03.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"List the files"}]}}
+{"timestamp":"2026-05-29T10:00:04.000Z","type":"response_item","payload":{"type":"reasoning","summary":[],"content":null,"encrypted_content":"ENCRYPTEDxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}}
+{"timestamp":"2026-05-29T10:00:05.000Z","type":"response_item","payload":{"type":"reasoning","summary":[{"type":"summary_text","text":"Planning to list files"}],"content":null}}
+{"timestamp":"2026-05-29T10:00:06.000Z","type":"response_item","payload":{"type":"message","role":"assistant","phase":"commentary","content":[{"type":"output_text","text":"I'll list the files now."}]}}
+{"timestamp":"2026-05-29T10:00:07.000Z","type":"response_item","payload":{"type":"function_call","name":"shell","arguments":"{\"command\":[\"ls\"]}","call_id":"call_1"}}
+{"timestamp":"2026-05-29T10:00:07.000Z","type":"event_msg","payload":{"type":"agent_message","message":"I'll list the files now."}}
+{"timestamp":"2026-05-29T10:00:08.000Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call_1","output":"file1.txt\nfile2.txt"}}
+{"timestamp":"2026-05-29T10:00:09.000Z","type":"response_item","payload":{"type":"custom_tool_call","status":"completed","call_id":"call_2","name":"apply_patch","input":"*** Begin Patch\n*** Update File: a.txt\n@@\n-old\n+new\n*** End Patch"}}
+{"timestamp":"2026-05-29T10:00:10.000Z","type":"response_item","payload":{"type":"custom_tool_call_output","call_id":"call_2","output":"Exit code: 1\nfailed to apply"}}
+{"timestamp":"2026-05-29T10:00:11.000Z","type":"response_item","payload":{"type":"web_search_call","status":"completed","call_id":"call_3","action":{"type":"search","query":"codex notify"}}}
+{"timestamp":"2026-05-29T10:00:12.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Done."}]}}
+{"timestamp":"2026-05-29T10:00:13.000Z","type":"compacted","payload":{"message":"context compacted"}}
+{"timestamp":"2026-05-29T10:00:14.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"thanks"}]}}

@@ -23,7 +23,7 @@ export interface ConversationMessage {
 }
 
 export interface DetectedProcess {
-  command: 'claude' | 'opencode';
+  command: 'claude' | 'codex' | 'gemini' | 'opencode';
   cwd: string;
   kind: string;
   pid: number;

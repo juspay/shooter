@@ -38,8 +38,9 @@ export const POST: RequestHandler = async ({ request }) => {
     return json({ error: 'cwd is required (string)' }, { status: 400 });
   }
 
-  if (!command || (command !== 'claude' && command !== 'opencode')) {
-    return json({ error: 'command must be "claude" or "opencode"' }, { status: 400 });
+  const VALID_COMMANDS = ['claude', 'opencode', 'codex', 'gemini'];
+  if (!command || !VALID_COMMANDS.includes(command)) {
+    return json({ error: `command must be one of: ${VALID_COMMANDS.join(', ')}` }, { status: 400 });
   }
 
   // --- Validate cwd (same checks as POST /api/terminals) ---
@@ -63,13 +64,14 @@ export const POST: RequestHandler = async ({ request }) => {
 
   // --- Reuse existing terminal if one is already running for this session ---
 
-  const existing = ptyManager
-    .list()
-    .find(
-      (t) =>
-        t.status === 'running' &&
-        (t.sessionFile?.endsWith(`/${sessionId}.jsonl`) || t.openCodeSessionId === sessionId)
-    );
+  const existing = ptyManager.list().find(
+    (t) =>
+      t.status === 'running' &&
+      // Claude: <id>.jsonl ; Codex rollout: rollout-<ts>-<id>.jsonl ; OpenCode: session id
+      (t.sessionFile?.endsWith(`/${sessionId}.jsonl`) ||
+        t.sessionFile?.endsWith(`-${sessionId}.jsonl`) ||
+        t.openCodeSessionId === sessionId)
+  );
 
   if (existing) {
     console.log(
@@ -94,9 +96,15 @@ export const POST: RequestHandler = async ({ request }) => {
     return json({ error: 'No existing terminal for this session' }, { status: 404 });
   }
 
-  // --- Build args based on command ---
+  // --- Build args based on command (resume convention differs per agent CLI) ---
 
-  const args: string[] = command === 'claude' ? ['--resume', sessionId] : ['--session', sessionId];
+  const resumeArgs: Record<string, string[]> = {
+    claude: ['--resume', sessionId],
+    codex: ['resume', sessionId],
+    gemini: [], // Gemini CLI has no session-resume flag; launch fresh in the cwd.
+    opencode: ['--session', sessionId],
+  };
+  const args: string[] = resumeArgs[command] ?? [];
 
   try {
     const terminal = await ptyManager.create(command, args, realCwd, 120, 40);
