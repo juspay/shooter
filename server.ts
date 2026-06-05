@@ -24,9 +24,11 @@ if (!existsSync(handlerPath)) {
 
 const { handler } = await import('./build/handler.js');
 import { isReadOnlyProviderPath } from './src/lib/modules/server/sessions/provider-paths.js';
+import { sosCoordinator } from './src/lib/modules/server/sos/coordinator.js';
 import { codexWatcher } from './src/lib/modules/server/terminal/codex-watcher.js';
 import { genericSessionWatcher } from './src/lib/modules/server/terminal/generic-session-watcher.js';
 import { openCodeWatcher } from './src/lib/modules/server/terminal/opencode-watcher.js';
+import { ptySubmitSequence } from './src/lib/modules/server/terminal/pty-input.js';
 import { ptyManager } from './src/lib/modules/server/terminal/pty-manager.js';
 import { sessionWatcher } from './src/lib/modules/server/terminal/session-watcher.js';
 import { startKeepalive, stopKeepalive } from './src/lib/modules/server/ws/keepalive.js';
@@ -121,8 +123,31 @@ setTerminalHandlerPtyManager(ptyManagerAdapter);
 setSessionHandlerPtyManager(ptyManagerAdapter);
 setSessionWatcher(sessionWatcherAdapter);
 
+// The SoS coordinator reuses the same watcher adapter (so it supports every
+// provider) and injects relays through PtyManager, which server.ts owns.
+sosCoordinator.setWatcher(sessionWatcherAdapter);
+sosCoordinator.setInjector((terminalId: string, text: string) => {
+  const terminal = ptyManager.get(terminalId);
+  if (!terminal || terminal.status === 'exited') {
+    return { error: 'Target terminal not available', ok: false };
+  }
+  // Deliver + submit via a bracketed paste, not a bare newline. Agent TUIs read
+  // the PTY in raw mode where LF never submits and a trailing CR in the same
+  // write is absorbed as paste content; ptySubmitSequence() wraps the body in a
+  // bracketed paste so the closing CR is a real Enter. See pty-input.ts.
+  try {
+    terminal.pty.write(ptySubmitSequence(text));
+    return { ok: true };
+  } catch {
+    return { error: 'Failed to write to target terminal', ok: false };
+  }
+});
+
 // Recover persisted terminals before accepting connections
 await ptyManager.reconnectAll();
+
+// Rebuild persisted super-sessions and re-subscribe their members.
+sosCoordinator.reconnectAll();
 
 // ── HTTP server wrapping SvelteKit ───────────────────────────────────
 

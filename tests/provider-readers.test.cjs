@@ -49,6 +49,7 @@ const SESSIONS = '../src/lib/modules/server/sessions';
 const cursor = require(`${SESSIONS}/cursor-reader.ts`);
 const copilot = require(`${SESSIONS}/copilot-reader.ts`);
 const amp = require(`${SESSIONS}/amp-reader.ts`);
+const providerPaths = require(`${SESSIONS}/provider-paths.ts`);
 
 let passed = 0;
 function check(name, fn) {
@@ -100,6 +101,47 @@ check('cursor tool_use blocks carry name + input', () => {
 check('cursor thinking blocks preserve their text', () => {
   const msgs = cursor.getCursorConversation('abc123');
   assert.strictEqual(firstOfType(msgs[3], 'thinking').content, 'Let me reason...');
+});
+
+// ── Launch-time discovery (the path that makes Shooter-launched live-tail engage) ──
+console.log('provider-readers: discovery');
+
+check('resolveReadOnlyProviderFile maps a cursor session id to its staged path', () => {
+  const p = providerPaths.resolveReadOnlyProviderFile('cursor', 'abc123');
+  assert.ok(typeof p === 'string' && p.endsWith('/agent-transcripts/abc123.jsonl'), `got ${p}`);
+});
+
+check('discoverReadOnlyProviderSessionFile picks a session created after launch', () => {
+  // WRITE (not copy) a fresh transcript so its birthtime == now — this models a
+  // real `cursor-agent` launch, which creates a brand-new session file. (Copying
+  // would clone the fixture's old birthtime on APFS and be wrongly filtered out.)
+  const freshDir = path.join(HOME, '.cursor/projects/-Users-dev-fresh/agent-transcripts');
+  fs.mkdirSync(freshDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(freshDir, 'fresh999.jsonl'),
+    fs.readFileSync(path.join(FIXTURES, 'cursor/transcript.jsonl'))
+  );
+  const now = Date.now();
+  const file = providerPaths.discoverReadOnlyProviderSessionFile(
+    'cursor',
+    '/Users/dev/fresh',
+    now - 3000,
+    now
+  );
+  assert.ok(typeof file === 'string' && file.endsWith('fresh999.jsonl'), `expected fresh999.jsonl, got ${file}`);
+});
+
+check('discoverReadOnlyProviderSessionFile returns null when no session started after launch', () => {
+  // Launch timestamp in the future → nothing qualifies → null (the silent-degrade
+  // branch that would leave a Shooter-launched terminal without a session key).
+  const now = Date.now();
+  const file = providerPaths.discoverReadOnlyProviderSessionFile(
+    'cursor',
+    '/Users/dev/fresh',
+    now + 100_000,
+    now + 100_000
+  );
+  assert.strictEqual(file, null);
 });
 
 // ── Copilot ─────────────────────────────────────────────────────────────

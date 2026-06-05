@@ -23,6 +23,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 import { findCodexRolloutById } from '../sessions/codex-reader';
+import { ptySubmitSequence } from '../terminal/pty-input';
 
 // ── Module-level references ──────────────────────────────────────────
 
@@ -547,7 +548,11 @@ function wireClientMessages(ws: WebSocket, state: ConnectionState): void {
             safeSend(ws, { message: 'Terminal has exited', type: 'error' });
             return;
           }
-          currentTerminal.pty.write(`${msg.text}\n`);
+          // Deliver + submit via a bracketed paste (see pty-input.ts): a bare
+          // LF never submits to an agent TUI and a trailing CR in the same
+          // write is absorbed as paste content. Bracketed paste closes the
+          // paste explicitly so the following CR is a real Enter.
+          currentTerminal.pty.write(ptySubmitSequence(msg.text));
           break;
         }
 
