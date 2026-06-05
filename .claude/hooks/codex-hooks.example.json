@@ -1,0 +1,75 @@
+{
+  "_comment": "Copy to ~/.codex/hooks.json (global) or <project>/.codex/hooks.json (per-project).",
+  "_comment2": "Replace /ABSOLUTE/PATH/TO/PROJECT with the real absolute path to this repository.",
+  "_comment3": "Set SHOOTER_USE_LOCAL=true and SHOOTER_LOCAL_PORT=54007 if the server runs locally,",
+  "_comment4": "or set SHOOTER_API_URL=https://<your-tunnel>.trycloudflare.com for remote access.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=${SHOOTER_LOCAL_PORT:-54007} API_KEY=$API_KEY node /ABSOLUTE/PATH/TO/PROJECT/.claude/hooks/notifier.cjs codex SessionStart"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=${SHOOTER_LOCAL_PORT:-54007} API_KEY=$API_KEY node /ABSOLUTE/PATH/TO/PROJECT/.claude/hooks/notifier.cjs codex UserPromptSubmit"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=${SHOOTER_LOCAL_PORT:-54007} API_KEY=$API_KEY node /ABSOLUTE/PATH/TO/PROJECT/.claude/hooks/notifier.cjs codex PreToolUse"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=${SHOOTER_LOCAL_PORT:-54007} API_KEY=$API_KEY node /ABSOLUTE/PATH/TO/PROJECT/.claude/hooks/notifier.cjs codex PostToolUse"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=${SHOOTER_LOCAL_PORT:-54007} API_KEY=$API_KEY node /ABSOLUTE/PATH/TO/PROJECT/.claude/hooks/notifier.cjs codex Stop"
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "SHOOTER_USE_LOCAL=true SHOOTER_LOCAL_PORT=${SHOOTER_LOCAL_PORT:-54007} API_KEY=$API_KEY node /ABSOLUTE/PATH/TO/PROJECT/.claude/hooks/notifier.cjs codex PermissionRequest",
+            "timeout": 180
+          }
+        ]
+      }
+    ]
+  }
+}

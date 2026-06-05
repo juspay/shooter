@@ -11,6 +11,7 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
   import AlertTriangleSvg from '$lib/assets/icons/alert-triangle.svg?raw';
+  import { AI_COMMANDS } from '$lib/modules/client/common';
   import ChatView from '$lib/modules/client/terminal/ChatView.svelte';
   import CommandPalette from '$lib/modules/client/terminal/CommandPalette.svelte';
   import ConnectionStatus from '$lib/modules/client/terminal/ConnectionStatus.svelte';
@@ -29,8 +30,6 @@
   import { onDestroy, onMount } from 'svelte';
 
   // ------- Constants -------
-
-  const AI_COMMANDS = ['claude', 'opencode', 'codex', 'gemini'];
 
   // ------- Reactive state -------
 

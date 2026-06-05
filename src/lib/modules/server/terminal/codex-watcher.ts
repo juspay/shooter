@@ -15,6 +15,7 @@ import { watch as chokidarWatch } from 'chokidar';
 import * as fs from 'fs';
 
 import { CodexStreamParser, parseCodexRollout } from '../sessions/codex-parser';
+import { readBoundedRolloutText } from '../sessions/codex-reader';
 
 /** Flush the open run after this many ms without a write. */
 const IDLE_FLUSH_MS = 1500;
@@ -28,7 +29,9 @@ class CodexWatcher {
       return [];
     }
     try {
-      return parseCodexRollout(fs.readFileSync(filePath, 'utf-8')).messages;
+      // Bounded read — rollout files can be hundreds of MB; this is called on
+      // every WS session connection (mirrors getCodexConversation).
+      return parseCodexRollout(readBoundedRolloutText(filePath)).messages;
     } catch (error) {
       console.error(`[codex-watcher] Failed to read history for ${filePath}:`, error);
       return [];

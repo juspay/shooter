@@ -58,6 +58,15 @@ export function detectActiveCodexSessions(
   return out;
 }
 
+/** Locate a rollout file by its session UUID (embedded in the filename and session_meta.id). */
+export function findCodexRolloutById(sessionId: string): null | string {
+  if (!/^[0-9a-f-]+$/i.test(sessionId)) {
+    return null;
+  }
+  const suffix = `-${sessionId}.jsonl`;
+  return collectRolloutFiles().find((p) => path.basename(p).endsWith(suffix)) ?? null;
+}
+
 /**
  * Find the rollout file for a Codex session launched in `cwd` after `sinceMs`
  * (used by pty-manager to link a freshly-launched `codex` terminal to its file).
@@ -92,13 +101,13 @@ export function getCodexConversation(
   offset = 0,
   limit = 200
 ): ConversationMessage[] {
-  const filePath = findRolloutPath(sessionId);
+  const filePath = findCodexRolloutById(sessionId);
   if (!filePath || !fs.existsSync(filePath)) {
     return [];
   }
 
   try {
-    const { messages } = parseCodexRollout(readRolloutText(filePath));
+    const { messages } = parseCodexRollout(readBoundedRolloutText(filePath));
 
     // Match the Claude reader: with no explicit offset, return the most recent
     // `limit` messages, backing up to a user-message boundary so turns aren't clipped.
@@ -135,7 +144,8 @@ export function listCodexProjects(): ProjectGroup[] {
       continue;
     }
 
-    const firstLine = prefix.slice(0, Math.max(0, prefix.indexOf('\n')) || prefix.length);
+    const nlIdx = prefix.indexOf('\n');
+    const firstLine = nlIdx === -1 ? prefix : prefix.slice(0, nlIdx);
     const meta = parseCodexMeta(firstLine);
     if (!meta) {
       continue;
@@ -180,6 +190,27 @@ export function listCodexProjects(): ProjectGroup[] {
   );
 }
 
+/** Read a rollout file's text, bounded to the tail for oversized files (Codex files can be 100s of MB). */
+export function readBoundedRolloutText(filePath: string): string {
+  const stat = fs.statSync(filePath);
+  if (stat.size <= MAX_FULL_READ_BYTES) {
+    return fs.readFileSync(filePath, 'utf-8');
+  }
+  // Oversized: keep session_meta (first line) + the tail (most recent messages).
+  const head = readPrefix(filePath).split('\n')[0] ?? '';
+  const fd = fs.openSync(filePath, 'r');
+  try {
+    const start = stat.size - MAX_FULL_READ_BYTES;
+    const buf = Buffer.alloc(MAX_FULL_READ_BYTES);
+    const bytesRead = fs.readSync(fd, buf, 0, MAX_FULL_READ_BYTES, start);
+    const tail = buf.toString('utf-8', 0, bytesRead);
+    // Drop the first (likely partial) line of the tail.
+    return `${head}\n${tail.slice(tail.indexOf('\n') + 1)}`;
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
 function cleanTitle(prompt: string): string {
   const firstLine = prompt.replace(/\s+/g, ' ').trim().split('\n')[0]?.trim() ?? '';
   if (!firstLine) {
@@ -218,15 +249,6 @@ function collectRolloutFiles(): string[] {
   return out;
 }
 
-/** Locate a rollout file by its session UUID (embedded in the filename and session_meta.id). */
-function findRolloutPath(sessionId: string): null | string {
-  if (!/^[0-9a-f-]+$/i.test(sessionId)) {
-    return null;
-  }
-  const suffix = `-${sessionId}.jsonl`;
-  return collectRolloutFiles().find((p) => path.basename(p).endsWith(suffix)) ?? null;
-}
-
 /** Pull the first genuine user prompt (skipping Codex's auto-injected wrappers) for a title. */
 function firstUserPrompt(prefixText: string): string {
   for (const line of prefixText.split('\n')) {
@@ -262,27 +284,6 @@ function readPrefix(filePath: string): string {
     const text = buf.toString('utf-8', 0, bytesRead);
     const lastNl = text.lastIndexOf('\n');
     return lastNl === -1 ? text : text.slice(0, lastNl);
-  } finally {
-    fs.closeSync(fd);
-  }
-}
-
-/** Read a rollout file's text, bounded to the tail for oversized files. */
-function readRolloutText(filePath: string): string {
-  const stat = fs.statSync(filePath);
-  if (stat.size <= MAX_FULL_READ_BYTES) {
-    return fs.readFileSync(filePath, 'utf-8');
-  }
-  // Oversized: keep session_meta (first line) + the tail (most recent messages).
-  const head = readPrefix(filePath).split('\n')[0] ?? '';
-  const fd = fs.openSync(filePath, 'r');
-  try {
-    const start = stat.size - MAX_FULL_READ_BYTES;
-    const buf = Buffer.alloc(MAX_FULL_READ_BYTES);
-    const bytesRead = fs.readSync(fd, buf, 0, MAX_FULL_READ_BYTES, start);
-    const tail = buf.toString('utf-8', 0, bytesRead);
-    // Drop the first (likely partial) line of the tail.
-    return `${head}\n${tail.slice(tail.indexOf('\n') + 1)}`;
   } finally {
     fs.closeSync(fd);
   }

@@ -1,7 +1,9 @@
 import type { ClaudeSessionFile, DetectedProcess } from '$lib/types';
 
 import { detectActiveCodexSessions } from '$lib/modules/server/sessions/codex-reader';
+import { detectActiveGeminiSessions } from '$lib/modules/server/sessions/gemini-reader';
 import { resolveOpenCodeDbPath } from '$lib/modules/server/sessions/opencode-db-path';
+import { detectActiveQwenSessions } from '$lib/modules/server/sessions/qwen-reader';
 import Database from 'better-sqlite3';
 import { execSync } from 'child_process';
 import { existsSync, readdirSync, readFileSync } from 'fs';
@@ -48,6 +50,12 @@ const OPENCODE_ACTIVE_THRESHOLD_MS = 3 * 60_000; // 3 minutes
 
 // Codex rollout files written within this window are considered "live"
 const CODEX_ACTIVE_THRESHOLD_MS = 3 * 60_000; // 3 minutes
+
+// Gemini session files written within this window are considered "live"
+const GEMINI_ACTIVE_THRESHOLD_MS = 3 * 60_000; // 3 minutes
+
+// Qwen session files written within this window are considered "live"
+const QWEN_ACTIVE_THRESHOLD_MS = 3 * 60_000; // 3 minutes
 
 /**
  * Scan ~/.claude/sessions/*.json to find running Claude Code processes,
@@ -158,6 +166,42 @@ export function detectRunningAISessions(): DetectedProcess[] {
     }
   } catch {
     // ~/.codex/sessions missing or unreadable — skip silently
+  }
+
+  // --- Gemini sessions ---
+  // Gemini has no PID file; a logs.json / chat file written in the last few
+  // minutes indicates an active session. cwd is reverse-mapped where possible.
+  try {
+    for (const s of detectActiveGeminiSessions(GEMINI_ACTIVE_THRESHOLD_MS)) {
+      results.push({
+        command: 'gemini',
+        cwd: s.cwd,
+        kind: 'interactive',
+        pid: 0, // Gemini doesn't expose a per-session PID
+        projectPath: cwdToProjectPath(s.cwd),
+        sessionId: s.id,
+        startedAt: s.startedAt,
+      });
+    }
+  } catch {
+    // ~/.gemini/tmp missing or unreadable — skip silently
+  }
+
+  // --- Qwen sessions ---
+  try {
+    for (const s of detectActiveQwenSessions(QWEN_ACTIVE_THRESHOLD_MS)) {
+      results.push({
+        command: 'qwen',
+        cwd: s.cwd,
+        kind: 'interactive',
+        pid: 0,
+        projectPath: cwdToProjectPath(s.cwd),
+        sessionId: s.id,
+        startedAt: s.startedAt,
+      });
+    }
+  } catch {
+    // ~/.qwen/projects missing or unreadable — skip silently
   }
 
   // Sort by startedAt descending (most recent first)

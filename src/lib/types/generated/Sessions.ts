@@ -14,7 +14,16 @@ import {
  * @type { SessionSource }
  * @description Source tool that produced the session
  */
-export type SessionSource = 'claude-code' | 'opencode' | 'codex' | 'gemini';
+export type SessionSource =
+  | 'claude-code'
+  | 'opencode'
+  | 'codex'
+  | 'gemini'
+  | 'qwen'
+  | 'cursor'
+  | 'copilot'
+  | 'amp'
+  | 'iflow';
 
 export function decodeSessionSource(rawInput: unknown): SessionSource | null {
   switch (rawInput) {
@@ -22,6 +31,11 @@ export function decodeSessionSource(rawInput: unknown): SessionSource | null {
     case 'opencode':
     case 'codex':
     case 'gemini':
+    case 'qwen':
+    case 'cursor':
+    case 'copilot':
+    case 'amp':
+    case 'iflow':
       return rawInput;
   }
   return null;
@@ -33,6 +47,11 @@ export function _decodeSessionSource(rawInput: unknown): SessionSource | undefin
     case 'opencode':
     case 'codex':
     case 'gemini':
+    case 'qwen':
+    case 'cursor':
+    case 'copilot':
+    case 'amp':
+    case 'iflow':
       return rawInput;
   }
   return;

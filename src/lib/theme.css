@@ -526,6 +526,39 @@
   --pill-cursor: inherit;
 }
 
+/* Additional providers reuse the existing colour families (cosmetic only). */
+.pill-source-qwen,
+.pill-source-iflow {
+  --pill-background: var(--ds-red-100);
+  --pill-color: var(--ds-red-900);
+  --pill-font-size: 10px;
+  --pill-padding: 2px 8px;
+  --pill-hover-background: var(--ds-red-100);
+  --pill-hover-color: var(--ds-red-900);
+  --pill-cursor: inherit;
+}
+
+.pill-source-cursor {
+  --pill-background: var(--ds-blue-100);
+  --pill-color: var(--ds-blue-900);
+  --pill-font-size: 10px;
+  --pill-padding: 2px 8px;
+  --pill-hover-background: var(--ds-blue-100);
+  --pill-hover-color: var(--ds-blue-900);
+  --pill-cursor: inherit;
+}
+
+.pill-source-copilot,
+.pill-source-amp {
+  --pill-background: var(--ds-amber-100);
+  --pill-color: var(--ds-amber-900);
+  --pill-font-size: 10px;
+  --pill-padding: 2px 8px;
+  --pill-hover-background: var(--ds-amber-100);
+  --pill-hover-color: var(--ds-amber-900);
+  --pill-cursor: inherit;
+}
+
 /* ===== Icon Sizes ===== */
 .icon-14 {
   --icon-width: 14px;
