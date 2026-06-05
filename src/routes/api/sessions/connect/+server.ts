@@ -36,8 +36,9 @@ export const POST: RequestHandler = async ({ request }) => {
   }
 
   // sessionId becomes a process argument (e.g. `codex resume <id>`); restrict it
-  // to safe identifier characters to prevent argument/path injection.
-  if (!/^[A-Za-z0-9_-]+$/.test(sessionId)) {
+  // to safe identifier chars — dots included, since cursor/copilot/amp IDs use
+  // them — but no path separators, which prevents argument/path injection.
+  if (!/^[A-Za-z0-9_.-]+$/.test(sessionId)) {
     return json({ error: 'Invalid sessionId format' }, { status: 400 });
   }
 
@@ -76,9 +77,12 @@ export const POST: RequestHandler = async ({ request }) => {
   const existing = ptyManager.list().find(
     (t) =>
       t.status === 'running' &&
-      // Claude: <id>.jsonl ; Codex rollout: rollout-<ts>-<id>.jsonl ; OpenCode: session id
+      // Claude / Cursor / Qwen: <id>.jsonl ; Codex rollout: rollout-<ts>-<id>.jsonl ;
+      // Copilot: <id>.jsonl OR <id>/events.jsonl ; Amp: T-<id>.json ; OpenCode: session id
       (t.sessionFile?.endsWith(`/${sessionId}.jsonl`) ||
         t.sessionFile?.endsWith(`-${sessionId}.jsonl`) ||
+        t.sessionFile?.endsWith(`/${sessionId}/events.jsonl`) ||
+        t.sessionFile?.endsWith(`/T-${sessionId}.json`) ||
         t.openCodeSessionId === sessionId)
   );
 

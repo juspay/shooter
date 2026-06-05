@@ -209,6 +209,32 @@ export function listGeminiProjects(): ProjectGroup[] {
   );
 }
 
+/**
+ * Parse the full conversation from a single chats/session-*.json file.
+ * Returns all messages with no pagination — suitable for bulk processing.
+ */
+export function parseGeminiSessionFile(filePath: string): ConversationMessage[] {
+  try {
+    return conversationFromChatFile(filePath, 0, Number.MAX_SAFE_INTEGER);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Resolve the absolute path of the chats/session-*.json file backing the
+ * given sessionId, or null if no chat file exists (e.g. logs.json-only session).
+ */
+export function resolveGeminiSessionFile(sessionId: string): null | string {
+  for (const hashDir of collectProjectHashDirs()) {
+    const chatFile = findChatFileForSession(hashDir, sessionId);
+    if (chatFile !== null) {
+      return chatFile;
+    }
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Session building helpers
 // ---------------------------------------------------------------------------
@@ -390,36 +416,33 @@ function extractTextFromContent(
 }
 
 /**
- * Find the chats/session-*.json file for a specific sessionId.
- * The filename embeds the first 8 chars of the UUID; we fall back to reading
- * every file in the directory if necessary.
+ * Find the chats/session-*.json file for a specific sessionId. The filename
+ * embeds the first 8 chars of the UUID, so prefix matches are tried first, but
+ * the exact sessionId field is always verified before returning — a short/empty
+ * id or a prefix collision must never mis-resolve to the wrong session.
  */
 function findChatFileForSession(hashDir: string, sessionId: string): null | string {
-  const shortId = sessionId.slice(0, 8);
+  if (!sessionId) {
+    return null;
+  }
   const chatsDir = path.join(hashDir, 'chats');
+  let names: string[];
   try {
-    const entries = fs.readdirSync(chatsDir, { withFileTypes: true });
-    for (const entry of entries) {
-      if (!entry.isFile() || !entry.name.startsWith('session-') || !entry.name.endsWith('.json')) {
-        continue;
-      }
-      // Fast path: filename contains shortId.
-      if (entry.name.includes(shortId)) {
-        return path.join(chatsDir, entry.name);
-      }
-    }
-    // Slow path: read each file and check the sessionId field.
-    for (const entry of entries) {
-      if (!entry.isFile() || !entry.name.startsWith('session-') || !entry.name.endsWith('.json')) {
-        continue;
-      }
-      const record = readChatFile(path.join(chatsDir, entry.name));
-      if (record?.sessionId === sessionId) {
-        return path.join(chatsDir, entry.name);
-      }
-    }
+    names = fs
+      .readdirSync(chatsDir, { withFileTypes: true })
+      .filter((e) => e.isFile() && e.name.startsWith('session-') && e.name.endsWith('.json'))
+      .map((e) => e.name);
   } catch {
-    // chats dir missing or unreadable
+    return null; // chats dir missing or unreadable
+  }
+  const shortId = sessionId.slice(0, 8);
+  // Order prefix-matching filenames first (cheap), then verify the exact id.
+  names.sort((a, b) => Number(b.includes(shortId)) - Number(a.includes(shortId)));
+  for (const name of names) {
+    const full = path.join(chatsDir, name);
+    if (readChatFile(full)?.sessionId === sessionId) {
+      return full;
+    }
   }
   return null;
 }

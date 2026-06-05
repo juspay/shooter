@@ -22,8 +22,7 @@ export type SessionSource =
   | 'qwen'
   | 'cursor'
   | 'copilot'
-  | 'amp'
-  | 'iflow';
+  | 'amp';
 
 export function decodeSessionSource(rawInput: unknown): SessionSource | null {
   switch (rawInput) {
@@ -35,7 +34,6 @@ export function decodeSessionSource(rawInput: unknown): SessionSource | null {
     case 'cursor':
     case 'copilot':
     case 'amp':
-    case 'iflow':
       return rawInput;
   }
   return null;
@@ -51,7 +49,6 @@ export function _decodeSessionSource(rawInput: unknown): SessionSource | undefin
     case 'cursor':
     case 'copilot':
     case 'amp':
-    case 'iflow':
       return rawInput;
   }
   return;

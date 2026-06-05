@@ -30,6 +30,26 @@ provider-agnostic. Adding a provider touches these layers:
 `client/common/provider.ts` uses `Record<SessionSource, …>`, so adding a value to the
 `SessionSource` enum forces a compile error until every mapping is handled.
 
+### The registry (server)
+
+`server/sessions/registry.ts` is the single source of truth for the listing/conversation
+layer — a `PROVIDERS: ProviderDef[]` array (à la agentsview's `AgentDef`). The session API,
+the `/api/sessions/connect` resume-args, and the `/api/terminals` allowlist all derive from
+it (`listAllProviderProjects`, `getProviderConversation`, `resumeArgsForCommand`,
+`PROVIDER_COMMANDS`). Adding a provider's listing/history is **one entry** here plus its
+reader — no edits to the API routes. (Detection and live watching stay provider-specific.)
+
+### Providers
+
+| Source                   | Storage                                                          | Notes                                    |
+| ------------------------ | ---------------------------------------------------------------- | ---------------------------------------- |
+| `claude-code`            | `~/.claude/projects/<cwd>/<id>.jsonl`                            | reference                                |
+| `opencode`               | SQLite (`~/.local/share` **or** `~/Library/Application Support`) | path probed by existence                 |
+| `codex`                  | `~/.codex/sessions/**/rollout-*.jsonl`                           | full parity + live watcher               |
+| `gemini`                 | `~/.gemini/tmp/<hash>/{logs.json,chats/}`                        | best-effort                              |
+| `qwen`                   | `~/.qwen/projects/<cwd>/chats/<id>.jsonl`                        | Claude envelope + Gemini `message.parts` |
+| `cursor`,`copilot`,`amp` | per agentsview spec                                              | spec-based readers                       |
+
 ## Codex (full parity)
 
 - **Sessions:** `~/.codex/sessions/YYYY/MM/DD/rollout-<ts>-<uuid>.jsonl` (+ `archived_sessions/`).
@@ -61,25 +81,24 @@ provider-agnostic. Adding a provider touches these layers:
   allowlist), and the source label/pill. Launching `gemini` gives a working raw terminal.
 - **Not yet wired (deferred, best-effort):** a dedicated live _structured_ watcher + `pty-manager`
   session discovery for Gemini (no `chats/` data was available to verify against on the dev machine);
-  see roadmap item 6. History still renders via the REST reader.
+  see roadmap item 5. History still renders via the REST reader.
 
 ## Roadmap (mined from the knowledge base)
 
 Implemented: Codex full parity; incremental byte-offset live parsing; `task_complete`-aware
-detection signal; Gemini reader.
+detection signal; Gemini reader; **provider registry** (the listing/conversation layer is now
+registry-driven); **Qwen Code** reader; **OpenCode XDG path fix** (recovered sessions that the
+darwin-only path resolution was hiding); Cursor/Copilot/Amp readers (spec-based).
 
 Recommended next (highest leverage first):
 
-1. **Registry-pattern abstraction** — collapse the per-provider branches across ~14 files into a
-   single `AgentDef` registry entry per provider (pattern proven in `agentsview`). Biggest
-   maintainability win; do it before adding a 5th provider.
-2. **Codex/Gemini bidirectional permissions** — wire the hook `PermissionRequest`/`Notification`
+1. **Codex/Gemini bidirectional permissions** — wire the hook `PermissionRequest`/`Notification`
    events into the existing poll-for-decision flow so Allow/Deny works from the phone.
-3. **Session status badges** (Working / Waiting / Errored / Finished) derived from the transcript
+2. **Session status badges** (Working / Waiting / Errored / Finished) derived from the transcript
    (`task_complete`/`Stop`/`AfterAgent`), surfaced on the terminal + project lists.
-4. **Token/cost tracking** — Codex `token_count` + Claude `usage` are already in the transcripts.
-5. **OpenCode dual-backend** — also read the newer `~/.local/share/opencode/storage/` file backend,
-   not just SQLite (correctness fix for upgraded OpenCode installs).
-6. **Gemini live structured mirroring** — a `gemini-watcher.ts` (chokidar on `chats/session-*.json`,
+3. **Token/cost tracking** — Codex `token_count` + Claude `usage` are already in the transcripts.
+4. **OpenCode dual-backend** — also read the newer `~/.local/share/opencode/storage/` file backend
+   (file-per-message), not just SQLite, for installs that use it.
+5. **Gemini live structured mirroring** — a `gemini-watcher.ts` (chokidar on `chats/session-*.json`,
    atomic-rewrite diffing) + a `pty-manager` discovery branch + a `terminal-store` column, so a
    launched `gemini` terminal streams into the Chat view like Codex/Claude.

@@ -68,21 +68,7 @@ export function getQwenConversation(
     return [];
   }
   try {
-    const messages: ConversationMessage[] = [];
-    for (const line of readQwenTextBounded(filePath).split('\n')) {
-      const trimmed = line.trim();
-      if (!trimmed) {
-        continue;
-      }
-      try {
-        const msg = qwenLineToMessage(JSON.parse(trimmed) as Record<string, unknown>);
-        if (msg) {
-          messages.push(msg);
-        }
-      } catch {
-        // skip malformed line
-      }
-    }
+    const messages = readQwenMessages(filePath);
     if (offset === 0 && messages.length > limit) {
       let startIdx = messages.length - limit;
       while (startIdx > 0 && messages[startIdx].role !== 'user') {
@@ -146,6 +132,23 @@ export function listQwenProjects(): ProjectGroup[] {
   return projects.sort(
     (a, b) => new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime()
   );
+}
+
+/** Parse a Qwen session file into messages (used by the generic read-only watcher); [] on error. */
+export function parseQwenSessionFile(filePath: string): ConversationMessage[] {
+  try {
+    return readQwenMessages(filePath);
+  } catch {
+    return [];
+  }
+}
+
+/** Resolve a Qwen session id to its `chats/*.jsonl` path, or null if not found. */
+export function resolveQwenSessionFile(sessionId: string): null | string {
+  if (!/^[A-Za-z0-9_-]+$/.test(sessionId)) {
+    return null;
+  }
+  return collectQwenFiles().find((p) => path.basename(p) === `${sessionId}.jsonl`) ?? null;
 }
 
 /** All chats/*.jsonl files under ~/.qwen/projects/<encoded-cwd>/chats/. */
@@ -284,6 +287,29 @@ function readPrefix(filePath: string): string {
   } finally {
     fs.closeSync(fd);
   }
+}
+
+/**
+ * Read all ConversationMessages from a Qwen JSONL file without pagination.
+ * Oversized files are tail-bounded (see readQwenTextBounded) to cap memory.
+ */
+function readQwenMessages(filePath: string): ConversationMessage[] {
+  const messages: ConversationMessage[] = [];
+  for (const line of readQwenTextBounded(filePath).split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      continue;
+    }
+    try {
+      const msg = qwenLineToMessage(JSON.parse(trimmed) as Record<string, unknown>);
+      if (msg) {
+        messages.push(msg);
+      }
+    } catch {
+      // skip malformed line
+    }
+  }
+  return messages;
 }
 
 /** Read a Qwen session file, bounded to the tail for oversized files to cap memory. */

@@ -13,6 +13,10 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 import { findCodexRolloutForCwd } from '../sessions/codex-reader';
+import {
+  discoverReadOnlyProviderSessionFile,
+  readOnlySourceForCommand,
+} from '../sessions/provider-paths';
 import { broadcastEvent } from '../ws/server.js';
 import { HolderClient } from './holder-client';
 import { openCodeWatcher } from './opencode-watcher';
@@ -994,6 +998,53 @@ class PtyManager {
           // ignore filesystem errors
         }
       }, 1500);
+
+      setTimeout(
+        () => {
+          if (terminal.pollTimer) {
+            clearInterval(terminal.pollTimer);
+            terminal.pollTimer = null;
+          }
+        },
+        5 * 60 * 1000
+      );
+    }
+
+    // For the read-only providers (cursor/copilot/qwen/gemini/amp): poll their
+    // store for a session started after launch and matching this cwd, then set
+    // sessionFile to that path. The WS adapter routes it to the generic watcher
+    // by its provider-root path, giving the same live-tail the JSONL watchers
+    // provide for Claude/Codex.
+    const readOnlySource = readOnlySourceForCommand(command);
+    if (readOnlySource) {
+      const launchTime = terminal.createdAt.getTime();
+      terminal.pollTimer = setInterval(() => {
+        if (terminal.status === 'exited' || terminal.sessionFile) {
+          if (terminal.pollTimer) {
+            clearInterval(terminal.pollTimer);
+            terminal.pollTimer = null;
+          }
+          return;
+        }
+        try {
+          const file = discoverReadOnlyProviderSessionFile(
+            readOnlySource,
+            cwd,
+            launchTime,
+            Date.now()
+          );
+          if (file) {
+            terminal.sessionFile = file;
+            if (terminal.pollTimer) {
+              clearInterval(terminal.pollTimer);
+              terminal.pollTimer = null;
+            }
+            terminalStore.update(id, { sessionFile: file });
+          }
+        } catch {
+          // ignore filesystem errors
+        }
+      }, 2000);
 
       setTimeout(
         () => {

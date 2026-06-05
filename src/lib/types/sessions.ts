@@ -23,16 +23,7 @@ export interface ConversationMessage {
 }
 
 export interface DetectedProcess {
-  command:
-    | 'amp'
-    | 'claude'
-    | 'codex'
-    | 'copilot'
-    | 'cursor-agent'
-    | 'gemini'
-    | 'iflow'
-    | 'opencode'
-    | 'qwen';
+  command: 'amp' | 'claude' | 'codex' | 'copilot' | 'cursor-agent' | 'gemini' | 'opencode' | 'qwen';
   cwd: string;
   kind: string;
   pid: number;

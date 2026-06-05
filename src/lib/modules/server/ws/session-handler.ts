@@ -222,7 +222,17 @@ function findTerminalBySessionUuid(uuid: string): ManagedTerminal | undefined {
   // module-level _ptyManagerFull reference if available.
   if (_ptyManagerFull) {
     for (const t of _ptyManagerFull.list()) {
-      if (t.sessionFile?.includes(`${uuid}.jsonl`)) {
+      // Match across every provider's file naming so a running non-Claude
+      // agent can be reached (and replied to) by its session UUID:
+      //   claude/cursor/qwen: <uuid>.jsonl ; codex: -<uuid>.jsonl ;
+      //   copilot: <uuid>.jsonl OR <uuid>/events.jsonl ; amp: T-<uuid>.json ;
+      //   opencode: bare session id.
+      if (
+        t.sessionFile?.includes(`${uuid}.jsonl`) ||
+        t.sessionFile?.endsWith(`/${uuid}/events.jsonl`) ||
+        t.sessionFile?.endsWith(`/T-${uuid}.json`) ||
+        t.openCodeSessionId === uuid
+      ) {
         return _ptyManager.getTerminal(t.id);
       }
     }

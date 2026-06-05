@@ -170,7 +170,14 @@
   }
 
   function formatTime(ts: string): string {
-    return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    if (!ts) {
+      return '';
+    }
+    const date = new Date(ts);
+    if (Number.isNaN(date.getTime())) {
+      return '';
+    }
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
 
   function getToolDescriptionFromPart(part: ToolUsePart): string {
@@ -366,7 +373,7 @@
                       role="button"
                       tabindex="0"
                     >
-                      &#128173; Thinking... {isThinkExpanded ? '&#9660;' : '&#9654;'}
+                      &#128173; Thinking... {isThinkExpanded ? '▼' : '▶'}
                     </div>
                     <Accordion expand={isThinkExpanded}>
                       {#if isThinkExpanded}

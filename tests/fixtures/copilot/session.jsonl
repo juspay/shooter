@@ -1,0 +1,7 @@
+{"type":"session.start","data":{"sessionId":"sess-1","context":{"cwd":"/Users/dev/proj","branch":"main"}},"timestamp":"2025-01-15T10:00:00Z"}
+{"type":"user.message","data":{"content":"Read the config file"},"timestamp":"2025-01-15T10:00:01Z"}
+{"type":"assistant.message","data":{"content":"","toolRequests":[{"toolCallId":"tc-1","name":"view","arguments":"{\"path\":\"config.json\"}"}]},"timestamp":"2025-01-15T10:00:02Z"}
+{"type":"tool.execution_complete","data":{"toolCallId":"tc-1","success":true,"result":"{\"key\":\"value\"}"},"timestamp":"2025-01-15T10:00:03Z"}
+{"type":"assistant.message","data":{"content":"Here is my analysis.","reasoningText":"Let me think about this carefully..."},"timestamp":"2025-01-15T10:00:04Z"}
+{"type":"assistant.message","data":{"content":"The config file contains a key-value pair."},"timestamp":"2025-01-15T10:00:05Z"}
+{"type":"tool.execution_complete","data":{"toolCallId":"tc-1","success":false,"result":"boom"},"timestamp":"2025-01-15T10:00:06Z"}
