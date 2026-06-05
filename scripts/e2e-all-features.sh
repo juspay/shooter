@@ -85,11 +85,46 @@ else no "conversation read" "no claude session found"; fi
 [ "$(hcode "${A[@]}" "${J[@]}" -X POST -d '{"sessionId":"../etc","cwd":"/tmp"}' "${BASE}/api/sessions/connect")" = 400 ] && ok "/api/sessions/connect rejects path-traversal id (400)" || no "connect id guard" "no 400"
 [ "$(hcode "${A[@]}" "${J[@]}" -X POST -d '{"sessionId":"abc","cwd":"/etc"}' "${BASE}/api/sessions/connect")" = 400 ] && ok "/api/sessions/connect rejects cwd outside home (400)" || no "connect cwd guard" "no 400"
 
+echo ""; echo "── 5b. Session-Over-Sessions (SoS coordinator) ──"
+SS=$(curl -s "${A[@]}" "${J[@]}" -X POST -d '{"label":"e2e-sos"}' "${BASE}/api/sos")
+SSID=$(echo "$SS" | jget "d['id']")
+[ -n "$SSID" ] && ok "POST /api/sos creates super-session" || no "create super-session" "no id ($SS)"
+if [ -n "$SSID" ] && curl -s "${A[@]}" "${BASE}/api/sos" | grep -q "$SSID"; then
+  ok "GET /api/sos lists it"
+else
+  no "list super-sessions" "missing"
+fi
+CJ=$(find "$HOME/.claude/projects" -name "*.jsonl" -size +2k 2>/dev/null | head -1)
+MID=""
+if [ -n "$CJ" ]; then
+  MADD=$(hcode "${A[@]}" "${J[@]}" -X POST -d "{\"sessionKey\":\"${CJ}\",\"provider\":\"claude-code\"}" "${BASE}/api/sos/${SSID}/members")
+  [ "$MADD" = 201 ] && ok "POST /api/sos/[id]/members adds a member (201)" || no "add member" "got $MADD"
+  MID=$(curl -s "${A[@]}" "${BASE}/api/sos/${SSID}" | jget "d['members'][0]['id']")
+  [ -n "$MID" ] && ok "GET /api/sos/[id] returns the added member" || no "get super-session member" "no member"
+  if [ -n "$MID" ]; then
+    RG=$(hcode "${A[@]}" "${J[@]}" -X POST -d "{\"toMemberId\":\"${MID}\",\"text\":\"x\"}" "${BASE}/api/sos/${SSID}/inject")
+    [ "$RG" = 400 ] && ok "/api/sos/[id]/inject guards a member with no terminal (400)" || no "inject guard" "got $RG"
+  else
+    no "inject guard" "skipped: member id unavailable"
+  fi
+else
+  no "add member" "no claude session on disk to add"
+  no "inject guard" "skipped: no member to inject into"
+fi
+MV=$(hcode "${A[@]}" "${J[@]}" -X POST -d "{\"sessionKey\":\"${HOME}/x\",\"provider\":\"evil\"}" "${BASE}/api/sos/${SSID}/members")
+[ "$MV" = 400 ] && ok "/api/sos/[id]/members validates provider (400)" || no "member validation" "got $MV"
+[ "$(hcode "${A[@]}" "${J[@]}" -X DELETE "${BASE}/api/sos/${SSID}")" = 200 ] && ok "DELETE /api/sos/[id] (200)" || no "delete super-session" "not 200"
+[ "$(hcode "${A[@]}" "${BASE}/api/sos/${SSID}")" = 404 ] && ok "GET deleted super-session → 404" || no "super-session gone" "not 404"
+
 echo ""; echo "── 6. Terminals: create / list / get / resize / paste / delete ──"
 TA=$(curl -s "${A[@]}" "${J[@]}" -X POST -d "{\"command\":\"bash\",\"cwd\":\"${HOME}\"}" "${BASE}/api/terminals")
 TAID=$(echo "$TA" | python3 -c "import json,sys;print(json.load(sys.stdin).get('id',''))" 2>/dev/null)
 [ -n "$TAID" ] && { TERMS="$TERMS $TAID"; ok "POST /api/terminals creates terminal ($TAID)"; } || no "create terminal" "no id"
-curl -s "${A[@]}" "${BASE}/api/terminals" | grep -q "$TAID" && ok "GET /api/terminals lists it" || no "list terminals" "missing"
+if [ -n "$TAID" ] && curl -s "${A[@]}" "${BASE}/api/terminals" | grep -q "$TAID"; then
+  ok "GET /api/terminals lists it"
+else
+  no "list terminals" "missing"
+fi
 [ "$(hcode "${A[@]}" "${BASE}/api/terminals/${TAID}")" = 200 ] && ok "GET /api/terminals/[id] 200" || no "get terminal" "not 200"
 [ "$(hcode "${A[@]}" "${J[@]}" -X POST -d '{"cols":120,"rows":40}' "${BASE}/api/terminals/${TAID}/resize")" = 200 ] && ok "POST /resize 200" || no "resize" "not 200"
 PNG='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
@@ -155,7 +190,11 @@ HPID=$(pgrep -f "pty-holder.cjs ${TBID}" | head -1)
 lsof -ti "tcp:${PORT}" | xargs kill -9 2>/dev/null || true; sleep 2
 start_server; ensure_up || no "restart" "server did not come back"
 sleep 2
-curl -s "${A[@]}" "${BASE}/api/terminals" | grep -q "$TBID" && ok "persistence: terminal survived restart (reconnected from holder)" || no "persistence reconnect" "$TBID gone after restart"
+if [ -n "$TBID" ] && curl -s "${A[@]}" "${BASE}/api/terminals" | grep -q "$TBID"; then
+  ok "persistence: terminal survived restart (reconnected from holder)"
+else
+  no "persistence reconnect" "$TBID gone after restart"
+fi
 # holder still alive?
 pgrep -f "pty-holder.cjs ${TBID}" >/dev/null && ok "persistence: same holder process still owns the PTY" || no "holder survived" "holder died"
 

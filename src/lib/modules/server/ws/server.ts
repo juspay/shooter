@@ -15,6 +15,7 @@ import {
   handleEventsConnection,
 } from './events-handler.js';
 import { handleSessionConnection } from './session-handler.js';
+import { handleSuperSessionConnection } from './super-session-handler.js';
 import { handleTerminalConnection } from './terminal-handler.js';
 export type { WireShooterEvent as ShooterEvent } from '$lib/types';
 
@@ -61,10 +62,11 @@ export function setupWebSocketHandlers(
 
   // Route matching
   const terminalMatch = /^\/ws\/terminal\/(.+)$/.exec(pathname);
+  const superSessionMatch = /^\/ws\/super-session\/(.+)$/.exec(pathname);
   const sessionMatch = /^\/ws\/session\/(.+)$/.exec(pathname);
   const isEvents = pathname === '/ws/events';
 
-  if (!terminalMatch && !sessionMatch && !isEvents) {
+  if (!terminalMatch && !superSessionMatch && !sessionMatch && !isEvents) {
     socket.destroy();
     return;
   }
@@ -83,6 +85,9 @@ export function setupWebSocketHandlers(
     if (terminalMatch) {
       const terminalId = terminalMatch[1];
       handleTerminalConnection(ws, terminalId);
+    } else if (superSessionMatch) {
+      const superSessionId = superSessionMatch[1];
+      handleSuperSessionConnection(ws, superSessionId);
     } else if (sessionMatch) {
       const sessionId = sessionMatch[1];
       handleSessionConnection(ws, sessionId);

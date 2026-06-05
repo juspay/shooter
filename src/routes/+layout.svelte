@@ -10,6 +10,7 @@
   import DashboardSvg from '$lib/assets/icons/dashboard.svg?raw';
   import SettingsSvg from '$lib/assets/icons/settings.svg?raw';
   import TerminalSvg from '$lib/assets/icons/terminal.svg?raw';
+  import ToolSvg from '$lib/assets/icons/tool.svg?raw';
   import { Button, Icon, Pill } from '@juspay/svelte-ui-components';
   import { onMount, type Snippet } from 'svelte';
 
@@ -133,6 +134,10 @@
         <Icon svg={TerminalSvg} classes="icon-26" />
         <span>Terminals</span>
       </a>
+      <a href="/sos" class="tab-item" class:active={$page.url.pathname.startsWith('/sos')}>
+        <Icon svg={ToolSvg} classes="icon-26" />
+        <span>SoS</span>
+      </a>
     </div>
   </nav>
 </div>
@@ -191,6 +196,7 @@
   }
   .tab-item {
     display: flex;
+    flex: 1;
     flex-direction: column;
     align-items: center;
     justify-content: center;
@@ -199,7 +205,7 @@
     font-size: 11px;
     font-weight: 500;
     text-decoration: none;
-    padding: 6px 36px;
+    padding: 6px 8px;
     border-radius: var(--radius-md);
     transition: color var(--transition-fast);
     user-select: none;
@@ -226,7 +232,8 @@
       height: 60px;
     }
     .tab-item {
-      padding: 6px 28px;
+      padding: 6px 8px;
+      min-width: 0;
       font-size: 10px;
       gap: 3px;
       min-height: 44px;
