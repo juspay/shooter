@@ -1,3 +1,13 @@
+## [1.16.0](https://github.com/juspay/shooter/compare/v1.15.0...v1.16.0) (2026-06-06)
+
+### Features
+
+* **(codex):**  add Codex CLI session support ([e119c07](https://github.com/juspay/shooter/commit/e119c07e20179a49dcacf0c19cd071ee923a99d3))
+
+### Bug Fixes
+
+* **(device-token):**  write to process.env so APNs picks up new tokens ([64542b8](https://github.com/juspay/shooter/commit/64542b873f9078be701410f31748d548e13fbec7))
+
 ## [1.15.0](https://github.com/juspay/shooter/compare/v1.14.0...v1.15.0) (2026-05-26)
 
 ### Features
