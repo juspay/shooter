@@ -1,3 +1,9 @@
+## [1.17.0](https://github.com/juspay/shooter/compare/v1.16.0...v1.17.0) (2026-06-07)
+
+### Features
+
+* **(providers):**  add provider registry, Gemini & Qwen readers ([68c6891](https://github.com/juspay/shooter/commit/68c68912b14e6503c66ff5f804a997e14e79b5f8))
+
 ## [1.16.0](https://github.com/juspay/shooter/compare/v1.15.0...v1.16.0) (2026-06-06)
 
 ### Features
