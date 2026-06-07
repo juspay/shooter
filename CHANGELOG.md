@@ -1,3 +1,9 @@
+## [1.18.0](https://github.com/juspay/shooter/compare/v1.17.0...v1.18.0) (2026-06-07)
+
+### Features
+
+* **(providers):**  add Cursor, Copilot & Amp read-only providers ([d4095ce](https://github.com/juspay/shooter/commit/d4095ce6d3a7cfcd3af9f0a07089df814b19c277))
+
 ## [1.17.0](https://github.com/juspay/shooter/compare/v1.16.0...v1.17.0) (2026-06-07)
 
 ### Features
