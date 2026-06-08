@@ -1,3 +1,9 @@
+## [1.19.0](https://github.com/juspay/shooter/compare/v1.18.0...v1.19.0) (2026-06-08)
+
+### Features
+
+* **(sos):**  Session-Over-Sessions multi-agent coordinator ([557a310](https://github.com/juspay/shooter/commit/557a310148ce20cda8f1f278ea91731fd6b1b246))
+
 ## [1.18.0](https://github.com/juspay/shooter/compare/v1.17.0...v1.18.0) (2026-06-07)
 
 ### Features
