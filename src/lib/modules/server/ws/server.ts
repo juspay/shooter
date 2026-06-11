@@ -5,6 +5,7 @@
 //   /ws/session/:id   -> Live structured session stream
 //   /ws/events         -> Global event bus (broadcasts)
 
+import type { TicketScope } from '$lib/types';
 import type { IncomingMessage } from 'http';
 import type { Duplex } from 'stream';
 import type { WebSocket, WebSocketServer } from 'ws';
@@ -14,6 +15,7 @@ import {
   getEventsClientCount,
   handleEventsConnection,
 } from './events-handler.js';
+import { registerGuest } from './guest-registry.js';
 import { handleSessionConnection } from './session-handler.js';
 import { handleSuperSessionConnection } from './super-session-handler.js';
 import { handleTerminalConnection } from './terminal-handler.js';
@@ -49,7 +51,8 @@ export function setupWebSocketHandlers(
   wss: WebSocketServer,
   request: IncomingMessage,
   socket: Duplex,
-  head: Buffer
+  head: Buffer,
+  scope?: TicketScope
 ): void {
   const host = request.headers.host ?? 'localhost';
   let pathname: string;
@@ -71,8 +74,24 @@ export function setupWebSocketHandlers(
     return;
   }
 
+  // Scoped (guest) tickets may only open the terminal/session channels of
+  // their own terminal. Events and super-session channels broadcast global
+  // data, so they are denied outright.
+  if (scope) {
+    const target = terminalMatch?.[1] ?? sessionMatch?.[1];
+    if (!target || superSessionMatch || target !== scope.terminalId) {
+      socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+  }
+
   wss.handleUpgrade(request, socket, head, (ws: WebSocket) => {
     allConnections.add(ws);
+
+    if (scope) {
+      registerGuest(scope.terminalId, ws);
+    }
 
     ws.on('close', () => {
       allConnections.delete(ws);
@@ -84,13 +103,13 @@ export function setupWebSocketHandlers(
 
     if (terminalMatch) {
       const terminalId = terminalMatch[1];
-      handleTerminalConnection(ws, terminalId);
+      handleTerminalConnection(ws, terminalId, scope);
     } else if (superSessionMatch) {
       const superSessionId = superSessionMatch[1];
       handleSuperSessionConnection(ws, superSessionId);
     } else if (sessionMatch) {
       const sessionId = sessionMatch[1];
-      handleSessionConnection(ws, sessionId);
+      handleSessionConnection(ws, sessionId, scope);
     } else if (isEvents) {
       handleEventsConnection(ws);
     }

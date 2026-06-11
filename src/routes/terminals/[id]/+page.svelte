@@ -2,6 +2,9 @@
   import type {
     ConversationMessage,
     MessagePart,
+    ShareAuthResponse,
+    ShareMode,
+    ShareStatusResponse,
     ShooterConfig,
     TerminalDetailView,
     ToolUsePart,
@@ -17,6 +20,8 @@
   import ConnectionStatus from '$lib/modules/client/terminal/ConnectionStatus.svelte';
   import { createShortcutManager } from '$lib/modules/client/terminal/keyboard-shortcuts';
   import QuickKeys from '$lib/modules/client/terminal/QuickKeys.svelte';
+  import ShareGate from '$lib/modules/client/terminal/ShareGate.svelte';
+  import ShareSheet from '$lib/modules/client/terminal/ShareSheet.svelte';
   import ShortcutsHelp from '$lib/modules/client/terminal/ShortcutsHelp.svelte';
   import {
     Button,
@@ -46,6 +51,10 @@
   let inputText = $state('');
   let chatMessages = $state<ConversationMessage[]>([]);
   let chatSessionEnded = $state(false);
+  let authMode = $state<'guest' | 'owner' | null>(null);
+  let guestMode = $state<null | ShareMode>(null);
+  let shareGateVisible = $state(false);
+  let shareSheetOpen = $state(false);
 
   // DOM references
   let termContainer = $state<HTMLDivElement | null>(null);
@@ -80,6 +89,11 @@
   );
   const tabActiveIndex = $derived(viewMode === 'raw' ? 0 : 1);
   const displayCwd = $derived(shortenPath(currentCwd || terminal?.cwd || ''));
+  const isOwner = $derived(authMode === 'owner');
+  const viewOnly = $derived(authMode === 'guest' && guestMode === 'view');
+  const shareUrl = $derived(
+    typeof window !== 'undefined' ? `${window.location.origin}/terminals/${terminalId}` : ''
+  );
   const paletteCommands = $derived.by((): { action: () => void; label: string }[] => {
     const cmds: { action: () => void; label: string }[] = [
       { action: (): void => void goto('/'), label: 'Go to Home' },
@@ -92,7 +106,7 @@
         label: 'Show keyboard shortcuts',
       },
     ];
-    if (isRunning) {
+    if (isRunning && isOwner) {
       cmds.push({ action: (): void => void killTerminal(), label: 'Kill terminal' });
     }
     return cmds;
@@ -142,6 +156,47 @@
     }
   }
 
+  // ------- Guest share tokens -------
+
+  const SHARE_TOKENS_KEY = 'shooter_share_tokens';
+
+  function getShareToken(): null | string {
+    const id = terminalId;
+    if (!id) {
+      return null;
+    }
+    try {
+      const raw = localStorage.getItem(SHARE_TOKENS_KEY);
+      if (!raw) {
+        return null;
+      }
+      const map = JSON.parse(raw) as Record<string, string>;
+      return typeof map[id] === 'string' ? map[id] : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function storeShareToken(token: string): void {
+    const id = terminalId;
+    if (!id) {
+      return;
+    }
+    let map: Record<string, string> = {};
+    try {
+      map = JSON.parse(localStorage.getItem(SHARE_TOKENS_KEY) ?? '{}') as Record<string, string>;
+    } catch {
+      // Corrupt entry — start fresh.
+    }
+    map[id] = token;
+    localStorage.setItem(SHARE_TOKENS_KEY, JSON.stringify(map));
+  }
+
+  /** Bearer for API calls: the owner's API key, or this terminal's guest token. */
+  function getBearer(): null | string {
+    return getConfig()?.apiKey ?? getShareToken();
+  }
+
   // ------- API calls -------
 
   async function fetchTerminal(): Promise<void> {
@@ -150,36 +205,92 @@
     }
 
     const config = getConfig();
-    if (!config) {
-      error = 'No configuration found. Please configure settings first.';
-      loading = false;
+    const bearer = config?.apiKey ?? getShareToken();
+    if (!bearer) {
+      await checkShareAccess();
       return;
     }
 
     try {
       const res = await fetch(`/api/terminals/${terminalId}`, {
-        headers: { Authorization: `Bearer ${config.apiKey}` },
+        headers: { Authorization: `Bearer ${bearer}` },
       });
+      if (res.status === 401 && !config) {
+        // Stale/revoked guest token — fall back to the password gate.
+        await checkShareAccess();
+        return;
+      }
       if (!res.ok) {
         error = res.status === 404 ? 'Terminal not found' : 'Failed to load terminal';
         loading = false;
         return;
       }
       terminal = (await res.json()) as TerminalDetailView;
+      if (config) {
+        authMode = 'owner';
+      } else {
+        authMode = 'guest';
+        guestMode = terminal.shareMode ?? 'view';
+      }
     } catch {
       error = 'Failed to connect to server';
     }
     loading = false;
   }
 
+  async function checkShareAccess(): Promise<void> {
+    try {
+      const res = await fetch(`/api/terminals/${terminalId}/share/status`);
+      if (res.ok) {
+        const data = (await res.json()) as ShareStatusResponse;
+        if (data.shared) {
+          shareGateVisible = true;
+          loading = false;
+          return;
+        }
+      }
+    } catch {
+      // Fall through to the configuration error.
+    }
+    error = 'No configuration found. Please configure settings first.';
+    loading = false;
+  }
+
+  async function submitSharePassword(password: string): Promise<null | string> {
+    try {
+      const res = await fetch(`/api/terminals/${terminalId}/share/auth`, {
+        body: JSON.stringify({ password }),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      });
+      if (res.status === 429) {
+        return 'Too many attempts — try again in a minute.';
+      }
+      if (!res.ok) {
+        return 'Incorrect password.';
+      }
+      const data = (await res.json()) as ShareAuthResponse;
+      storeShareToken(data.token);
+      shareGateVisible = false;
+      loading = true;
+      await fetchTerminal();
+      if (terminal && !error) {
+        initViews();
+      }
+      return null;
+    } catch {
+      return 'Failed to reach the server.';
+    }
+  }
+
   async function getWsTicket(): Promise<null | string> {
-    const config = getConfig();
-    if (!config) {
+    const bearer = getBearer();
+    if (!bearer) {
       return null;
     }
     try {
       const res = await fetch('/api/ws-ticket', {
-        headers: { Authorization: `Bearer ${config.apiKey}` },
+        headers: { Authorization: `Bearer ${bearer}` },
         method: 'POST',
       });
       if (!res.ok) {
@@ -269,10 +380,12 @@
       }
 
       const instance = await createTerminal({
-        apiKey: getConfig()?.apiKey,
+        apiKey: getBearer() ?? undefined,
         container: termContainer,
         fontSize: window.innerWidth < 768 ? 12 : 14,
         getTicket,
+        initialCols: terminal.cols ?? undefined,
+        initialRows: terminal.rows ?? undefined,
         onActivity: (active: boolean) => {
           if (!disposed) {
             isActive = active;
@@ -304,6 +417,7 @@
             rawConnectionStatus = 'connected';
           }
         },
+        readOnly: viewOnly,
         terminalId,
         wsUrl,
       });
@@ -606,23 +720,7 @@
 
   // ------- Lifecycle -------
 
-  onMount(async () => {
-    await fetchTerminal();
-    if (disposed) {
-      return;
-    }
-
-    // Set up keyboard shortcuts
-    shortcutManager = createShortcutManager({
-      onHelp: () => {
-        showShortcutsHelp = !showShortcutsHelp;
-      },
-    });
-
-    if (!terminal || error) {
-      return;
-    }
-
+  function initViews(): void {
     // Default view: Chat on mobile for AI sessions, Raw on desktop
     if (isAI && window.innerWidth < 768) {
       viewMode = 'chat';
@@ -640,6 +738,26 @@
       void connectSessionWs();
       chatInitialized = true;
     }
+  }
+
+  onMount(async () => {
+    await fetchTerminal();
+    if (disposed) {
+      return;
+    }
+
+    // Set up keyboard shortcuts
+    shortcutManager = createShortcutManager({
+      onHelp: () => {
+        showShortcutsHelp = !showShortcutsHelp;
+      },
+    });
+
+    if (!terminal || error) {
+      return;
+    }
+
+    initViews();
   });
 
   onDestroy(() => {
@@ -664,6 +782,10 @@
       <div class="skeleton" style="width: 100%; height: 100%;"></div>
     </div>
   </div>
+{:else if shareGateVisible}
+  <div class="term-page">
+    <ShareGate onSubmit={submitSharePassword} />
+  </div>
 {:else if error}
   <main class="main">
     <div class="session-back-row">
@@ -681,7 +803,9 @@
     <!-- Top Bar -->
     <div class="term-topbar">
       <div class="term-topbar-left">
-        <a href="/terminals" class="term-back" aria-label="Back to terminals">&larr;</a>
+        {#if isOwner}
+          <a href="/terminals" class="term-back" aria-label="Back to terminals">&larr;</a>
+        {/if}
         <span class="term-command-name">{commandName}</span>
         <Pill text={badgeLabel} classes={badgeClass} />
         {#if isRunning}
@@ -695,7 +819,7 @@
           </Tooltip>
         {/if}
         <ConnectionStatus status={connectionStatus} onretry={handleRetry} />
-        {#if isAI && (terminal as TerminalDetailView & { sessionFile?: string })?.sessionFile}
+        {#if isOwner && isAI && (terminal as TerminalDetailView & { sessionFile?: string })?.sessionFile}
           {@const sessionFile =
             (terminal as TerminalDetailView & { sessionFile?: string }).sessionFile ?? ''}
           <a
@@ -729,22 +853,31 @@
           ariaLabel="Keyboard shortcuts"
         />
 
-        {#if isRunning}
-          <Button
-            classes="btn-danger btn-sm"
-            onclick={killTerminal}
-            disabled={killing}
-            showLoader={killing}
-            text="Kill"
-          />
-        {:else}
+        {#if isOwner}
           <Button
             classes="btn-secondary btn-sm"
-            onclick={removeTerminal}
-            disabled={removing}
-            showLoader={removing}
-            text="Remove"
+            onclick={(): void => {
+              shareSheetOpen = true;
+            }}
+            text="Share"
           />
+          {#if isRunning}
+            <Button
+              classes="btn-danger btn-sm"
+              onclick={killTerminal}
+              disabled={killing}
+              showLoader={killing}
+              text="Kill"
+            />
+          {:else}
+            <Button
+              classes="btn-secondary btn-sm"
+              onclick={removeTerminal}
+              disabled={removing}
+              showLoader={removing}
+              text="Remove"
+            />
+          {/if}
         {/if}
       </div>
     </div>
@@ -759,7 +892,7 @@
     ></div>
 
     <!-- Raw Input Bar + Quick Keys -->
-    {#if isRunning && viewMode === 'raw'}
+    {#if isRunning && viewMode === 'raw' && !viewOnly}
       <div class="term-input-area">
         <QuickKeys onKey={handleQuickKey} />
         <div class="term-input-bar">
@@ -788,7 +921,7 @@
         messages={chatMessages}
         connectionState={connectionStatus}
         sessionEnded={chatSessionEnded}
-        showInput={isRunning}
+        showInput={isRunning && !viewOnly}
         onSendInput={handleChatSendInput}
         onCancel={handleChatCancel}
       />
@@ -813,6 +946,14 @@
   open={showShortcutsHelp}
   onClose={(): void => {
     showShortcutsHelp = false;
+  }}
+/>
+<ShareSheet
+  open={shareSheetOpen}
+  terminalId={terminalId ?? ''}
+  {shareUrl}
+  onClose={(): void => {
+    shareSheetOpen = false;
   }}
 />
 <CommandPalette

@@ -54,3 +54,7 @@ groupedTypes:
   # Application configuration types
   Config:
     $ref: './specs/types/config.yaml#/Config'
+
+  # Terminal sharing types: share records, guest sessions, share API shapes
+  Share:
+    $ref: './specs/types/share.yaml#/Share'

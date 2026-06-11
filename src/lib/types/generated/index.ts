@@ -10,3 +10,4 @@ export * from './OpenCode';
 export * from './Notification';
 export * from './Client';
 export * from './Config';
+export * from './Share';

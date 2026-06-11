@@ -80,11 +80,23 @@ export interface QuickKeysProps {
 
 // --- keyboard-shortcuts types ---
 
-export interface ShortcutManagerOptions {
-  onHelp: () => void;
+export interface ShareGateProps {
+  /** Returns an error message to display, or null on success. */
+  onSubmit: (password: string) => Promise<null | string>;
 }
 
 // --- xterm-wrapper types ---
+
+export interface ShareSheetProps {
+  onClose: () => void;
+  open?: boolean;
+  shareUrl: string;
+  terminalId: string;
+}
+
+export interface ShortcutManagerOptions {
+  onHelp: () => void;
+}
 
 export interface ShortcutsHelpProps {
   onClose: () => void;
@@ -105,11 +117,14 @@ export interface TerminalOptions {
   container: HTMLElement;
   fontSize?: number;
   getTicket: () => Promise<string>;
+  initialCols?: number;
+  initialRows?: number;
   onActivity?: (active: boolean) => void;
   onCwd?: (path: string) => void;
   onDisconnect?: () => void;
   onExit?: (code: number) => void;
   onReconnect?: () => void;
+  readOnly?: boolean;
   terminalId?: string;
   wsUrl: string;
 }
@@ -126,7 +141,9 @@ export interface WsTerminalInboundMessage {
   active?: boolean;
   bytes?: number;
   code?: number;
+  cols?: number;
   data?: string;
   path?: string;
+  rows?: number;
   type: string;
 }

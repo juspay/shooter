@@ -7,6 +7,7 @@ import type {
   TerminalPtyManagerLike as PtyManagerLike,
   WireTerminalServerMessage as ServerMessage,
   TerminalSignal,
+  TicketScope,
 } from '$lib/types';
 import type { WebSocket } from 'ws';
 
@@ -28,7 +29,11 @@ let _ptyManager: null | PtyManagerLike = null;
  * Attaches the client to the terminal's viewer set, replays scrollback,
  * and relays PTY I/O bidirectionally.
  */
-export function handleTerminalConnection(ws: WebSocket, terminalId: string): void {
+export function handleTerminalConnection(
+  ws: WebSocket,
+  terminalId: string,
+  scope?: TicketScope
+): void {
   // ── 1. Look up the terminal ──────────────────────────────────────
   if (!_ptyManager) {
     safeSend(ws, { message: 'PTY manager not initialised', type: 'error' });
@@ -62,6 +67,11 @@ export function handleTerminalConnection(ws: WebSocket, terminalId: string): voi
       return; // Silently ignore malformed messages.
     }
 
+    // View-only guests: every inbound frame type mutates the PTY — drop them all.
+    if (scope?.readOnly) {
+      return;
+    }
+
     // Don't allow input to exited terminals.
     if (terminal.status === 'exited') {
       safeSend(ws, { message: 'Terminal has exited', type: 'error' });
@@ -74,9 +84,18 @@ export function handleTerminalConnection(ws: WebSocket, terminalId: string): voi
           terminal.pty.write(msg.data);
           break;
 
-        case 'resize':
+        case 'resize': {
           terminal.pty.resize(msg.cols, msg.rows);
+          // Broadcast the new PTY size to the other attached clients so
+          // view-only guests can follow the owner's terminal dimensions.
+          const resizeMsg: ServerMessage = { cols: msg.cols, rows: msg.rows, type: 'resize' };
+          for (const client of terminal.clients) {
+            if (client !== ws) {
+              safeSend(client, resizeMsg);
+            }
+          }
           break;
+        }
 
         case 'signal': {
           if (msg.signal === 'SIGINT') {

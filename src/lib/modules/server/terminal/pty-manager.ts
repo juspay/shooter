@@ -483,6 +483,12 @@ class PtyManager {
       terminal.pty.resize(cols, rows);
       terminal.cols = cols;
       terminal.rows = rows;
+      // Broadcast the new PTY size so attached clients (e.g. view-only
+      // guests) can follow the terminal dimensions.
+      const msg = JSON.stringify({ cols, rows, type: 'resize' });
+      for (const ws of terminal.clients) {
+        this.safeSend(ws, msg);
+      }
       return true;
     } catch {
       return false;

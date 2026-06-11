@@ -8,6 +8,7 @@
 // Rate limited to 30 requests per minute per API key.
 
 import { validateAuth } from '$lib/modules/server/auth';
+import { shareStore } from '$lib/modules/server/terminal/share-store';
 import { generateTicket } from '$lib/modules/server/ws/ticket-store';
 import { json } from '@sveltejs/kit';
 
@@ -63,15 +64,35 @@ setInterval(() => {
 // ── Endpoint ────────────────────────────────────────────────────────
 
 export const POST: RequestHandler = ({ request }) => {
+  const bearer = (
+    request.headers.get('authorization') ??
+    request.headers.get('Authorization') ??
+    ''
+  )
+    .replace(/^Bearer\s+/i, '')
+    .trim();
+
   const authError = validateAuth(request);
   if (authError) {
-    return authError;
+    // Not the API key — maybe a guest share token (issues a scoped ticket).
+    const session = bearer ? shareStore.resolveToken(bearer) : null;
+    if (!session) {
+      return authError;
+    }
+    if (!checkRateLimit(bearer)) {
+      return json(
+        { error: 'Rate limit exceeded. Maximum 30 ticket requests per minute.' },
+        { status: 429 }
+      );
+    }
+    const ticket = generateTicket({
+      readOnly: session.mode === 'view',
+      terminalId: session.terminalId,
+    });
+    return json({ expiresIn: 30, ticket });
   }
 
-  // Extract the API key for rate limiting
-  const apiKey = (request.headers.get('authorization') ?? '').substring(7).trim();
-
-  if (!checkRateLimit(apiKey)) {
+  if (!checkRateLimit(bearer)) {
     return json(
       { error: 'Rate limit exceeded. Maximum 30 ticket requests per minute.' },
       { status: 429 }

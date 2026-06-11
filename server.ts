@@ -172,15 +172,20 @@ server.on('upgrade', (request, socket, head) => {
 
   const ticket = url.searchParams.get('ticket');
 
-  if (!validateTicket(ticket)) {
+  const ticketEntry = validateTicket(ticket);
+  if (!ticketEntry) {
     socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
     socket.destroy();
     return;
   }
 
   // Delegate routing to the WS server module which inspects the pathname
-  // and dispatches to terminal, session, or events handlers.
-  setupWebSocketHandlers(wss, request, socket, head);
+  // and dispatches to terminal, session, or events handlers. Guest tickets
+  // carry a scope that restricts which channels may be opened.
+  const scope = ticketEntry.terminalId
+    ? { readOnly: ticketEntry.readOnly ?? false, terminalId: ticketEntry.terminalId }
+    : undefined;
+  setupWebSocketHandlers(wss, request, socket, head, scope);
 });
 
 // ── Start keepalive pings (30s interval, keeps Cloudflare Tunnel alive) ──

@@ -1,4 +1,4 @@
-import { validateAuth } from '$lib/modules/server/auth';
+import { resolveAccess } from '$lib/modules/server/terminal/share-auth';
 import { toErrorMessage } from '$lib/modules/server/utils/error';
 import { json } from '@sveltejs/kit';
 import { mkdirSync, writeFileSync } from 'fs';
@@ -6,10 +6,14 @@ import { mkdirSync, writeFileSync } from 'fs';
 import type { RequestHandler } from './$types';
 
 // POST /api/terminals/[id]/paste-image — Write clipboard image for a terminal
+// Accepts the API key (owner) or a control-mode share token for this terminal.
 export const POST: RequestHandler = async ({ params, request }) => {
-  const authError = validateAuth(request);
-  if (authError) {
-    return authError;
+  const access = resolveAccess(request, params.id);
+  if (!access) {
+    return json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  if (access.level === 'guest' && access.mode !== 'control') {
+    return json({ error: 'View-only access' }, { status: 403 });
   }
 
   const terminalId = params.id;

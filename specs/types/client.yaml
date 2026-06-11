@@ -157,6 +157,15 @@ Client:
       sessionWs:
         type: string
         description: WebSocket path for structured session stream
+      cols:
+        type: number
+        description: Current PTY width in columns (for fixed-size guest rendering)
+      rows:
+        type: number
+        description: Current PTY height in rows (for fixed-size guest rendering)
+      shareMode:
+        $ref: './specs/types/share.yaml#/Share/ShareMode'
+        description: Present when fetched with a guest share token — the guest's access mode
 
   # ─── Session API Response ────────────────────────────────────────
 

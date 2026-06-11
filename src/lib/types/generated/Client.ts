@@ -1,4 +1,4 @@
-import { type SessionSource, decodeSessionSource } from './index';
+import { type ShareMode, decodeShareMode, type SessionSource, decodeSessionSource } from './index';
 import {
   isJSON,
   decodeString,
@@ -307,6 +307,24 @@ export type TerminalDetailView = {
    * @memberof TerminalDetailView
    */
   sessionWs: string;
+  /**
+   * @description Current PTY width in columns (for fixed-size guest rendering)
+   * @type { number }
+   * @memberof TerminalDetailView
+   */
+  cols: number | null;
+  /**
+   * @description Current PTY height in rows (for fixed-size guest rendering)
+   * @type { number }
+   * @memberof TerminalDetailView
+   */
+  rows: number | null;
+  /**
+   * @description Present when fetched with a guest share token — the guest's access mode
+   * @type { ShareMode }
+   * @memberof TerminalDetailView
+   */
+  shareMode: ShareMode | null;
 };
 
 export function decodeTerminalDetailView(rawInput: unknown): TerminalDetailView | null {
@@ -325,6 +343,9 @@ export function decodeTerminalDetailView(rawInput: unknown): TerminalDetailView 
     const decodedTimestamp = decodeString(rawInput['timestamp']);
     const decodedWs = decodeString(rawInput['ws']);
     const decodedSessionWs = decodeString(rawInput['sessionWs']);
+    const decodedCols = decodeNumber(rawInput['cols']);
+    const decodedRows = decodeNumber(rawInput['rows']);
+    const decodedShareMode = decodeShareMode(rawInput['shareMode']);
 
     if (
       decodedId === null ||
@@ -355,6 +376,9 @@ export function decodeTerminalDetailView(rawInput: unknown): TerminalDetailView 
       timestamp: decodedTimestamp,
       ws: decodedWs,
       sessionWs: decodedSessionWs,
+      cols: decodedCols,
+      rows: decodedRows,
+      shareMode: decodedShareMode,
     };
   }
   return null;

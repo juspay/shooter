@@ -5,7 +5,7 @@
 // This avoids putting the long-lived API_KEY in WebSocket URL query parameters,
 // which would appear in proxy logs, Cloudflare access logs, and browser history.
 
-import type { Ticket } from '$lib/types';
+import type { Ticket, TicketScope } from '$lib/types';
 
 import { randomBytes } from 'crypto';
 
@@ -21,32 +21,40 @@ const tickets: Map<string, Ticket> =
 /**
  * Generate a new single-use ticket (32-byte hex string).
  * The ticket is valid for 30 seconds and can only be consumed once.
+ * An optional scope restricts the ticket to one terminal's channels
+ * (and optionally to read-only access).
  */
-export function generateTicket(): string {
+export function generateTicket(scope?: TicketScope): string {
   const ticket = randomBytes(32).toString('hex');
-  tickets.set(ticket, { createdAt: Date.now(), used: false });
+  tickets.set(ticket, {
+    createdAt: Date.now(),
+    readOnly: scope?.readOnly ?? null,
+    terminalId: scope?.terminalId ?? null,
+    used: false,
+  });
   return ticket;
 }
 
 /**
  * Validate and consume a ticket.
- * Returns true if the ticket is valid, not yet used, and not expired.
- * A valid ticket is marked as used (single-use) and cannot be reused.
+ * Returns the consumed Ticket (including any scope) if it is valid, not yet
+ * used, and not expired; otherwise null. A valid ticket is marked as used
+ * (single-use) and cannot be reused.
  */
-export function validateTicket(ticket: null | string): boolean {
+export function validateTicket(ticket: null | string): null | Ticket {
   if (!ticket) {
-    return false;
+    return null;
   }
   const entry = tickets.get(ticket);
   if (!entry || entry.used) {
-    return false;
+    return null;
   }
   if (Date.now() - entry.createdAt > 30_000) {
     tickets.delete(ticket);
-    return false;
+    return null;
   }
   entry.used = true;
-  return true;
+  return entry;
 }
 
 // Cleanup expired tickets every 30 seconds (matches ticket lifetime).
