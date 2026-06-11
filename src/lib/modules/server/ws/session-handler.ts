@@ -16,6 +16,7 @@ import type {
   WireSessionServerMessage as ServerMessage,
   SessionWatcherLike,
   TextContentBlock,
+  TicketScope,
 } from '$lib/types';
 import type { WebSocket } from 'ws';
 
@@ -41,7 +42,7 @@ let _sessionWatcher: null | SessionWatcherLike = null;
  * 3. If still no terminal, treat as an external session — find the JSONL
  *    file directly and stream it via the session watcher.
  */
-export function handleSessionConnection(ws: WebSocket, id: string): void {
+export function handleSessionConnection(ws: WebSocket, id: string, scope?: TicketScope): void {
   const state: ConnectionState = {
     isExternalSession: false,
     retryInterval: null,
@@ -66,7 +67,7 @@ export function handleSessionConnection(ws: WebSocket, id: string): void {
   if (terminal) {
     state.terminalId = terminal.id;
     subscribeToSession(ws, state, terminal);
-    wireClientMessages(ws, state);
+    wireClientMessages(ws, state, scope);
     wireCleanup(ws, state);
     return;
   }
@@ -76,7 +77,7 @@ export function handleSessionConnection(ws: WebSocket, id: string): void {
   if (jsonlPath) {
     state.isExternalSession = true;
     subscribeToExternalSession(ws, state, jsonlPath);
-    wireClientMessages(ws, state);
+    wireClientMessages(ws, state, scope);
     wireCleanup(ws, state);
     return;
   }
@@ -507,7 +508,7 @@ function wireCleanup(ws: WebSocket, state: ConnectionState): void {
  * Extracted so both terminal-backed and external sessions share the same
  * message loop.
  */
-function wireClientMessages(ws: WebSocket, state: ConnectionState): void {
+function wireClientMessages(ws: WebSocket, state: ConnectionState, scope?: TicketScope): void {
   ws.on('message', (raw: Buffer | string) => {
     const data = typeof raw === 'string' ? raw : raw.toString('utf-8');
     const msg = parseClientMessage(data);
@@ -518,6 +519,10 @@ function wireClientMessages(ws: WebSocket, state: ConnectionState): void {
     try {
       switch (msg.type) {
         case 'cancel': {
+          if (scope?.readOnly) {
+            safeSend(ws, { message: 'This shared terminal is view-only.', type: 'error' });
+            return;
+          }
           if (state.isExternalSession) {
             safeSend(ws, {
               message: 'Cannot cancel — this is a read-only session. Connect to a terminal first.',
@@ -535,6 +540,10 @@ function wireClientMessages(ws: WebSocket, state: ConnectionState): void {
         }
 
         case 'send-input': {
+          if (scope?.readOnly) {
+            safeSend(ws, { message: 'This shared terminal is view-only.', type: 'error' });
+            return;
+          }
           if (state.isExternalSession) {
             safeSend(ws, {
               message:
@@ -557,6 +566,11 @@ function wireClientMessages(ws: WebSocket, state: ConnectionState): void {
         }
 
         case 'subscribe': {
+          // Scoped guests may only (re)subscribe to their own terminal's session.
+          if (scope && msg.sessionId !== scope.terminalId) {
+            safeSend(ws, { message: 'Not authorized for this session.', type: 'error' });
+            return;
+          }
           // (Re)subscribe to a different session. Clean up the old subscription.
           if (state.retryInterval) {
             clearInterval(state.retryInterval);

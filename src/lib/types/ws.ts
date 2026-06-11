@@ -146,6 +146,7 @@ export type WireTerminalServerMessage =
   | { bytes: number; type: 'output-dropped' }
   | { chunk: number; data: string; total: number; type: 'scrollback' }
   | { code: null | number; signal: null | string; type: 'exit' }
+  | { cols: number; rows: number; type: 'resize' }
   | { data: string; type: 'output' }
   | { message: string; type: 'error' };
 

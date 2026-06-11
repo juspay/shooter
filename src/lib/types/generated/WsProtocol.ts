@@ -435,7 +435,8 @@ export type TerminalServerMessage =
   | CTerminalServerMessageTerminalOutputDroppedMessage
   | CTerminalServerMessageTerminalScrollbackMessage
   | CTerminalServerMessageTerminalExitMessage
-  | CTerminalServerMessageTerminalErrorMessage;
+  | CTerminalServerMessageTerminalErrorMessage
+  | CTerminalServerMessageTerminalResizeMessage;
 
 export function decodeTerminalServerMessage(rawInput: unknown): TerminalServerMessage | null {
   const result: TerminalServerMessage | null =
@@ -443,7 +444,8 @@ export function decodeTerminalServerMessage(rawInput: unknown): TerminalServerMe
     decodeCTerminalServerMessageTerminalOutputDroppedMessage(rawInput) ??
     decodeCTerminalServerMessageTerminalScrollbackMessage(rawInput) ??
     decodeCTerminalServerMessageTerminalExitMessage(rawInput) ??
-    decodeCTerminalServerMessageTerminalErrorMessage(rawInput);
+    decodeCTerminalServerMessageTerminalErrorMessage(rawInput) ??
+    decodeCTerminalServerMessageTerminalResizeMessage(rawInput);
 
   return result;
 }
@@ -531,6 +533,23 @@ export function decodeCTerminalServerMessageTerminalErrorMessage(
     return null;
   }
   return new CTerminalServerMessageTerminalErrorMessage(result);
+}
+
+export class CTerminalServerMessageTerminalResizeMessage {
+  data: TerminalResizeMessage;
+  constructor(data: TerminalResizeMessage) {
+    this.data = data;
+  }
+}
+
+export function decodeCTerminalServerMessageTerminalResizeMessage(
+  rawInput: unknown
+): CTerminalServerMessageTerminalResizeMessage | null {
+  const result = decodeTerminalResizeMessage(rawInput);
+  if (result === null) {
+    return null;
+  }
+  return new CTerminalServerMessageTerminalResizeMessage(result);
 }
 
 /**
@@ -2326,12 +2345,26 @@ export type Ticket = {
    * @memberof Ticket
    */
   used: boolean;
+  /**
+   * @description When set, the ticket may only open WS channels for this terminal
+   * @type { string }
+   * @memberof Ticket
+   */
+  terminalId: string | null;
+  /**
+   * @description When true, input/resize/signal/send-input/cancel frames are dropped
+   * @type { boolean }
+   * @memberof Ticket
+   */
+  readOnly: boolean | null;
 };
 
 export function decodeTicket(rawInput: unknown): Ticket | null {
   if (isJSON(rawInput)) {
     const decodedCreatedAt = decodeNumber(rawInput['createdAt']);
     const decodedUsed = decodeBoolean(rawInput['used']);
+    const decodedTerminalId = decodeString(rawInput['terminalId']);
+    const decodedReadOnly = decodeBoolean(rawInput['readOnly']);
 
     if (decodedCreatedAt === null || decodedUsed === null) {
       return null;
@@ -2340,6 +2373,44 @@ export function decodeTicket(rawInput: unknown): Ticket | null {
     return {
       createdAt: decodedCreatedAt,
       used: decodedUsed,
+      terminalId: decodedTerminalId,
+      readOnly: decodedReadOnly,
+    };
+  }
+  return null;
+}
+
+/**
+ * @type { TicketScope }
+ * @description Scope restriction carried by a guest WebSocket ticket
+ */
+export type TicketScope = {
+  /**
+   * @description Only WS channels for this terminal may be opened
+   * @type { string }
+   * @memberof TicketScope
+   */
+  terminalId: string;
+  /**
+   * @description Whether the connection is view-only (input frames dropped)
+   * @type { boolean }
+   * @memberof TicketScope
+   */
+  readOnly: boolean;
+};
+
+export function decodeTicketScope(rawInput: unknown): TicketScope | null {
+  if (isJSON(rawInput)) {
+    const decodedTerminalId = decodeString(rawInput['terminalId']);
+    const decodedReadOnly = decodeBoolean(rawInput['readOnly']);
+
+    if (decodedTerminalId === null || decodedReadOnly === null) {
+      return null;
+    }
+
+    return {
+      terminalId: decodedTerminalId,
+      readOnly: decodedReadOnly,
     };
   }
   return null;

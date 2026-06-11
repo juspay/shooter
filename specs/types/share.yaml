@@ -1,0 +1,150 @@
+# Terminal Sharing Type Definitions
+# Non-top file - referenced from index.yaml
+# Types for password-protected single-terminal sharing: share records,
+# guest sessions, and the share API request/response shapes.
+
+Share:
+  ShareMode:
+    type: string
+    enum:
+      - view
+      - control
+    description: What a share guest may do — watch only, or full input control
+
+  AccessLevel:
+    type: string
+    enum:
+      - owner
+      - guest
+    description: Authorization level resolved for a terminal-scoped request
+
+  AccessContext:
+    type: object
+    description: Resolved authorization for a terminal-scoped API request
+    required:
+      - level
+    properties:
+      level:
+        $ref: './specs/types/share.yaml#/Share/AccessLevel'
+        description: owner (API key) or guest (share session token)
+      mode:
+        $ref: './specs/types/share.yaml#/Share/ShareMode'
+        description: Guest access mode (present only when level is guest)
+
+  TerminalShareRecord:
+    type: object
+    description: Persisted share configuration for one terminal (terminal_shares table)
+    required:
+      - terminalId
+      - passwordHash
+      - mode
+      - createdAt
+      - updatedAt
+    properties:
+      terminalId:
+        type: string
+        description: Terminal this share belongs to (primary key)
+      passwordHash:
+        type: string
+        description: 'scrypt:<salt-hex>:<hash-hex> password hash'
+      mode:
+        $ref: './specs/types/share.yaml#/Share/ShareMode'
+        description: Access mode granted to guests
+      createdAt:
+        type: number
+        description: Unix timestamp (ms) when the share was created
+      updatedAt:
+        type: number
+        description: Unix timestamp (ms) when the share was last updated
+
+  ShareSessionRecord:
+    type: object
+    description: Persisted guest session (share_sessions table); token stored as sha256 hash
+    required:
+      - tokenHash
+      - terminalId
+      - createdAt
+      - expiresAt
+    properties:
+      tokenHash:
+        type: string
+        description: sha256 hex of the guest bearer token (primary key)
+      terminalId:
+        type: string
+        description: Terminal the session grants access to
+      createdAt:
+        type: number
+        description: Unix timestamp (ms) when the session was created
+      expiresAt:
+        type: number
+        description: Unix timestamp (ms) when the session expires (created + 7 days)
+
+  ShareInfoResponse:
+    type: object
+    description: Owner view of a terminal's share state (GET /api/terminals/[id]/share)
+    required:
+      - active
+    properties:
+      active:
+        type: boolean
+        description: Whether sharing is currently enabled for this terminal
+      mode:
+        $ref: './specs/types/share.yaml#/Share/ShareMode'
+        description: Current access mode (present when active)
+      createdAt:
+        type: number
+        description: Unix timestamp (ms) when the share was created (present when active)
+      updatedAt:
+        type: number
+        description: Unix timestamp (ms) when the share was last updated (present when active)
+
+  ShareStatusResponse:
+    type: object
+    description: Public probe response (GET /api/terminals/[id]/share/status)
+    required:
+      - shared
+    properties:
+      shared:
+        type: boolean
+        description: Whether a share exists for this terminal
+
+  ShareAuthRequest:
+    type: object
+    description: Guest password exchange request (POST /api/terminals/[id]/share/auth)
+    required:
+      - password
+    properties:
+      password:
+        type: string
+        description: The share password
+
+  ShareAuthResponse:
+    type: object
+    description: Guest session issued after successful password exchange
+    required:
+      - token
+      - mode
+      - expiresAt
+    properties:
+      token:
+        type: string
+        description: Guest bearer token (64-char hex, shown once)
+      mode:
+        $ref: './specs/types/share.yaml#/Share/ShareMode'
+        description: Access mode granted by this session
+      expiresAt:
+        type: number
+        description: Unix timestamp (ms) when this session expires
+
+  ShareConfigRequest:
+    type: object
+    description: Owner create/update share request (PUT /api/terminals/[id]/share)
+    required:
+      - mode
+    properties:
+      password:
+        type: string
+        description: New share password (min 6 chars; required on create, optional on update)
+      mode:
+        $ref: './specs/types/share.yaml#/Share/ShareMode'
+        description: Access mode to grant guests

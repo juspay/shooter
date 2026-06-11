@@ -48,7 +48,12 @@ export async function createTerminal(options: TerminalOptions): Promise<Terminal
   term.loadAddon(fitAddon);
   term.loadAddon(new WebLinksAddon());
   term.open(options.container);
-  fitAddon.fit();
+  if (options.readOnly && options.initialCols && options.initialRows) {
+    // View-only: render at the PTY's size (we may not resize the shared PTY).
+    term.resize(options.initialCols, options.initialRows);
+  } else {
+    fitAddon.fit();
+  }
 
   // Block browser-level Cmd/Ctrl shortcuts from reaching the PTY.
   // Allow Ctrl+<letter> terminal signals (Ctrl+C/D/L/R/Z etc.) through.
@@ -71,7 +76,7 @@ export async function createTerminal(options: TerminalOptions): Promise<Terminal
 
   // Clipboard image paste interception
   let pasteListener: ((e: ClipboardEvent) => void) | null = null;
-  if (options.terminalId && options.apiKey) {
+  if (options.terminalId && options.apiKey && !options.readOnly) {
     const pasteTermId = options.terminalId;
     const pasteApiKey = options.apiKey;
 
@@ -185,6 +190,12 @@ export async function createTerminal(options: TerminalOptions): Promise<Terminal
         options.onActivity?.(msg.active ?? false);
       } else if (msg.type === 'cwd') {
         options.onCwd?.(msg.path ?? '');
+      } else if (msg.type === 'resize') {
+        // PTY was resized by another client (e.g. the owner). View-only
+        // terminals follow it; interactive ones are governed by their fit.
+        if (options.readOnly && msg.cols && msg.rows) {
+          term.resize(msg.cols, msg.rows);
+        }
       }
     };
 
@@ -205,6 +216,9 @@ export async function createTerminal(options: TerminalOptions): Promise<Terminal
 
   // Terminal input -> WebSocket
   term.onData((data) => {
+    if (options.readOnly) {
+      return;
+    }
     if (ws?.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ data, type: 'input' }));
     }
@@ -212,6 +226,9 @@ export async function createTerminal(options: TerminalOptions): Promise<Terminal
 
   // Handle resize — skip when container is hidden (display:none → size 0)
   const resizeObserver = new ResizeObserver((): void => {
+    if (options.readOnly) {
+      return; // View-only terminals keep the PTY's dimensions.
+    }
     if (!options.container.offsetWidth || !options.container.offsetHeight) {
       return;
     }

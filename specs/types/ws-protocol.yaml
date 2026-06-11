@@ -183,6 +183,7 @@ WsProtocol:
       - $ref: './specs/types/ws-protocol.yaml#/WsProtocol/TerminalScrollbackMessage'
       - $ref: './specs/types/ws-protocol.yaml#/WsProtocol/TerminalExitMessage'
       - $ref: './specs/types/ws-protocol.yaml#/WsProtocol/TerminalErrorMessage'
+      - $ref: './specs/types/ws-protocol.yaml#/WsProtocol/TerminalResizeMessage'
 
   # ═══════════════════════════════════════════════════════════════════════
   # Channel 2: Session Stream — /ws/session/:id
@@ -775,3 +776,23 @@ WsProtocol:
       used:
         type: boolean
         description: Whether the ticket has been consumed (single-use)
+      terminalId:
+        type: string
+        description: When set, the ticket may only open WS channels for this terminal
+      readOnly:
+        type: boolean
+        description: When true, input/resize/signal/send-input/cancel frames are dropped
+
+  TicketScope:
+    type: object
+    description: Scope restriction carried by a guest WebSocket ticket
+    required:
+      - terminalId
+      - readOnly
+    properties:
+      terminalId:
+        type: string
+        description: Only WS channels for this terminal may be opened
+      readOnly:
+        type: boolean
+        description: Whether the connection is view-only (input frames dropped)
