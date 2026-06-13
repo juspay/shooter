@@ -1,3 +1,9 @@
+## [1.21.0](https://github.com/juspay/shooter/compare/v1.20.0...v1.21.0) (2026-06-13)
+
+### Features
+
+* **(dashboard):**  autonomous summarization engine with LiteLLM next-step consensus ([7f58f83](https://github.com/juspay/shooter/commit/7f58f8320467d018b050d7f8dedcc4ddb1143912))
+
 ## [1.20.0](https://github.com/juspay/shooter/compare/v1.19.0...v1.20.0) (2026-06-13)
 
 ### Features
