@@ -15,6 +15,7 @@ import type { RequestHandler } from './$types';
 const ALLOWED_CLIENT_HEADERS: Record<string, Set<string>> = {
   anthropic: new Set(['anthropic-beta', 'anthropic-version']),
   'google-ai': new Set<string>([]),
+  litellm: new Set<string>([]),
   mistral: new Set([]),
   openai: new Set(['openai-organization', 'openai-project']),
 };
@@ -63,15 +64,29 @@ export const POST: RequestHandler = async ({ request }) => {
     openai: 'https://api.openai.com/',
   };
 
-  const allowedPrefix = ALLOWED_PREFIXES[provider];
-  if (!allowedPrefix || !url.startsWith(allowedPrefix)) {
-    return json({ error: `Provider "${provider}" or URL not allowed` }, { status: 403 });
+  if (provider === 'litellm') {
+    // SSRF-safe: only forward to the operator-configured LiteLLM endpoint.
+    // Trim to align with getProviderAvailability semantics (whitespace-only = not configured).
+    const rawBase = env.LITELLM_BASE_URL?.trim();
+    if (!rawBase) {
+      return json({ error: 'LiteLLM is not configured on this server' }, { status: 403 });
+    }
+    const litellmPrefix = `${rawBase.replace(/\/+$/, '')}/`;
+    if (!url.startsWith(litellmPrefix)) {
+      return json({ error: `Provider "${provider}" or URL not allowed` }, { status: 403 });
+    }
+  } else {
+    const allowedPrefix = ALLOWED_PREFIXES[provider];
+    if (!allowedPrefix || !url.startsWith(allowedPrefix)) {
+      return json({ error: `Provider "${provider}" or URL not allowed` }, { status: 403 });
+    }
   }
 
   // Inject the server-side API key so the browser never sees it
   const apiKeyEnv: Record<string, string> = {
     anthropic: env.ANTHROPIC_API_KEY ?? '',
     'google-ai': env.GOOGLE_AI_API_KEY ?? '',
+    litellm: env.LITELLM_API_KEY ?? '',
     mistral: env.MISTRAL_API_KEY ?? '',
     openai: env.OPENAI_API_KEY ?? '',
   };
@@ -93,16 +108,26 @@ export const POST: RequestHandler = async ({ request }) => {
     ...normalizedReqHeaders,
   };
 
-  // Override / set auth header with server-side key
+  // Override / set auth header with server-side key.
+  // For Bearer-token providers, only inject the header when the key is non-empty
+  // to avoid sending a malformed `Authorization: Bearer ` to the upstream.
   if (provider === 'anthropic') {
     forwardHeaders['x-api-key'] = apiKeyEnv.anthropic;
     forwardHeaders['anthropic-version'] = forwardHeaders['anthropic-version'] ?? '2023-06-01';
   } else if (provider === 'google-ai') {
     forwardHeaders['x-goog-api-key'] = apiKeyEnv['google-ai'];
   } else if (provider === 'openai') {
-    forwardHeaders.Authorization = `Bearer ${apiKeyEnv.openai}`;
+    if (apiKeyEnv.openai) {
+      forwardHeaders.Authorization = `Bearer ${apiKeyEnv.openai}`;
+    }
   } else if (provider === 'mistral') {
-    forwardHeaders.Authorization = `Bearer ${apiKeyEnv.mistral}`;
+    if (apiKeyEnv.mistral) {
+      forwardHeaders.Authorization = `Bearer ${apiKeyEnv.mistral}`;
+    }
+  } else if (provider === 'litellm') {
+    if (apiKeyEnv.litellm) {
+      forwardHeaders.Authorization = `Bearer ${apiKeyEnv.litellm}`;
+    }
   }
 
   const controller = new AbortController();

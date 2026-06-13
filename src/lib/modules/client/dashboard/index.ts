@@ -1,3 +1,4 @@
+export { default as AutopilotPanel } from './AutopilotPanel.svelte';
 export { default as DashboardCard } from './DashboardCard.svelte';
 export { default as DashboardView } from './DashboardView.svelte';
 export {
