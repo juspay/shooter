@@ -114,6 +114,12 @@ try {
   /* best effort */
 }
 ptyEnv.SHOOTER_CLIPBOARD_DIR = clipboardDir;
+// Tag this PTY with its Shooter terminal id so in-agent lifecycle hooks
+// (notifier.cjs) can attribute their events to THIS managed terminal. The
+// autopilot engine + phone driver key on terminalId; a plain shell that a
+// user starts outside Shooter never sees this var, so its behaviour is
+// unchanged.
+ptyEnv.SHOOTER_TERMINAL_ID = id;
 
 // Prepend clipboard shim scripts to PATH so tools find our xclip/wl-paste
 const shimsDir = path.resolve(__dirname, '..', 'scripts', 'clipboard-shims');

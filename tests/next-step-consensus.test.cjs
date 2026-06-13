@@ -387,6 +387,50 @@ runTest('multiple quorum steps: sorted votes desc then confidence desc', () => {
   }
 });
 
+// ── 13. Invalid confidence sanitisation ───────────────────────────────────────
+
+runTest('NaN confidence is treated as 0 (no NaN leaks into meanConf)', () => {
+  const lists = [
+    [{ text: 'do x', confidence: NaN }],
+    [{ text: 'do x', confidence: 0.9 }],
+    [],
+    [],
+    [],
+  ];
+  const result = mergeNextStepConsensus(lists, { quorum: 2 });
+  const top = result.steps[0];
+  assertTrue(Number.isFinite(top.confidence), 'confidence must be finite');
+  // mean of (0, 0.9) = 0.45
+  assertTrue(Math.abs(top.confidence - 0.45) < 1e-9, `mean should be 0.45, got ${top.confidence}`);
+});
+
+runTest('out-of-range confidence is clamped into [0,1]', () => {
+  const lists = [
+    [{ text: 'do y', confidence: 5 }],
+    [{ text: 'do y', confidence: 1 }],
+    [],
+    [],
+    [],
+  ];
+  const result = mergeNextStepConsensus(lists, { quorum: 2 });
+  // both clamp to 1 → mean 1
+  assertEqual(result.steps[0].confidence, 1, 'clamped mean is 1');
+});
+
+runTest('undefined/missing confidence defaults to 0', () => {
+  const lists = [
+    [{ text: 'do z' }],
+    [{ text: 'do z', confidence: 0.6 }],
+    [],
+    [],
+    [],
+  ];
+  const result = mergeNextStepConsensus(lists, { quorum: 2 });
+  const top = result.steps[0];
+  assertTrue(Number.isFinite(top.confidence), 'finite');
+  assertTrue(Math.abs(top.confidence - 0.3) < 1e-9, `mean of (0,0.6)=0.3, got ${top.confidence}`);
+});
+
 // ── Summary ──────────────────────────────────────────────────────────────────
 
 console.log(`\nResults: ${passed} passed, ${failed} failed, ${passed + failed} total\n`);

@@ -60,7 +60,14 @@ export function mergeNextStepConsensus(
       // Step 3: find an existing cluster to join.
       const targetCluster = findOrCreateCluster(clusters, norm);
       targetCluster.agentIndices.add(agentIndex);
-      targetCluster.members.push({ confidence: proposal.confidence, text: proposal.text });
+      // Sanitise confidence at ingestion: the type says `number` but the value comes from raw LLM
+      // JSON, so a missing/NaN/Infinity/out-of-range confidence must NOT leak into meanConf (it
+      // would poison the mean and could spuriously clear the downstream 0.7 inject floor). Invalid
+      // → 0 (correctly fails the floor); valid → clamped to [0,1].
+      targetCluster.members.push({
+        confidence: safeConfidence(proposal.confidence),
+        text: proposal.text,
+      });
     }
   }
 
@@ -175,11 +182,29 @@ function normalize(text: string): string {
     .replace(/[.,;:!?]+$/, '');
 }
 
+/** Coerce a raw (untrusted) confidence into a finite number in [0,1]; invalid → 0. */
+function safeConfidence(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.max(0, Math.min(1, value));
+}
+
 // ── Private helper ──────────────────────────────────────────────────────────
 
 /**
  * Tokenize a normalized string into a set of tokens.
  */
 function tokenSet(normalized: string): Set<string> {
-  return new Set(normalized.split(/\s+/).filter((t) => t.length > 0));
+  // Strip wrapping punctuation from each token so code-bearing proposals cluster: the lenses phrase
+  // the same action differently and wrap code in backticks/quotes (`return a - b`, "calc.js"), which
+  // otherwise fragments the tokens ("`return" ≠ "return") and makes the Jaccard overlap undercount
+  // real agreement. Pure-punctuation tokens (operators like - / +) drop out, which is fine — we are
+  // grouping intent, not preserving exact syntax.
+  return new Set(
+    normalized
+      .split(/\s+/)
+      .map((t) => t.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, ''))
+      .filter((t) => t.length > 0)
+  );
 }

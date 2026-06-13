@@ -67,5 +67,32 @@ runTest('parseJsonResponse: empty / unparseable -> null', () => {
   assertEqual(parseJsonResponse('not json at all'), null, 'prose-only');
 });
 
+// A reasoning model often emits an invalid brace region (e.g. "{not: valid}") BEFORE the real
+// JSON. The brace-scan must skip the failed region and keep scanning, not give up on the first.
+runTest('parseJsonResponse: skips an invalid leading {…} region and parses a later valid object', () => {
+  assertEqual(
+    parseJsonResponse('Based on {not: valid} the answer is {"summary":"ok"}'),
+    { summary: 'ok' },
+    'second region'
+  );
+});
+
+runTest('extractJsonContent: reasoning preamble with bad brace region then valid JSON', () => {
+  assertEqual(
+    extractJsonContent(openai('Let me think {a, b, c} ... final answer: {"steps":[{"text":"go","confidence":0.5}]}')),
+    { steps: [{ text: 'go', confidence: 0.5 }] },
+    'preamble'
+  );
+});
+
+// Regression guard for the original intent: the FIRST *valid* object still wins.
+runTest('parseJsonResponse: first valid object still wins when no invalid region precedes it', () => {
+  assertEqual(
+    parseJsonResponse('{"summary":"first"} and also {"other":"second"}'),
+    { summary: 'first' },
+    'first valid'
+  );
+});
+
 console.log(`\nResults: ${passed} passed, ${failed} failed, ${passed + failed} total\n`);
 process.exit(failed > 0 ? 1 : 0);

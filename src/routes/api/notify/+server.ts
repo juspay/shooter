@@ -173,13 +173,8 @@ function intelligentNotificationFilter(
     };
   }
 
-  // Always allow Stop hook completion notifications
-  if (source === 'stop-hook') {
-    return {
-      reason: 'Stop hook completion notification - session finished',
-      send: true,
-    };
-  }
+  // (Removed a dead `source === 'stop-hook'` branch: the notifier emits
+  // 'shooter-completion-detector', never 'stop-hook', and the default below already allows it.)
 
   // Filter out only very specific spam patterns to be less restrictive
   const spamPatterns = [
@@ -263,18 +258,28 @@ function isDuplicateNotification(
     }
   }
 
-  // Do NOT record here -- caller must call recordNotification() after
-  // successful delivery to avoid cache poisoning on send failure.
+  // RESERVE the slot atomically (check-and-set): a second concurrent request with the same key now
+  // sees it as a duplicate before either has delivered, closing the TOCTOU window that let two
+  // identical pushes through. The delivery path RELEASES the slot (releaseNotification) if the send
+  // fails, so a legitimate retry is not blocked — this replaces the old record-only-on-success
+  // scheme while still avoiding cache poisoning on failure.
+  notificationCache.set(key, now);
   return false;
 }
 
-/** Record a notification key in the dedup cache after successful delivery. */
-function recordNotification(title: string, message: string, data?: NotificationData): void {
+function notificationKey(title: string, message: string, data?: NotificationData): string {
   const dataRecord = data as (NotificationData & { dedupKey?: string }) | undefined;
-  const key = dataRecord?.dedupKey
-    ? dataRecord.dedupKey
-    : `${title}|${message}|${data?.category || 'unknown'}`;
-  notificationCache.set(key, Date.now());
+  return dataRecord?.dedupKey ?? `${title}|${message}|${data?.category || 'unknown'}`;
+}
+
+/** Refresh a reserved dedup key after successful delivery (keeps the window measured from send). */
+function recordNotification(title: string, message: string, data?: NotificationData): void {
+  notificationCache.set(notificationKey(title, message, data), Date.now());
+}
+
+/** Release a reserved dedup key when delivery failed, so a legitimate retry is not blocked. */
+function releaseNotification(title: string, message: string, data?: NotificationData): void {
+  notificationCache.delete(notificationKey(title, message, data));
 }
 
 // TODO(refactor): extract body parsing, filtering, and platform routing into
@@ -501,6 +506,7 @@ export const POST: RequestHandler = async ({ request }) => {
         });
       } else {
         console.error(`[notify] FCM delivery failed: ${fcmResult.error}`);
+        releaseNotification(title, message, data); // free the reserved dedup slot for a retry
 
         addNotification(
           buildNotificationRecord(
@@ -581,6 +587,7 @@ export const POST: RequestHandler = async ({ request }) => {
       } catch (notificationError) {
         const notifErrMsg = toErrorMessage(notificationError);
         console.error(`[notify] APNs delivery failed: ${notifErrMsg}`);
+        releaseNotification(title, message, data); // free the reserved dedup slot for a retry
 
         addNotification(
           buildNotificationRecord(canonicalRequestId, title, message, 'failed', data, notifErrMsg)

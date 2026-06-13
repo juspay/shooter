@@ -238,6 +238,18 @@ async function connectWs(apiKey: string): Promise<void> {
   }
 }
 
+// Claude Code injects these wrappers as "user" messages (slash-command caveats, system reminders,
+// etc.); none is the real goal. Mirror of SYSTEM_TAG_PREFIXES in server/sessions/jsonl-reader.ts.
+const HARNESS_TAG_PREFIXES = [
+  '<local-command',
+  '<command-name>',
+  '<command-message>',
+  '<command-args>',
+  '<system-reminder>',
+  '<task-notification>',
+  'Caveat:',
+];
+
 function extractGoalText(content: string | { content?: string; type: string }[]): string {
   let text = '';
   if (typeof content === 'string') {
@@ -246,7 +258,10 @@ function extractGoalText(content: string | { content?: string; type: string }[])
     const textPart = content.find((p) => p.type === 'text');
     text = textPart?.content ?? '';
   }
-  return text.slice(0, 200).trim();
+  const trimmed = text.slice(0, 200).trim();
+  // A harness wrapper is not the user's goal — skip it so the caller keeps scanning for the real one
+  // (this is what let "<local-command-caveat>Caveat: …" become the pinned goal).
+  return isHarnessText(trimmed) ? '' : trimmed;
 }
 
 async function fetchTerminals(apiKey: string): Promise<void> {
@@ -290,8 +305,6 @@ function getApiKey(): string {
   }
   return '';
 }
-
-// -- Public API -----------------------------------------------------------
 
 function handleWsMessage(raw: RawEvent): void {
   const type = raw.type as string | undefined;
@@ -367,6 +380,12 @@ function handleWsMessage(raw: RawEvent): void {
   sessions = sortSessions(sessions);
 }
 
+function isHarnessText(text: string): boolean {
+  return HARNESS_TAG_PREFIXES.some((p) => text.startsWith(p));
+}
+
+// -- Public API -----------------------------------------------------------
+
 function makeSessionState(t: DashboardTerminalRecord): SessionState {
   return {
     command: t.command,
@@ -435,14 +454,17 @@ function mergeSessions(
       if (prev.status !== 'error') {
         prev.status = mapStatus(t.status);
       }
-      // Schedule goal extraction if still missing
-      if (!prev.goal) {
+      // Schedule goal extraction if still missing — but never for an exited terminal (its socket
+      // would open, get a session-end, and the poll would keep reopening it).
+      if (!prev.goal && t.exitedAt === null && t.status !== 'exited') {
         void openSessionSocket(t.id);
       }
     } else {
       map.set(t.id, makeSessionState(t));
-      // Open a session WS for goal extraction on newly discovered terminals
-      void openSessionSocket(t.id);
+      // Open a session WS for goal extraction on newly discovered (live) terminals only
+      if (t.exitedAt === null && t.status !== 'exited') {
+        void openSessionSocket(t.id);
+      }
     }
   }
 
@@ -495,6 +517,12 @@ async function openSessionSocket(terminalId: string): Promise<void> {
         }
         const data = raw as Record<string, unknown>;
 
+        // Session ended — stop watching (no goal will ever arrive on this socket).
+        if (data.type === 'session-end') {
+          closeSessionSocket(terminalId);
+          return;
+        }
+
         // Check if we already have a goal for this terminal
         const currentSession = sessions.find((s) => s.terminalId === terminalId);
         const hasGoal = currentSession?.goal && currentSession.goal.length > 0;
@@ -517,25 +545,23 @@ async function openSessionSocket(terminalId: string): Promise<void> {
             `[DashboardStore] Found ${messages.length} messages, looking for first user message...`
           );
 
-          // Find first user message and extract goal
+          // Find the FIRST non-harness user message and use it as the goal. Keep scanning past
+          // harness-only messages (slash-command caveats, system reminders) so they never become
+          // the goal — and do NOT close the socket when none is found yet: closing here made the
+          // 15s poll reopen it every cycle (the session-watcher churn).
           for (const m of messages) {
-            if (m.role === 'user') {
-              const goal = extractGoalText(m.content);
-              console.log(
-                `[DashboardStore] Extracted goal for ${terminalId}: "${goal.substring(0, 50)}..."`
-              );
-
-              if (goal) {
-                updateSessionGoal(terminalId, goal);
-              }
-              // Goal extracted — close the socket, we no longer need it
+            if (m.role !== 'user') {
+              continue;
+            }
+            const goal = extractGoalText(m.content);
+            if (goal) {
+              updateSessionGoal(terminalId, goal);
+              syncEngineGoal(terminalId, goal);
               closeSessionSocket(terminalId);
               return;
             }
           }
-
-          console.log(`[DashboardStore] No user message found in history for ${terminalId}`);
-          // No user message yet — keep socket open for incoming messages
+          // No real user goal in history yet — keep the socket open for incoming live messages.
           return;
         }
 
@@ -546,10 +572,8 @@ async function openSessionSocket(terminalId: string): Promise<void> {
             data.content as string | { content?: string; type: string }[]
           );
           if (goal) {
-            console.log(
-              `[DashboardStore] Extracted goal from message for ${terminalId}: "${goal.substring(0, 50)}..."`
-            );
             updateSessionGoal(terminalId, goal);
+            syncEngineGoal(terminalId, goal);
             closeSessionSocket(terminalId);
           }
           return;
@@ -622,6 +646,23 @@ function sortSessions(list: SessionState[]): SessionState[] {
     const exitA = a.exitedAt ?? a.createdAt;
     const exitB = b.exitedAt ?? b.createdAt;
     return exitB.localeCompare(exitA);
+  });
+}
+
+// Push a freshly-extracted goal to the SERVER-side autopilot engine so its per-cycle LLM context is
+// anchored to the real user intent. Without this the engine always ran goal-less: its goal store
+// was only reachable via this route, which nothing ever called (the client only updated local
+// state). Best-effort — the engine may not be running (503); the next extraction retries.
+function syncEngineGoal(terminalId: string, goal: string): void {
+  if (!storedApiKey) {
+    return;
+  }
+  void fetch('/api/autopilot/goal', {
+    body: JSON.stringify({ goal, terminalId }),
+    headers: { Authorization: `Bearer ${storedApiKey}`, 'Content-Type': 'application/json' },
+    method: 'POST',
+  }).catch(() => {
+    // best-effort; nothing to do on failure
   });
 }
 

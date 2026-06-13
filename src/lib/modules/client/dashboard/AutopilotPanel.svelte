@@ -1,12 +1,20 @@
 <script lang="ts">
   import type { NextStep, SessionSummaryRecord } from '$lib/types';
 
-  import { formatRelativeTime, getApiKey } from '$lib/modules/client/common';
+  import {
+    formatRelativeTime,
+    getApiKey,
+    startPresenceReporting,
+  } from '$lib/modules/client/common';
   import { onMount } from 'svelte';
 
-  // Read-only view of the always-on SERVER autopilot engine: fetches persisted
-  // summaries from /api/summaries and toggles the engine via /api/autopilot.
-  // No engine runs in the browser — the panel just reflects server state.
+  import { autopilotDriver } from './autopilot-driver.svelte';
+
+  // Two distinct controls:
+  //  1. The SERVER engine (summarize + push) — toggled via /api/autopilot. Read-only view
+  //     of persisted summaries from /api/summaries.
+  //  2. AUTONOMY (auto-inject) — the in-WebView driver that runs proposed commands into idle
+  //     managed terminals. Local kill switch (autopilotDriver), persisted in localStorage.
 
   let enabled = $state(false);
   let summaries = $state<SessionSummaryRecord[]>([]);
@@ -70,6 +78,14 @@
     }
   }
 
+  function toggleAutonomy(): void {
+    autopilotDriver.setEnabled(!autopilotDriver.enabled);
+  }
+
+  function actionTime(at: number): string {
+    return formatRelativeTime(new Date(at).toISOString());
+  }
+
   function parseSteps(raw: string): NextStep[] {
     try {
       const value: unknown = JSON.parse(raw);
@@ -100,12 +116,19 @@
   onMount(() => {
     void refreshState();
     void refreshSummaries();
+    const key = getApiKey();
+    if (key) {
+      autopilotDriver.start(key);
+    }
+    const stopPresence = key ? startPresenceReporting(key) : null;
     const timer = setInterval(() => {
       void refreshSummaries();
       void refreshState();
     }, 8000);
     return (): void => {
       clearInterval(timer);
+      autopilotDriver.stop();
+      stopPresence?.();
     };
   });
 </script>
@@ -127,6 +150,48 @@
       {enabled ? 'Stop' : 'Start'}
     </button>
   </div>
+
+  <div class="autonomy-row">
+    <div class="autonomy-label">
+      <span class="autonomy-title">Autonomy</span>
+      <span class="autonomy-sub">
+        {autopilotDriver.enabled
+          ? 'Auto-running commands into idle terminals'
+          : 'Off — summaries + suggestions only'}
+      </span>
+    </div>
+    <button
+      class={autopilotDriver.enabled
+        ? 'toggle-btn toggle-btn--danger'
+        : 'toggle-btn toggle-btn--off'}
+      onclick={toggleAutonomy}
+      aria-label={autopilotDriver.enabled ? 'Disable autonomy' : 'Enable autonomy'}
+      aria-pressed={autopilotDriver.enabled}
+    >
+      {autopilotDriver.enabled ? 'On' : 'Off'}
+    </button>
+  </div>
+
+  {#if autopilotDriver.enabled}
+    <div class="autonomy-warning" role="alert">
+      ⚠ Auto-inject is ON — proposed commands run automatically in idle managed terminals.
+    </div>
+  {/if}
+
+  {#if autopilotDriver.actions.length > 0}
+    <div class="actions-log">
+      <span class="actions-label">Recent actions</span>
+      <ul class="actions-list">
+        {#each autopilotDriver.actions.slice(0, 6) as a (`${a.at}-${a.terminalId}`)}
+          <li class="action-item action-item--{a.kind}">
+            <span class="action-kind">{a.kind}</span>
+            <span class="action-detail" title={a.detail}>{a.detail}</span>
+            <span class="action-time">{actionTime(a.at)}</span>
+          </li>
+        {/each}
+      </ul>
+    </div>
+  {/if}
 
   {#if latest.length > 0}
     <div class="sessions-list">
@@ -396,5 +461,124 @@
     color: var(--text-tertiary, #7d7d7d);
     font-size: 10px;
     margin-top: 2px;
+  }
+
+  .autonomy-row {
+    align-items: center;
+    display: flex;
+    gap: var(--space-2, 8px);
+    justify-content: space-between;
+    margin-bottom: var(--space-3, 12px);
+  }
+
+  .autonomy-label {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .autonomy-title {
+    color: var(--text-primary, #ededed);
+    font-size: var(--text-xs, 12px);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .autonomy-sub {
+    color: var(--text-tertiary, #7d7d7d);
+    font-size: 11px;
+  }
+
+  .toggle-btn--danger {
+    background: var(--ds-red-alpha-200, rgba(220, 38, 38, 0.14));
+    border-color: var(--ds-red-alpha-400, rgba(220, 38, 38, 0.35));
+    color: var(--ds-red-700, #dc2626);
+  }
+
+  .toggle-btn--danger:hover {
+    background: var(--ds-red-alpha-400, rgba(220, 38, 38, 0.22));
+  }
+
+  .autonomy-warning {
+    background: var(--ds-amber-alpha-200, rgba(217, 119, 6, 0.12));
+    border: 1px solid var(--ds-amber-alpha-400, rgba(217, 119, 6, 0.3));
+    border-radius: var(--radius-md, 6px);
+    color: var(--ds-amber-700, #d97706);
+    font-size: 11px;
+    margin-bottom: var(--space-3, 12px);
+    padding: 6px 10px;
+  }
+
+  .actions-log {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    margin-bottom: var(--space-3, 12px);
+  }
+
+  .actions-label {
+    color: var(--text-tertiary, #7d7d7d);
+    font-size: var(--text-xs, 12px);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .actions-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .action-item {
+    align-items: baseline;
+    display: flex;
+    font-size: 11px;
+    gap: 8px;
+  }
+
+  .action-kind {
+    border-radius: var(--radius-full, 9999px);
+    flex-shrink: 0;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 1px 6px;
+    text-transform: uppercase;
+  }
+
+  .action-item--injected .action-kind {
+    background: var(--ds-green-alpha-200, rgba(22, 163, 74, 0.12));
+    color: var(--ds-green-700, #16a34a);
+  }
+
+  .action-item--skipped .action-kind {
+    background: var(--ds-gray-alpha-200, rgba(255, 255, 255, 0.06));
+    color: var(--text-tertiary, #7d7d7d);
+  }
+
+  .action-item--error .action-kind {
+    background: var(--ds-red-alpha-200, rgba(220, 38, 38, 0.14));
+    color: var(--ds-red-700, #dc2626);
+  }
+
+  .action-detail {
+    color: var(--text-secondary, #a1a1a1);
+    flex: 1;
+    font-family: var(--font-mono, monospace);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .action-time {
+    color: var(--text-tertiary, #7d7d7d);
+    flex-shrink: 0;
+    font-size: 10px;
   }
 </style>

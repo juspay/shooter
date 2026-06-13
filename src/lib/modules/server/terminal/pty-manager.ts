@@ -18,6 +18,7 @@ import {
   readOnlySourceForCommand,
 } from '../sessions/provider-paths';
 import { broadcastEvent } from '../ws/server.js';
+import { withAgentPermissionMode } from './agent-launch.js';
 import { HolderClient } from './holder-client';
 import { openCodeWatcher } from './opencode-watcher';
 import { terminalStore } from './terminal-store';
@@ -134,8 +135,17 @@ class PtyManager {
     const socketPath = `/tmp/shooter-term-${id}.sock`;
     const holderScript = resolveHolderPath();
 
+    // Inject the configured default --permission-mode for claude (SHOOTER_AGENT_PERMISSION_MODE),
+    // so a managed agent can act instead of being auto-denied by a restrictive global config.
+    // No-op unless set; never overrides an explicit flag. Persisted so reconnect keeps it.
+    const launchArgs = withAgentPermissionMode(
+      command,
+      args,
+      process.env.SHOOTER_AGENT_PERMISSION_MODE
+    );
+
     // Fork the holder process as detached so it survives server restarts
-    const holderArgs = [id, socketPath, cwd, String(cols), String(rows), command, ...args];
+    const holderArgs = [id, socketPath, cwd, String(cols), String(rows), command, ...launchArgs];
     const holder: ChildProcess = fork(holderScript, holderArgs, {
       detached: true,
       stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
@@ -179,7 +189,7 @@ class PtyManager {
 
     const now = new Date();
     const terminal: ManagedTerminal = {
-      args,
+      args: launchArgs,
       clients: new Set(),
       cols,
       command,
@@ -210,7 +220,7 @@ class PtyManager {
 
     // Persist to SQLite
     terminalStore.insert({
-      args: JSON.stringify(args),
+      args: JSON.stringify(launchArgs),
       cols,
       command,
       createdAt: now.toISOString(),
