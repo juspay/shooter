@@ -6,6 +6,7 @@ import jwt from 'jsonwebtoken';
 import { promisify } from 'util';
 
 import { toErrorMessage } from '../utils/error';
+import { fitApnsPayload } from './apns-payload.js';
 
 // APNs delivery via curl. Replaces @parse/node-apn (which times out on Node 24
 // regardless of version: 7.1.0, 8.1.0, both reproduce). Node's native http2 +
@@ -109,7 +110,48 @@ export class LibraryAPNsService {
       void _ignoredAps;
       Object.assign(body, customData);
     }
-    const bodyJson = JSON.stringify(body);
+    return this.deliver(deviceToken, body, 'alert', '10');
+  }
+
+  /**
+   * Send a SILENT (content-available) background push to wake a backgrounded app without
+   * showing an alert — used to wake the phone-resident agent loop so it can run a burst.
+   * Uses apns-push-type:background + apns-priority:5 (required by APNs for silent pushes).
+   * iOS throttles these (a few per hour); delivery is best-effort.
+   */
+  async sendSilentNotification(
+    deviceToken: string,
+    data?: Record<string, unknown>
+  ): Promise<APNsSendResult> {
+    if (!this.configured) {
+      throw new Error('APNs service not configured properly');
+    }
+    if (!deviceToken) {
+      throw new Error('Device token is required');
+    }
+    const body: Record<string, unknown> = { aps: { 'content-available': 1 } };
+    if (data) {
+      const { aps: _ignoredAps, ...customData } = data;
+      void _ignoredAps;
+      Object.assign(body, customData);
+    }
+    return this.deliver(deviceToken, body, 'background', '5');
+  }
+
+  shutdown(): void {
+    // No persistent state to release.
+  }
+
+  /** Shared curl/HTTP-2 delivery. `pushType` is 'alert' | 'background', `priority` '10' | '5'. */
+  private async deliver(
+    deviceToken: string,
+    body: Record<string, unknown>,
+    pushType: 'alert' | 'background',
+    priority: '5' | '10'
+  ): Promise<APNsSendResult> {
+    // Cap the payload to APNs' size limit. A long agent message in alert.body otherwise blows
+    // past ~4 KB → APNs 413 PayloadTooLarge (or curl E2BIG), so the notification never arrives.
+    const bodyJson = JSON.stringify(fitApnsPayload(body));
     const jwtToken = this.getJwt();
     const url = `https://${this.host}/3/device/${deviceToken}`;
 
@@ -127,9 +169,9 @@ export class LibraryAPNsService {
       '-H',
       `authorization: bearer ${jwtToken}`,
       '-H',
-      'apns-push-type: alert',
+      `apns-push-type: ${pushType}`,
       '-H',
-      'apns-priority: 10',
+      `apns-priority: ${priority}`,
       '-d',
       bodyJson,
       '-w',
@@ -171,14 +213,14 @@ export class LibraryAPNsService {
       console.error(`[apns] Delivery failed (status=${status}): ${reason}`);
       return { error: reason, failed: 1, sent: 0, success: false };
     } catch (err) {
-      const msg = toErrorMessage(err);
+      // A failed execFile echoes the whole curl command — which carries the APNs JWT and the
+      // device token. Redact both before logging or returning so they don't leak into logs/responses.
+      const msg = toErrorMessage(err)
+        .replace(/bearer\s+[A-Za-z0-9._-]+/gi, 'bearer [REDACTED]')
+        .replace(/device\/[A-Fa-f0-9]+/g, 'device/[REDACTED]');
       console.error(`[apns] curl transport error: ${msg}`);
       return { error: msg, failed: 1, sent: 0, success: false };
     }
-  }
-
-  shutdown(): void {
-    // No persistent state to release.
   }
 
   private getJwt(): string {

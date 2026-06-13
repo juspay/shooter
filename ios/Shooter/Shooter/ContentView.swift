@@ -406,6 +406,34 @@ struct WebView: UIViewRepresentable {
                 });
             }
         };
+
+        // File persistence namespace — durable on-device agent memory (Application Support sandbox)
+        window.ShooterBridge.files = {
+            _call: function(op, path, contents) {
+                return new Promise(function(resolve, reject) {
+                    var id = 'cb_' + (++window.ShooterBridge._callbackId);
+                    window.ShooterBridge._callbacks[id] = function(r) {
+                        if (r.success) { resolve(r.data); } else { reject(new Error(r.error || 'file error')); }
+                    };
+                    window.webkit.messageHandlers.shooterFiles.postMessage({ callbackId: id, op: op, path: path || '', contents: contents || '' });
+                });
+            },
+            write: function(path, contents) { return this._call('write', path, contents); },
+            read: function(path) { return this._call('read', path); },
+            list: function() { return this._call('list').then(function(j) { try { return JSON.parse(j); } catch(e) { return []; } }); }
+        };
+
+        // On-device decide step (Apple Foundation Models, iOS 26+). Resolves to a command string,
+        // or rejects when unavailable — callers fall back to the server/heuristic producer.
+        window.ShooterBridge.agentDecide = function(context) {
+            return new Promise(function(resolve, reject) {
+                var id = 'cb_' + (++window.ShooterBridge._callbackId);
+                window.ShooterBridge._callbacks[id] = function(r) {
+                    if (r.success) { resolve(r.data); } else { reject(new Error(r.error || 'unavailable')); }
+                };
+                window.webkit.messageHandlers.shooterAgentDecide.postMessage({ callbackId: id, context: context || '' });
+            });
+        };
         """
     }
 
@@ -430,6 +458,9 @@ struct WebView: UIViewRepresentable {
         config.userContentController.add(context.coordinator, name: "shooterBridge")
         // Handle native feature requests (scanner, future: image picker, etc.)
         config.userContentController.add(context.coordinator, name: "requestScanner")
+        // Phone-resident agent: durable file persistence + on-device decide step
+        config.userContentController.add(context.coordinator, name: "shooterFiles")
+        config.userContentController.add(context.coordinator, name: "shooterAgentDecide")
 
         let webView = WKWebView(frame: .zero, configuration: config)
         #if DEBUG
@@ -473,6 +504,13 @@ struct WebView: UIViewRepresentable {
 
         init(notificationManager: NotificationManager) {
             self.notificationManager = notificationManager
+            super.init()
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(handleSilentWake),
+                name: .shooterSilentWake,
+                object: nil
+            )
         }
 
         @objc func handleRefresh(_ refreshControl: UIRefreshControl) {
@@ -493,6 +531,10 @@ struct WebView: UIViewRepresentable {
                 handleSaveConfig(message)
             case "requestScanner":
                 handleRequestScanner(message)
+            case "shooterFiles":
+                handleFiles(message)
+            case "shooterAgentDecide":
+                handleAgentDecide(message)
             default:
                 break
             }
@@ -574,8 +616,11 @@ struct WebView: UIViewRepresentable {
             let escapedData = (data ?? "").replacingOccurrences(of: "\\", with: "\\\\")
                 .replacingOccurrences(of: "\"", with: "\\\"")
                 .replacingOccurrences(of: "\n", with: "\\n")
+                .replacingOccurrences(of: "\r", with: "\\r")
             let escapedError = (error ?? "").replacingOccurrences(of: "\\", with: "\\\\")
                 .replacingOccurrences(of: "\"", with: "\\\"")
+                .replacingOccurrences(of: "\n", with: "\\n")
+                .replacingOccurrences(of: "\r", with: "\\r")
 
             let payload: String
             if success {
@@ -596,6 +641,92 @@ struct WebView: UIViewRepresentable {
             webView?.evaluateJavaScript(script) { _, jsError in
                 if let jsError = jsError {
                     print("[ShooterBridge] JS callback error: \(jsError.localizedDescription)")
+                }
+            }
+        }
+
+        // MARK: - Silent wake (content-available push)
+
+        @objc private func handleSilentWake() {
+            DispatchQueue.main.async { [weak self] in
+                self?.webView?.evaluateJavaScript(
+                    "window.dispatchEvent(new Event('shooter:wake'))",
+                    completionHandler: nil
+                )
+            }
+        }
+
+        // MARK: - File persistence handler
+
+        /// Durable agent memory in the app's Application Support sandbox. ops: write/read/list.
+        private func handleFiles(_ message: WKScriptMessage) {
+            guard let body = message.body as? [String: Any],
+                  let callbackId = body["callbackId"] as? String,
+                  let op = body["op"] as? String else { return }
+            do {
+                let dir = try Self.agentDir()
+                switch op {
+                case "write":
+                    guard let path = body["path"] as? String,
+                          let contents = body["contents"] as? String else {
+                        sendNativeResponse(callbackId: callbackId, success: false, data: nil, error: "missing path/contents")
+                        return
+                    }
+                    let url = try Self.safeFileURL(dir: dir, path: path)
+                    try contents.write(to: url, atomically: true, encoding: .utf8)
+                    sendNativeResponse(callbackId: callbackId, success: true, data: "ok", error: nil)
+                case "read":
+                    guard let path = body["path"] as? String else {
+                        sendNativeResponse(callbackId: callbackId, success: false, data: nil, error: "missing path")
+                        return
+                    }
+                    let url = try Self.safeFileURL(dir: dir, path: path)
+                    let contents = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+                    sendNativeResponse(callbackId: callbackId, success: true, data: contents, error: nil)
+                case "list":
+                    let names = (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []
+                    let data = (try? JSONSerialization.data(withJSONObject: names)) ?? Data("[]".utf8)
+                    sendNativeResponse(callbackId: callbackId, success: true, data: String(data: data, encoding: .utf8) ?? "[]", error: nil)
+                default:
+                    sendNativeResponse(callbackId: callbackId, success: false, data: nil, error: "unknown op")
+                }
+            } catch {
+                sendNativeResponse(callbackId: callbackId, success: false, data: nil, error: error.localizedDescription)
+            }
+        }
+
+        private static func agentDir() throws -> URL {
+            let base = FileManager.default
+                .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("shooter-agent", isDirectory: true)
+            try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+            return base
+        }
+
+        /// Flat filename within the agent dir — rejects path traversal.
+        private static func safeFileURL(dir: URL, path: String) throws -> URL {
+            let name = (path as NSString).lastPathComponent
+            guard !name.isEmpty, name != "..", !name.contains("/") else {
+                throw NSError(domain: "ShooterFiles", code: 1,
+                              userInfo: [NSLocalizedDescriptionKey: "invalid filename"])
+            }
+            return dir.appendingPathComponent(name)
+        }
+
+        // MARK: - On-device decide handler
+
+        private func handleAgentDecide(_ message: WKScriptMessage) {
+            guard let body = message.body as? [String: Any],
+                  let callbackId = body["callbackId"] as? String else { return }
+            let context = (body["context"] as? String) ?? ""
+            Task { [weak self] in
+                let command = await AgentDecider.decideCommand(context: context)
+                await MainActor.run {
+                    if let command = command, !command.isEmpty {
+                        self?.sendNativeResponse(callbackId: callbackId, success: true, data: command, error: nil)
+                    } else {
+                        self?.sendNativeResponse(callbackId: callbackId, success: false, data: nil, error: "unavailable")
+                    }
                 }
             }
         }
@@ -705,7 +836,26 @@ struct WebView: UIViewRepresentable {
             decidePolicyFor navigationAction: WKNavigationAction,
             decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
         ) {
-            decisionHandler(.allow)
+            // Security: the bridge injects the API key + file/config handlers at document-start for
+            // every MAIN-FRAME load, so a main-frame navigation to a foreign origin would hand the
+            // bearer token (and file access) to that page. Restrict main-frame navigations to the
+            // paired host. Fail OPEN when the host is indeterminate (about:blank / data: error
+            // overlay, or an unparseable paired URL) so the legitimate dashboard load never breaks.
+            if let frame = navigationAction.targetFrame, !frame.isMainFrame {
+                decisionHandler(.allow) // sub-frames don't receive the main-frame bridge
+                return
+            }
+            let url = navigationAction.request.url
+            let pairedHost = URL(string: UserDefaults.standard.string(forKey: "serverUrl") ?? "")?.host
+            if pairedHost == nil || url?.host == nil || url?.host == pairedHost {
+                decisionHandler(.allow)
+                return
+            }
+            // Foreign main-frame navigation — open in the system browser, not the bridged WebView.
+            if let foreign = url {
+                UIApplication.shared.open(foreign)
+            }
+            decisionHandler(.cancel)
         }
     }
 }

@@ -12,11 +12,18 @@
 import type { AgentProposal, NextStep, SessionSummaryRecord, WireShooterEvent } from '$lib/types';
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
-import { homedir } from 'os';
 import { join } from 'path';
 
 import { ptyManager } from '../terminal/pty-manager.js';
+import { shooterDataDir } from '../utils/shooter-home.js';
 import { onShooterEvent } from '../ws/events-handler.js';
+import { isViewerPresent } from '../ws/presence-store.js';
+import {
+  buildEngineContext,
+  clearEngineGoal,
+  getEngineGoal,
+  setEngineGoal,
+} from './autopilot-context.js';
 import { isLiteLLMConfigured, litellmJson } from './litellm-client.js';
 import { mergeNextStepConsensus } from './next-step-consensus.js';
 import { summaryStore } from './summary-store.js';
@@ -29,27 +36,57 @@ const MIN_INTERVAL_MS = 30_000; // minimum gap between pipeline runs per session
 const PERIODIC_EVERY = 20;
 const ERROR_THRESHOLD = 3;
 const MAX_EVENTS = 60;
-const SUMMARY_MAX_TOKENS = 220;
-const STEPS_MAX_TOKENS = 320;
-const STATE_FILE = join(homedir(), '.shooter', 'autopilot.json');
+const SUMMARY_MAX_TOKENS = 400;
+const STEPS_MAX_TOKENS = 400;
+// How many of the five lenses run concurrently. Kept BELOW the typical LiteLLM key parallel cap so
+// the engine never saturates the key by itself: firing all five at once exhausted a
+// max_parallel_requests=5 key and 429'd every call (empty consensus, silent stall). Default 3
+// leaves headroom for the summary's retry + other callers sharing the key. Tune per key via env.
+const LENS_CONCURRENCY = Math.max(1, Number(process.env.AUTOPILOT_LENS_CONCURRENCY) || 3);
+// Consensus quorum: how many of the 5 distinct lenses must agree for a step to be non-tentative
+// (and thus auto-injectable). The lenses are DIFFERENT perspectives that phrase the same action
+// differently, so the Jaccard clustering systematically undercounts true agreement (observed: 4/5
+// lenses proposed the same fix but only 2 clustered). 2-of-5 + the confidence floor + the eight
+// driver guards (idle-only, managed-only, rate-limit, dedup, circuit-breaker, command-guard,
+// kill-switch, human-grace) is the practical bar; quorum 3 left the autopilot almost never firing.
+const CONSENSUS_QUORUM = 2;
+const STATE_FILE = join(shooterDataDir(), 'autopilot.json');
 
-/** Five DISTINCT lenses — each a different perspective, so votes mean real agreement. */
+// The engine does STRUCTURED extraction (one summary + five voting lenses). A reasoning model like
+// `open-large` does this badly: it reasons out loud and ignores response_format, so the JSON never
+// parses and the consensus collapses to tentative garbage. Pin a fast NON-reasoning model for the
+// pipeline, independent of the user's chat model (LITELLM_MODEL). Overridable via AUTOPILOT_MODEL.
+const ENGINE_MODEL = process.env.AUTOPILOT_MODEL?.trim() || 'open-fast';
+
+// Lead with the JSON-only contract; the per-lens perspective is a TRAILING modifier so the model
+// doesn't start "thinking" about a role. No copyable placeholder value in the schema — reasoning
+// models echo it verbatim ("a real shell command or instruction" leaked into real consensus).
+const JSON_API_RULES =
+  'You are a JSON API. Output ONLY one JSON object and nothing else — no prose, no reasoning, no ' +
+  'markdown, no code fences. The first character MUST be { and the last MUST be }.';
+
+/** Five DISTINCT perspectives — each a different angle, so converging votes mean real agreement. */
 const LENSES = [
-  'You are a BLOCKER-detection agent. Identify what is currently preventing progress or is most likely to fail next.',
-  'You are a NEXT-COMMAND planner. Propose the exact shell commands or file edits the agent should run next, in order.',
-  'You are a RISK analyst. Identify what could go wrong if the agent continues on its current path, and what to validate first.',
-  'You are a VALIDATION agent. Propose how to verify the work so far is correct — the tests, checks, or inspections to run.',
-  'You are a PROGRESS agent. Propose the single most direct next step toward completing the session goal.',
+  'what is currently blocking progress, or is most likely to fail next',
+  'the exact shell commands or file edits the agent should run next, in order',
+  'what could go wrong if the agent continues on its current path, and what to validate first',
+  'how to verify the work so far is correct — the tests, checks, or inspections to run',
+  'the single most direct next step toward completing the session goal',
 ] as const;
 
 // ── Per-session state (globalThis-shared) ───────────────────────────
 
 // eslint-disable-next-line no-restricted-syntax -- internal engine state, never exported
 interface EngineSession {
+  cancelled: boolean;
   errorCount: number;
   eventCount: number;
   events: string[];
+  // Highest signal + latest trigger seen during the OPEN grace window — evaluated at FIRE time, not
+  // schedule time, so an agent-idle arriving after a low-signal event still runs as a high trigger.
+  graceIsHigh: boolean;
   graceTimer: null | ReturnType<typeof setTimeout>;
+  graceTrigger: string;
   lastRunAt: number;
   projectName: string;
   running: boolean;
@@ -76,7 +113,7 @@ export function isAutopilotEnabled(): boolean {
 export function setAutopilotEnabled(value: boolean): void {
   enabled = value;
   try {
-    mkdirSync(join(homedir(), '.shooter'), { recursive: true });
+    mkdirSync(shooterDataDir(), { recursive: true });
     writeFileSync(STATE_FILE, JSON.stringify({ enabled: value }), 'utf-8');
   } catch {
     // best-effort persistence
@@ -96,11 +133,30 @@ export function startAutopilotEngine(): void {
   if (unsubscribe) {
     return;
   }
-  const control = { isEnabled: isAutopilotEnabled, setEnabled: setAutopilotEnabled };
+  const control = {
+    getGoal: getEngineGoal,
+    isEnabled: isAutopilotEnabled,
+    setEnabled: setAutopilotEnabled,
+    setGoal: setEngineGoal,
+  };
   (globalThis as Record<string, unknown>).__shooter_autopilot = control;
   unsubscribe = onShooterEvent(handleEvent);
+  // Pre-track sessions for terminals that already exist at startup (e.g. a server restart that
+  // reconnected persisted terminals). Without this a session is only created lazily on its NEXT
+  // event, so an agent that went idle before the engine attached would be invisible until it emits
+  // again. We deliberately do NOT force a pipeline run here — that would risk spurious LLM spend on
+  // a genuinely quiet terminal; we just ensure the session is tracked so the next event triggers.
+  try {
+    for (const term of ptyManager.list()) {
+      if (!sessions.has(term.id)) {
+        createSession(term.id);
+      }
+    }
+  } catch {
+    // ptyManager not ready yet — sessions will be created lazily on first event
+  }
   console.log(
-    `[autopilot] engine started (enabled=${enabled}, litellm=${isLiteLLMConfigured() ? 'configured' : 'absent'})`
+    `[autopilot] engine started (enabled=${enabled}, litellm=${isLiteLLMConfigured() ? 'configured' : 'absent'}, lensConcurrency=${LENS_CONCURRENCY})`
   );
 }
 
@@ -118,7 +174,9 @@ function applyEvent(session: EngineSession, event: WireShooterEvent): void {
     parts.push(`cmd=${event.command.slice(0, 80)}`);
   }
   if ('message' in event && event.message) {
-    parts.push(`msg=${event.message.slice(0, 120)}`);
+    // The agent's last message on idle (the OUTCOME — e.g. "the test failed because…") is the
+    // richest signal the lenses have; keep enough of it to actually ground the next-step votes.
+    parts.push(`msg=${event.message.slice(0, 400)}`);
   }
   session.events.push(parts.join(' '));
   if (session.events.length > MAX_EVENTS) {
@@ -146,10 +204,13 @@ function applyEvent(session: EngineSession, event: WireShooterEvent): void {
 
 function createSession(terminalId: string): EngineSession {
   const session: EngineSession = {
+    cancelled: false,
     errorCount: 0,
     eventCount: 0,
     events: [],
+    graceIsHigh: false,
     graceTimer: null,
+    graceTrigger: '',
     lastRunAt: 0,
     projectName: projectNameFor(terminalId),
     running: false,
@@ -165,8 +226,6 @@ function fallbackSummary(session: EngineSession): string {
   return `${session.status} — ${session.toolCallCount} tool calls, ${session.errorCount} errors`;
 }
 
-// ── Pipeline ─────────────────────────────────────────────────────────
-
 function handleEvent(event: WireShooterEvent): void {
   const terminalId = 'terminalId' in event ? event.terminalId : undefined;
   if (!terminalId) {
@@ -175,10 +234,14 @@ function handleEvent(event: WireShooterEvent): void {
 
   if (event.type === 'terminal-exited') {
     const s = sessions.get(terminalId);
-    if (s?.graceTimer) {
-      clearTimeout(s.graceTimer);
+    if (s) {
+      s.cancelled = true; // signal any in-flight pipeline to stop before persist/push
+      if (s.graceTimer) {
+        clearTimeout(s.graceTimer);
+      }
     }
     sessions.delete(terminalId);
+    clearEngineGoal(terminalId);
     return;
   }
 
@@ -198,13 +261,42 @@ function handleEvent(event: WireShooterEvent): void {
   if (Date.now() - session.lastRunAt < MIN_INTERVAL_MS) {
     return;
   }
-  // Schedule once; do NOT reset on every event (so a burst doesn't delay the run).
+  // Track the strongest signal + latest trigger across the whole window (so a high-signal event
+  // arriving after the timer was armed by a low-signal one is not lost). Schedule the timer ONCE;
+  // do NOT reset it on every event (so a burst doesn't keep delaying the run).
   if (!session.graceTimer) {
+    session.graceIsHigh = isHigh;
+    session.graceTrigger = event.type;
     session.graceTimer = setTimeout(() => {
       session.graceTimer = null;
-      void runPipeline(session, event.type, isHigh);
+      const trigger = session.graceTrigger;
+      const wasHigh = session.graceIsHigh;
+      void runPipeline(session, trigger, wasHigh);
     }, GRACE_MS);
+  } else {
+    session.graceIsHigh = session.graceIsHigh || isHigh;
+    session.graceTrigger = event.type;
   }
+}
+
+// ── Pipeline ─────────────────────────────────────────────────────────
+
+/** Run `fn` over `items` with at most `limit` in flight; preserves input order. */
+async function mapLimit<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T) => Promise<R>
+): Promise<R[]> {
+  const results: R[] = new Array<R>(items.length);
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    while (next < items.length) {
+      const idx = next++;
+      results[idx] = await fn(items[idx]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()));
+  return results;
 }
 
 function persist(
@@ -248,6 +340,12 @@ function projectNameFor(terminalId: string): string {
 async function push(session: EngineSession, summary: string, steps: NextStep[]): Promise<void> {
   const top = steps[0];
   if (!top) {
+    return;
+  }
+  // Presence-aware: when a viewer is foregrounded (watching the live dashboard) skip the
+  // push — they see it in-app. Push only when away. If no presence-aware client ever
+  // reported, isViewerPresent() is false → push proceeds (prior always-push behavior).
+  if (isViewerPresent()) {
     return;
   }
   const port = process.env.PORT || '54007';
@@ -300,38 +398,45 @@ async function runPipeline(
   session.running = true;
   session.lastRunAt = Date.now();
   try {
-    const context =
-      `Project: ${session.projectName}\nStatus: ${session.status}\nErrors: ${session.errorCount}\n` +
-      `Tool calls: ${session.toolCallCount}\nRecent events: ${session.events.slice(-12).join('; ')}\n` +
-      `Trigger: ${trigger}`;
+    const context = buildEngineContext({
+      errorCount: session.errorCount,
+      events: session.events,
+      goal: getEngineGoal(session.terminalId),
+      projectName: session.projectName,
+      status: session.status,
+      toolCallCount: session.toolCallCount,
+      trigger,
+    });
 
     const summaryResult = await litellmJson<{ summary: string }>({
       maxTokens: SUMMARY_MAX_TOKENS,
-      systemInstruction:
-        'You are a coding-session monitor. Respond ONLY with valid JSON: {"summary":"<one sentence, max 120 chars>"}. No markdown, no prose outside the JSON.',
+      model: ENGINE_MODEL,
+      systemInstruction: `${JSON_API_RULES} The object has one key "summary": a single sentence (max 120 characters) describing the current status of this coding session.`,
       userPrompt: `${context}\n\nSummarise what is happening in this coding session in ONE sentence (max 120 chars).`,
     });
     const summary = summaryResult?.summary?.trim() || fallbackSummary(session);
 
-    const lensResults = await Promise.allSettled(
-      LENSES.map((lens) =>
-        litellmJson<{ steps: AgentProposal[] }>({
-          maxTokens: STEPS_MAX_TOKENS,
-          systemInstruction: `${lens} Respond ONLY with valid JSON: {"steps":[{"text":"<short action>","confidence":0.9}]}. Up to 3 steps, confidence 0-1. No markdown.`,
-          userPrompt: `${context}\n\nGiven the session above, what should happen next from your perspective?`,
-        })
-      )
-    );
-    // Keep all 5 lists (including empty on failure) so quorum stays 3-of-5.
-    const agentLists: AgentProposal[][] = lensResults.map((r) =>
-      r.status === 'fulfilled' ? (r.value?.steps ?? []) : []
-    );
-    const consensus = mergeNextStepConsensus(agentLists);
+    // Run the five lenses at most LENS_CONCURRENCY in flight (default 3) so the engine never
+    // saturates the LiteLLM key's parallel cap by itself. Each failed lens yields an empty list;
+    // a step needs CONSENSUS_QUORUM (2) of the 5 to be non-tentative.
+    const agentLists: AgentProposal[][] = await mapLimit(LENSES, LENS_CONCURRENCY, async (lens) => {
+      const r = await litellmJson<{ steps: AgentProposal[] }>({
+        maxTokens: STEPS_MAX_TOKENS,
+        model: ENGINE_MODEL,
+        systemInstruction: `${JSON_API_RULES} The object has one key "steps": an array of 1 to 3 objects, each {"text": the concrete next action for THIS exact session written in full as a string, "confidence": a number between 0 and 1}. Choose the actions from THIS perspective: ${lens}.`,
+        userPrompt: `${context}\n\nGiven the session above, what should happen next?`,
+      });
+      return r?.steps ?? [];
+    });
+    const consensus = mergeNextStepConsensus(agentLists, { quorum: CONSENSUS_QUORUM });
 
-    if (!enabled) {
-      return;
+    if (!enabled || session.cancelled) {
+      return; // engine disabled or terminal exited mid-pipeline — don't persist/push a dead session
     }
     persist(session, summary, consensus.steps, trigger);
+    // A run consumed the accumulated errors — reset so the error-threshold trigger (errorCount >= 3)
+    // does not stick and re-fire on every subsequent event for the rest of the session's life.
+    session.errorCount = 0;
     if (isHigh && consensus.steps.length > 0 && !consensus.steps[0].tentative) {
       await push(session, summary, consensus.steps);
     }

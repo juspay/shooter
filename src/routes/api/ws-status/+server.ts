@@ -1,11 +1,13 @@
-// GET /api/ws-status — Returns the number of connected WebSocket clients.
+// GET /api/ws-status — WebSocket presence for the notifier's push decision.
 //
-// Used by notifier.cjs to decide whether to send an APNs push notification
-// or skip it (because a WebSocket client is already listening for events).
-// If at least one client is connected to the /ws/events channel, the notifier
-// skips the push notification to avoid double-prompting.
+// `connectedClients` counts ALL /ws/events clients — but the phone-resident autonomous loop holds
+// a PERSISTENT events connection, so that count is ~always > 0 and is NO LONGER a valid "someone is
+// watching" signal (using it suppressed every phone push while autopilot ran). `viewerPresent` is
+// the correct signal: a viewer reported `foreground` within the heartbeat TTL (POST /api/presence) —
+// the same signal the autopilot engine uses to gate its pushes. The notifier prefers viewerPresent.
 
 import { validateAuth } from '$lib/modules/server/auth';
+import { isViewerPresent } from '$lib/modules/server/ws/presence-store';
 import { getConnectedClientCount } from '$lib/modules/server/ws/server';
 import { json } from '@sveltejs/kit';
 
@@ -21,5 +23,6 @@ export const GET: RequestHandler = ({ request }) => {
 
   return json({
     connectedClients: getConnectedClientCount(),
+    viewerPresent: isViewerPresent(),
   });
 };

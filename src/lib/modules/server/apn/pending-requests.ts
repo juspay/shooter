@@ -29,11 +29,13 @@ import Database from 'better-sqlite3';
 import * as fs from 'fs';
 import * as path from 'path';
 
+import { shooterDataDir } from '../utils/shooter-home.js';
+
 export type { PendingRequest };
 
 const MAX_AGE_MS = 5 * 60 * 1000;
 
-const DB_DIR = path.join(process.env.HOME || '', '.shooter');
+const DB_DIR = shooterDataDir();
 const DB_PATH = path.join(DB_DIR, 'shooter.db');
 
 export class PendingRequestsStore {

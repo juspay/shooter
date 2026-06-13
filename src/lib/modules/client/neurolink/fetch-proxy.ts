@@ -25,7 +25,7 @@ export function installFetchProxy(): void {
   globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
 
-    const provider = Object.entries(PROXY_PREFIXES).find(([prefix]) => url.startsWith(prefix))?.[1];
+    const provider = resolveProvider(url);
 
     if (!provider) {
       return originalFetch(input, init);
@@ -67,4 +67,41 @@ export function installFetchProxy(): void {
       method: 'POST',
     });
   };
+}
+
+/**
+ * The runtime LiteLLM base URL injected by the root layout into window.process.env, or ''.
+ * Read via window['process'] (bracket access) so the bundler does NOT constant-fold it: a
+ * direct `globalThis.process.env` gets frozen to Node's build-time env by Vite/Rollup, which
+ * never contains the runtime-injected value.
+ */
+function litellmBaseUrl(): string {
+  if (typeof window === 'undefined') {
+    return '';
+  }
+  // eslint-disable-next-line @typescript-eslint/dot-notation -- bracket access is deliberate: it stops the bundler constant-folding process.env to the build-time value
+  const proc = (window as unknown as Record<string, unknown>)['process'] as
+    | undefined
+    | { env?: Record<string, string | undefined> };
+  const base = proc?.env?.LITELLM_BASE_URL;
+  return typeof base === 'string' ? base : '';
+}
+
+/**
+ * Resolve which proxy provider (if any) a URL routes through. Static cloud prefixes plus the
+ * runtime LiteLLM base URL — LiteLLM is self-hosted at a configurable origin, so its prefix
+ * is not known at build time and must be read from the injected env.
+ */
+function resolveProvider(url: string): string | undefined {
+  const staticMatch = Object.entries(PROXY_PREFIXES).find(([prefix]) =>
+    url.startsWith(prefix)
+  )?.[1];
+  if (staticMatch) {
+    return staticMatch;
+  }
+  const base = litellmBaseUrl();
+  if (base && url.startsWith(base)) {
+    return 'litellm';
+  }
+  return undefined;
 }

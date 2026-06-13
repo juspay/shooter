@@ -14,9 +14,11 @@ import Database from 'better-sqlite3';
 import * as fs from 'fs';
 import * as path from 'path';
 
+import { shooterDataDir } from '../utils/shooter-home.js';
+
 // ── Constants ────────────────────────────────────────────────────────
 
-const DB_DIR = path.join(process.env.HOME || '', '.shooter');
+const DB_DIR = shooterDataDir();
 const DB_PATH = path.join(DB_DIR, 'shooter.db');
 
 // ── Column list ──────────────────────────────────────────────────────

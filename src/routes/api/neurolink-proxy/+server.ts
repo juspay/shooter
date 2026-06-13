@@ -112,10 +112,16 @@ export const POST: RequestHandler = async ({ request }) => {
   // For Bearer-token providers, only inject the header when the key is non-empty
   // to avoid sending a malformed `Authorization: Bearer ` to the upstream.
   if (provider === 'anthropic') {
-    forwardHeaders['x-api-key'] = apiKeyEnv.anthropic;
+    // Only inject the key header when non-empty — sending `x-api-key: ` (empty) is a malformed
+    // header that the upstream rejects with a confusing error instead of a clean 401.
+    if (apiKeyEnv.anthropic) {
+      forwardHeaders['x-api-key'] = apiKeyEnv.anthropic;
+    }
     forwardHeaders['anthropic-version'] = forwardHeaders['anthropic-version'] ?? '2023-06-01';
   } else if (provider === 'google-ai') {
-    forwardHeaders['x-goog-api-key'] = apiKeyEnv['google-ai'];
+    if (apiKeyEnv['google-ai']) {
+      forwardHeaders['x-goog-api-key'] = apiKeyEnv['google-ai'];
+    }
   } else if (provider === 'openai') {
     if (apiKeyEnv.openai) {
       forwardHeaders.Authorization = `Bearer ${apiKeyEnv.openai}`;

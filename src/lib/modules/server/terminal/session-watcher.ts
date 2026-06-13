@@ -26,6 +26,10 @@ class SessionWatcher {
     string,
     Map<string, { parts: MessagePart[]; timestamp: string }>
   >();
+  // Last read offset per file, retained ACROSS stop() so a re-subscribe resumes where it left off
+  // instead of jumping to the current end of file (which would skip any lines — e.g. an agent-idle
+  // marker — written while no subscriber happened to be attached).
+  private lastOffsetPerFile = new Map<string, number>();
   // Buffer for incomplete trailing lines (no terminating newline yet)
   private lineBufferPerFile = new Map<string, string>();
   // Track message index per file for generating fallback IDs
@@ -107,6 +111,8 @@ class SessionWatcher {
     }
 
     void watched.watcher.close();
+    // Remember where we stopped reading so a future re-subscribe resumes from here, not from EOF.
+    this.lastOffsetPerFile.set(filePath, watched.offset);
     this.watchedFiles.delete(filePath);
     this.assistantTurnsPerFile.delete(filePath);
     this.messageIndexPerFile.delete(filePath);
@@ -149,8 +155,12 @@ class SessionWatcher {
       };
     }
 
-    // Initialize tracking state for this file
-    const initialOffset = fs.existsSync(filePath) ? fs.statSync(filePath).size : 0;
+    // Initialize tracking state for this file. Resume from the last read offset if we watched this
+    // file before (so content written during the gap is not skipped); otherwise start at EOF.
+    const fileSize = fs.existsSync(filePath) ? fs.statSync(filePath).size : 0;
+    const remembered = this.lastOffsetPerFile.get(filePath);
+    this.lastOffsetPerFile.delete(filePath);
+    const initialOffset = remembered !== undefined ? Math.min(remembered, fileSize) : fileSize;
     this.assistantTurnsPerFile.set(filePath, new Map());
     this.messageIndexPerFile.set(filePath, 0);
     this.lineBufferPerFile.set(filePath, '');

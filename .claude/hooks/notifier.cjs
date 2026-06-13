@@ -113,7 +113,15 @@ async function hasWebSocketClients() {
             if (res.statusCode === 200) {
               try {
                 const parsed = JSON.parse(data);
-                resolve(parsed.connectedClients > 0);
+                // Prefer the foreground-viewer signal: the persistent autonomy loop keeps
+                // connectedClients > 0 forever, which would suppress EVERY phone push. Only skip the
+                // push when a viewer is actually foregrounded. Fall back to the old count for
+                // servers that don't yet report viewerPresent.
+                if (typeof parsed.viewerPresent === 'boolean') {
+                  resolve(parsed.viewerPresent);
+                } else {
+                  resolve(parsed.connectedClients > 0);
+                }
               } catch (e) {
                 resolve(false);
               }
@@ -238,6 +246,11 @@ function adaptClaudeCodeEvent(cliArg, stdinData) {
   // session_id is sent by Claude Code on every hook — capture it once so
   // getSessionContext() can read the goal + last user msg + last assistant text.
   data.sessionId = stdinData?.session_id || '';
+
+  // When this hook runs inside a Shooter-managed PTY, the pty-holder injects
+  // SHOOTER_TERMINAL_ID. Tag every event with it so the autopilot engine + phone
+  // driver can attribute the activity to this terminal. Empty for normal sessions.
+  data.terminalId = process.env.SHOOTER_TERMINAL_ID || '';
 
   // --- PermissionRequest: Agent needs user permission to run a tool ---
   if (cliArg === 'PermissionRequest') {
@@ -421,6 +434,7 @@ function adaptOpenCodeEvent(hookEventType, hookData = {}) {
     files: hookData.files || [],
     message: hookData.message || hookData.error || '',
     questions: hookData.questions || [],
+    terminalId: process.env.SHOOTER_TERMINAL_ID || '',
   };
 
   return createCommonEvent('opencode', eventType, data);
@@ -536,11 +550,84 @@ function getSessionIdentifier() {
 // SECTION 6: Event Processor (Source-Agnostic)
 // ============================================
 
+// ── Managed-terminal event forwarding ──────────────────────────────────────
+// A Shooter-MANAGED terminal (launched via POST /api/terminals) runs its agent
+// in a PTY that carries SHOOTER_TERMINAL_ID. For those terminals we forward the
+// raw lifecycle activity — tool start/stop, idle, errors — to the server as a
+// SKIP-PUSH broadcast, so the always-on autopilot engine and the phone driver
+// can observe the agent and (in auto mode) drive it. This is the bridge that
+// lets the engine/driver see a REAL managed agent. A normal session (no
+// SHOOTER_TERMINAL_ID) forwards nothing, so its behaviour is unchanged.
+const MANAGED_FORWARD_EVENTS = new Set(['tool.before', 'tool.after', 'session.idle', 'error']);
+
+async function forwardManagedEvent(event) {
+  const terminalId = process.env.SHOOTER_TERMINAL_ID || '';
+  if (!terminalId || !MANAGED_FORWARD_EVENTS.has(event.eventType)) {
+    return;
+  }
+  // The server's broadcastHookEvent() reads data.eventType + terminalId and maps
+  // this onto the wire event (agent-idle / tool-started / tool-completed /
+  // tool-failed) that the engine + driver consume.
+  const data = { ...event.data, eventType: event.eventType, terminalId };
+  // On idle, attach the agent's LAST message so the engine knows the OUTCOME (e.g. "the test
+  // failed because…"), not just which commands ran. Without the outcome the consensus lenses
+  // have nothing to converge on and every next-step stays tentative.
+  if (event.eventType === 'session.idle' && data.sessionId && !data.message) {
+    // The Stop hook can fire a beat before the agent's FINAL message is flushed to the JSONL, so
+    // a naive read returns an early "I'll do X" line instead of the outcome. Wait briefly for the
+    // flush, then read, so the engine's consensus is grounded in what actually happened.
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    try {
+      const ctx = getSessionContext(data.sessionId);
+      if (ctx.lastAssistantText) {
+        data.message = ctx.lastAssistantText.slice(0, 600);
+      }
+    } catch {
+      // best-effort enrichment — forward without it on any read error
+    }
+  }
+  postManagedEvent(data);
+}
+
+function postManagedEvent(data) {
+  try {
+    const payload = JSON.stringify({
+      data,
+      message: data.eventType || 'event',
+      skipPush: true, // engine/driver broadcast only — never a phone push
+      title: 'Autopilot activity',
+    });
+    const options = {
+      headers: {
+        Authorization: `Bearer ${AUTH_KEY}`,
+        'Content-Length': Buffer.byteLength(payload),
+        'Content-Type': 'application/json',
+        'User-Agent': 'Shooter-Notifier/3.0 managed',
+      },
+      method: 'POST',
+    };
+    const protocol = API_URL.startsWith('https') ? https : http;
+    const req = protocol.request(API_URL, options, (res) => {
+      res.on('data', () => {});
+      res.on('end', () => {});
+    });
+    req.on('error', (error) => debugLog(`managed-forward error: ${error.message}`));
+    req.setTimeout(3000, () => req.destroy(new Error('managed-forward timeout')));
+    req.write(payload);
+    req.end();
+  } catch (error) {
+    debugLog(`managed-forward exception: ${error.message}`);
+  }
+}
+
 /**
  * Process common events - NO source-specific logic here
  */
 async function processEvent(event) {
   debugLog(`Processing event: ${event.eventType} from ${event.source}`);
+
+  // Managed terminals: mirror raw activity to the engine/driver (skip-push).
+  await forwardManagedEvent(event);
 
   switch (event.eventType) {
     case 'tool.before':
@@ -1276,6 +1363,12 @@ function extractUserPromptText(entry) {
   if (trimmed.startsWith('<system-reminder>')) return '';
   if (trimmed.startsWith('<command-message>')) return '';
   if (trimmed.startsWith('<command-name>')) return '';
+  if (trimmed.startsWith('<command-args>')) return '';
+  // Slash commands inject "<local-command-caveat>Caveat: …" / "<local-command-stdout>…" as the FIRST
+  // user message — these were leaking into the goal subtitle ("Goal: <local-command-caveat>…").
+  // Mirrors SYSTEM_TAG_PREFIXES in src/lib/modules/server/sessions/jsonl-reader.ts.
+  if (trimmed.startsWith('<local-command')) return '';
+  if (trimmed.startsWith('<task-notification>')) return '';
   if (trimmed.startsWith('<bash-stdout>')) return '';
   if (trimmed.startsWith('<bash-stderr>')) return '';
   if (trimmed.startsWith('Caveat:')) return '';
