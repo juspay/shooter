@@ -1,3 +1,9 @@
+## [1.22.0](https://github.com/juspay/shooter/compare/v1.21.0...v1.22.0) (2026-06-13)
+
+### Features
+
+* **(autopilot):**  phone-resident autonomous agent + 27-bug hardening ([04dda72](https://github.com/juspay/shooter/commit/04dda72af64f6e0a29bf8fb6f8fb4ffa047b0631))
+
 ## [1.21.0](https://github.com/juspay/shooter/compare/v1.20.0...v1.21.0) (2026-06-13)
 
 ### Features
