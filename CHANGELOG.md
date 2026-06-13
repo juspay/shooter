@@ -1,3 +1,9 @@
+## [1.20.0](https://github.com/juspay/shooter/compare/v1.19.0...v1.20.0) (2026-06-13)
+
+### Features
+
+* **(sharing):**  password-protected single-terminal sharing ([8012e84](https://github.com/juspay/shooter/commit/8012e840bdc8cdd8547cbe9f369d6a66c2e5aae6))
+
 ## [1.19.0](https://github.com/juspay/shooter/compare/v1.18.0...v1.19.0) (2026-06-08)
 
 ### Features
