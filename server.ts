@@ -23,6 +23,7 @@ if (!existsSync(handlerPath)) {
 }
 
 const { handler } = await import('./build/handler.js');
+import { startAutopilotEngine } from './src/lib/modules/server/sessions/autopilot-engine.js';
 import { isReadOnlyProviderPath } from './src/lib/modules/server/sessions/provider-paths.js';
 import { sosCoordinator } from './src/lib/modules/server/sos/coordinator.js';
 import { codexWatcher } from './src/lib/modules/server/terminal/codex-watcher.js';
@@ -250,6 +251,7 @@ server.once('error', (err: NodeJS.ErrnoException): void => {
 
 server.listen(requestedPort, () => {
   console.log(`Shooter server running on http://localhost:${requestedPort}`);
+  startAutopilotEngine();
 });
 
 // ── Graceful shutdown ────────────────────────────────────────────────

@@ -186,6 +186,9 @@ yarn.lock
 *.p12
 *.pem
 *.key
+.session-recovery/
+
+.proof/
 
 # E2E smoke-test scratch
 .shooter-e2e-ws-*.mjs

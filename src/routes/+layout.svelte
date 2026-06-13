@@ -22,11 +22,26 @@
       return;
     }
     (window as unknown as Record<string, unknown>).__aiProviders = data.aiProviders;
+
+    // Ensure window.process.env exists minimally so env vars can be injected.
+    const win = window as unknown as Record<string, unknown>;
+    if (!win.process || typeof win.process !== 'object') {
+      win.process = { env: {} };
+    }
+    const proc = win.process as Record<string, unknown>;
+    if (!proc.env || typeof proc.env !== 'object') {
+      proc.env = {};
+    }
+    const procEnv = proc.env as Record<string, string>;
+
     if (data.neurolinkProvider) {
-      const proc = (window as unknown as { process?: { env?: Record<string, string> } }).process;
-      if (proc?.env) {
-        proc.env.NEUROLINK_PROVIDER = data.neurolinkProvider;
-      }
+      procEnv.NEUROLINK_PROVIDER = data.neurolinkProvider;
+    }
+    if (data.litellmBaseUrl) {
+      procEnv.LITELLM_BASE_URL = data.litellmBaseUrl;
+    }
+    if (data.litellmModel) {
+      procEnv.LITELLM_MODEL = data.litellmModel;
     }
   });
 

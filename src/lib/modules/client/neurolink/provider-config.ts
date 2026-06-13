@@ -33,9 +33,8 @@ export const PROVIDERS = [
     model: 'mistral-small-2506',
   },
   {
-    cors: 'direct' as const,
-    envKeys: ['LITELLM_API_KEY', 'LITELLM_BASE_URL'],
-    extraEnvKeys: ['LITELLM_MODEL'],
+    cors: 'proxy' as const,
+    envKeys: ['LITELLM_BASE_URL'],
     id: 'litellm' as const,
     label: 'LiteLLM',
     model: 'open-large',
@@ -46,8 +45,9 @@ export const PROVIDERS = [
 
 /**
  * Detect which provider to use based on available env vars.
- * Checks window.process.env for browser-side keys (litellm)
- * and trusts server-passed flags for proxy providers (google-ai, anthropic, openai, mistral).
+ * Trusts server-passed flags for all proxy providers (including litellm).
+ * The `cors: 'direct'` branch (window.process.env check) is reserved for
+ * future providers that expose keys browser-side directly.
  *
  * @param serverFlags - Per-provider availability from +page.server.ts
  * @param preferredProvider - Optional override (from NEUROLINK_PROVIDER env var)
@@ -57,44 +57,20 @@ export function detectActiveProvider(
   preferredProvider?: string
 ): null | { model: string; provider: ProviderId } {
   // If user explicitly set a preferred provider, try it first — but only if
-  // credentials are actually available (serverFlags for proxy providers,
-  // browser env for direct providers). Without this gate a misconfigured
-  // NEUROLINK_PROVIDER would bypass the fallback loop and silently fail.
+  // credentials are actually available (serverFlags). Without this gate a
+  // misconfigured NEUROLINK_PROVIDER would bypass the fallback loop and
+  // silently fail.
   if (preferredProvider) {
     const prov = PROVIDERS.find((p) => p.id === preferredProvider);
-    if (prov) {
-      if (prov.cors === 'direct') {
-        const env =
-          typeof window !== 'undefined'
-            ? ((window as unknown as { process?: { env?: Record<string, string> } }).process?.env ??
-              {})
-            : {};
-        if (prov.envKeys.every((k) => Boolean(env[k]))) {
-          return { model: prov.model, provider: prov.id };
-        }
-      } else if (serverFlags?.[prov.id]) {
-        return { model: prov.model, provider: prov.id };
-      }
+    if (prov && serverFlags?.[prov.id]) {
+      return { model: prov.model, provider: prov.id };
     }
   }
 
-  const env =
-    typeof window !== 'undefined'
-      ? ((window as unknown as { process?: { env?: Record<string, string> } }).process?.env ?? {})
-      : {};
-
   for (const prov of PROVIDERS) {
-    if (prov.cors === 'direct') {
-      // Check browser env vars
-      const hasKey = prov.envKeys.every((k) => Boolean(env[k]));
-      if (hasKey) {
-        return { model: prov.model, provider: prov.id };
-      }
-    } else {
-      // Check server-passed flags
-      if (serverFlags?.[prov.id]) {
-        return { model: prov.model, provider: prov.id };
-      }
+    // All current providers are proxy-based — check server-passed flags.
+    if (serverFlags?.[prov.id]) {
+      return { model: prov.model, provider: prov.id };
     }
   }
 

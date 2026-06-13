@@ -12,7 +12,13 @@
     isShooterConfig,
     setCache,
   } from '$lib/modules/client/common';
-  import { connect, DashboardView, disconnect, getCards } from '$lib/modules/client/dashboard';
+  import {
+    AutopilotPanel,
+    connect,
+    DashboardView,
+    disconnect,
+    getCards,
+  } from '$lib/modules/client/dashboard';
   import { Banner, Button, EmptyState, Icon, Pill, Shimmer } from '@juspay/svelte-ui-components';
   import { onDestroy, onMount } from 'svelte';
 
@@ -203,6 +209,8 @@
       <Button classes="btn-primary" onclick={navigateToConfig} text="Configure Settings" />
     </EmptyState>
   {:else}
+    <AutopilotPanel />
+
     <!-- Dashboard section: active terminal sessions -->
     {#if cards.length > 0}
       <div class="dashboard-section">

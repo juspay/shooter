@@ -238,7 +238,15 @@ function isDuplicateNotification(
     return false;
   }
 
-  const key = `${title}|${message}|${data?.category || 'unknown'}`;
+  // Autopilot pushes include a stable dedupKey keyed on sessionId + top-step text
+  // (not the variable summary). Prefer it over the title|message|category key so
+  // two runs with the same top-step but different summary wording are correctly
+  // deduplicated.
+  const dataRecord = data as (NotificationData & { dedupKey?: string }) | undefined;
+  const key = dataRecord?.dedupKey
+    ? dataRecord.dedupKey
+    : `${title}|${message}|${data?.category || 'unknown'}`;
+
   const now = Date.now();
 
   if (notificationCache.has(key)) {
@@ -262,7 +270,10 @@ function isDuplicateNotification(
 
 /** Record a notification key in the dedup cache after successful delivery. */
 function recordNotification(title: string, message: string, data?: NotificationData): void {
-  const key = `${title}|${message}|${data?.category || 'unknown'}`;
+  const dataRecord = data as (NotificationData & { dedupKey?: string }) | undefined;
+  const key = dataRecord?.dedupKey
+    ? dataRecord.dedupKey
+    : `${title}|${message}|${data?.category || 'unknown'}`;
   notificationCache.set(key, Date.now());
 }
 
@@ -301,6 +312,11 @@ export const POST: RequestHandler = async ({ request }) => {
     const skipPush = typeof body.skipPush === 'boolean' ? body.skipPush : false;
     const waitForResponse =
       typeof body.waitForResponse === 'boolean' ? body.waitForResponse : false;
+
+    // forcePush: when true, send the push even if WS clients are connected.
+    // Used by the autopilot engine for high-signal notifications.
+    // Deduplication still applies — only the WS-client skip is bypassed.
+    const forcePush = typeof body.forcePush === 'boolean' ? body.forcePush : false;
 
     // Dynamic-options fields (PR-2/PR-3). When the caller wants to drive
     // a richer notification category — plan-mode approval, MCP
@@ -375,7 +391,8 @@ export const POST: RequestHandler = async ({ request }) => {
     // (for bidirectional permission polling) without actually sending a push
     // notification.  This happens when WebSocket clients are connected and the
     // events channel will broadcast the permission-requested event instead.
-    if (skipPush) {
+    // forcePush overrides this so high-signal autopilot pushes still reach the device.
+    if (skipPush && !forcePush) {
       if (waitForResponse) {
         createPendingRequest(canonicalRequestId, {
           options,

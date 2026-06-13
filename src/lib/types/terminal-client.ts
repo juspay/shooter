@@ -56,6 +56,8 @@ export interface LaunchSheetProps {
 
 export interface LayoutData {
   aiProviders: Record<string, boolean>;
+  litellmBaseUrl: string;
+  litellmModel: string;
   neurolinkProvider: string;
 }
 

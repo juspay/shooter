@@ -13,6 +13,18 @@ const eventsClients: Set<WebSocket> =
   ((globalThis as Record<string, unknown>)[EVENTS_KEY] as Set<WebSocket>) || new Set<WebSocket>();
 (globalThis as Record<string, unknown>)[EVENTS_KEY] = eventsClients;
 
+/**
+ * Server-side listeners (e.g. the always-on autopilot engine) that observe
+ * every broadcast event. Kept on globalThis so the listener registered from the
+ * server.ts module graph and the broadcaster called from the bundled SvelteKit
+ * handler graph share one set.
+ */
+const LISTENERS_KEY = '__shooter_ws_event_listeners';
+const eventListeners: Set<(event: ShooterEvent) => void> =
+  ((globalThis as Record<string, unknown>)[LISTENERS_KEY] as Set<(event: ShooterEvent) => void>) ||
+  new Set<(event: ShooterEvent) => void>();
+(globalThis as Record<string, unknown>)[LISTENERS_KEY] = eventListeners;
+
 // ── Handlers ────────────────────────────────────────────────────────
 
 /**
@@ -29,6 +41,15 @@ export function broadcastEvent(event: ShooterEvent): void {
     // WebSocket.OPEN === 1
     if (ws.readyState === 1) {
       ws.send(data);
+    }
+  }
+
+  // Fan out to server-side listeners (autopilot engine, etc.).
+  for (const listener of eventListeners) {
+    try {
+      listener(event);
+    } catch {
+      // a faulty listener must never break the broadcast
     }
   }
 }
@@ -61,4 +82,15 @@ export function handleEventsConnection(ws: WebSocket): void {
   ws.on('close', () => {
     eventsClients.delete(ws);
   });
+}
+
+/**
+ * Register a server-side listener that receives every broadcast ShooterEvent.
+ * Returns an unsubscribe function. Used by the always-on autopilot engine.
+ */
+export function onShooterEvent(listener: (event: ShooterEvent) => void): () => void {
+  eventListeners.add(listener);
+  return (): void => {
+    eventListeners.delete(listener);
+  };
 }
