@@ -1,0 +1,215 @@
+# =============================================================================
+# Yama PR Review configuration
+# =============================================================================
+# Consumed by the @juspay/yama GitHub Action (.github/workflows). Auto-discovered
+# from the repo root (search order: yama.config.yaml → config/yama.config.yaml →
+# .yama/config.yaml) and also passed explicitly via the workflow `config-path`.
+#
+# WHERE THE REVIEW RULES COME FROM
+#   Yama automatically loads, from this repo root, if present:
+#     • CLAUDE.md       — your authoritative engineering rules
+#     • CONTRIBUTING.md — contribution + commit conventions
+#   and injects them into the reviewer as <project-rules>. Keep repo-specific
+#   rules THERE; this file tunes WHAT the reviewer focuses on and WHAT blocks a
+#   merge.
+#
+# PROVIDER / MODEL ARE INTENTIONALLY NOT SET HERE
+#   They are controlled by the workflow inputs (ai-provider / ai-model), exposed
+#   as AI_PROVIDER / AI_MODEL env. Yama merges this file OVER those env values, so
+#   setting ai.provider / ai.model here would silently override the workflow.
+# =============================================================================
+
+version: 2
+configType: "yama"
+
+display:
+  showBanner: false
+  streamingMode: false
+  verboseToolCalls: false
+  showAIThinking: false
+
+ai:
+  # provider/model OMITTED on purpose — controlled by the workflow.
+  temperature: 0.2 # deterministic, review-grade output
+  timeout: "15m"
+  retryAttempts: 3
+
+  # The explore worker reads project rules (CLAUDE.md / CONTRIBUTING.md) and
+  # codebase context. Keep enabled so the reviewer sees your repo's rules.
+  explore:
+    enabled: true
+    timeout: "5m"
+    cacheResults: true
+
+# GitHub MCP only. Jira/Bitbucket off so no extra credentials are needed. Yama's
+# built-in denylist already blocks repo-mutating GitHub tools; this is a
+# read + review-comment workflow.
+mcpServers:
+  github:
+    enabled: true
+    # transport defaults to "http" (hosted GitHub MCP at api.githubcopilot.com).
+  jira:
+    enabled: false
+
+review:
+  enabled: true
+
+  workflowInstructions: |
+    You are reviewing a pull request for @juspay/shooter — a self-hosted,
+    TypeScript bidirectional communication server (SvelteKit + custom Node
+    server.ts) plus a `shooter` CLI that bridges Claude Code on a developer's
+    machine to iOS/Android apps. It exposes a local server over a Cloudflare
+    Tunnel and provides remote PTY terminals (node-pty), live session viewing,
+    and push notifications (APNs via curl/HTTP-2 + JWT, FCM via firebase-admin).
+    This means it can spawn shells, run commands, expose a public endpoint, and
+    handle secrets — security and correctness bugs here are high-impact.
+
+    Treat the <project-rules> block (this repo's CLAUDE.md — the authoritative
+    engineering guide; there is no CONTRIBUTING.md) as the AUTHORITATIVE ruleset.
+    Cite the specific rule when you flag a violation. Pay special attention to the
+    rules CLAUDE.md spells out: all types live in `src/lib/types/` and are
+    imported only via the `$lib/types` barrel (never `$generated/*` or a generated
+    file directly); `src/lib/types/generated/` is auto-generated from
+    `specs/types/*.yaml` via `pnpm gen:types` and must NOT be hand-edited; and the
+    branch/PR naming policy (fix|feat|docs|chore/<slug>, never commit to
+    `release`).
+
+    Do NOT re-report mechanical checks that CI already enforces, so the review
+    stays signal-dense. CI runs: ESLint (`pnpm lint`), Prettier (`format:check`),
+    `svelte-check` + `tsc --noEmit --strict`, `pnpm build` (vite), package-contents
+    (`pnpm pack --dry-run`), the unit tests in `tests/*.cjs`, and dedicated
+    smoke-test / macos-build / docker-test / installer-test / setup-test jobs that
+    already verify health, auth (401), input validation (400), native-module
+    compilation, `install.sh` POSIX syntax, and `setup --auto` idempotency +
+    `.env` 0600 perms. This repo also enforces a SINGLE COMMIT PER BRANCH policy —
+    do not nitpick commit count, but flag if a PR's history shows the author is
+    fighting it.
+
+    Focus on what static analysis and those CI jobs cannot catch:
+      - Command / shell / argument injection in anything that spawns processes
+        (node-pty, `execFile`/curl for APNs, CLI subcommands, install.sh, holder
+        process fork). User/remote-controlled command, cwd, env, or terminal
+        input must never reach a shell unsanitized.
+      - AuthZ/AuthN correctness on every server route and WS upgrade: bearer-token
+        and ticket-store checks must hold; new endpoints must not bypass auth. The
+        public Cloudflare Tunnel means any unauthenticated path is internet-facing.
+      - Secret handling: API_KEY, APNS_KEY/.p8, FCM_PRIVATE_KEY, JWTs, device
+        tokens must not be logged, echoed, embedded in URLs/QR codes, or written
+        world-readable (`~/.shooter/.env` must stay 0600).
+      - Path safety: session/JSONL/SQLite paths, Unix socket paths
+        (`/tmp/shooter-term-<id>.sock`), and any file served or read — guard
+        against traversal and untrusted IDs.
+      - Cross-platform + install robustness: macOS vs Linux branches (LaunchAgent
+        vs systemd), POSIX-`sh` correctness in install.sh, native-module
+        (node-pty / better-sqlite3) build failure handling, PID-file and
+        process-lifecycle races, holder-process reconnect/grace-period logic.
+      - CLI backward compatibility: don't silently change/remove existing
+        `shooter` commands or flags (start/-d/--no-tunnel, stop, status,
+        autostart on|off, logs, setup/--push/--auto) or rename env vars
+        (`API_KEY`, `PORT`, `SHOOTER_*`).
+      - Error handling and resource cleanup: unhandled promise rejections, WS
+        backpressure, leaked PTYs/sockets/file watchers, and missing tests for new
+        runtime behaviour (add to `tests/*.cjs`).
+
+    Be specific and constructive: every comment references the exact file+line,
+    explains the concrete risk, and suggests a fix where useful. Only block per
+    <blocking-criteria>; otherwise leave inline comments and approve.
+
+  # Focus areas tuned for this remote-terminal / push server + CLI.
+  focusAreas:
+    - name: "Security"
+      priority: "CRITICAL"
+      description: |
+        - Hardcoded secrets / API keys / .p8 keys / FCM keys / tokens in source
+        - Command / shell / argument injection via node-pty, execFile/curl (APNs),
+          CLI subcommands, install.sh, or forked holder processes
+        - Auth/ticket bypass on server routes or the WebSocket upgrade — the
+          Cloudflare Tunnel makes any unauthenticated path internet-facing
+        - Secret leakage: keys/tokens logged, echoed, put in URLs/QR codes, or
+          written world-readable; `~/.shooter/.env` not kept 0600
+        - Path traversal via session/JSONL/db paths, `/tmp` socket paths, or
+          untrusted terminal/session IDs; missing validation of remote input
+    - name: "CLI & automation correctness"
+      priority: "MAJOR"
+      description: |
+        - Logic bugs, unhandled promise rejections, races (PID-file,
+          holder-process reconnect/grace period, WS backpressure)
+        - Backward-incompatible changes to `shooter` commands/flags
+          (start/-d/--no-tunnel, stop, status, autostart on|off, logs,
+          setup/--push/--auto) or to env var names (API_KEY, PORT, SHOOTER_*)
+        - Leaked PTYs / Unix sockets / file watchers; missing resource cleanup
+    - name: "Cross-platform & install robustness"
+      priority: "MAJOR"
+      description: |
+        - macOS vs Linux divergence (LaunchAgent vs systemd, paths, stat flags)
+        - POSIX-`sh` correctness in install.sh; non-portable bashisms
+        - Native-module (node-pty / better-sqlite3) build-failure handling and
+          clear degraded-mode messaging
+    - name: "Error handling & tests"
+      priority: "MINOR"
+      description: |
+        - New runtime behaviour has a test in `tests/*.cjs`
+        - Failures degrade gracefully with actionable messages (not silent
+          swallow or unhandled crash)
+        - Type-system rules honoured: edits go through `specs/types/*.yaml` +
+          `pnpm gen:types`, never hand-edit `src/lib/types/generated/`
+
+  # Tight blocking set: only committed secrets, critical security, and the two
+  # catastrophic regressions specific to this server. Everything else is advisory.
+  blockingCriteria:
+    - condition: "Any hardcoded secret, API key, APNs .p8 key, FCM private key, JWT, password or device token committed in source (non-test, non-example, non-.env.example)"
+      action: "BLOCK"
+      reason: "Security: secrets must never be committed"
+    - condition: "Any CRITICAL security vulnerability: command/shell injection (node-pty, execFile/curl, CLI, install.sh), arbitrary code execution, or secret/credential exposure (logged, in URLs/QR, or world-readable)"
+      action: "BLOCK"
+      reason: "Critical security risk in a remote-terminal server reachable over a public tunnel"
+    - condition: "A change that bypasses bearer-token / WS-ticket authentication on any server route or the WebSocket upgrade, exposing terminal/session/PTY control to unauthenticated callers"
+      action: "BLOCK"
+      reason: "Auth bypass exposes remote shell execution to the internet via the Cloudflare Tunnel"
+    - condition: "A change that makes the server/PTY/host destructively writable by default or weakens the `~/.shooter/.env` 0600 permission, leaking the shared API_KEY"
+      action: "BLOCK"
+      reason: "Destructive-by-default or weakened secret-file perms is a catastrophic regression"
+
+  # Generated / vendored / binary files are skipped.
+  excludePatterns:
+    - "*.lock"
+    - "pnpm-lock.yaml"
+    - "package-lock.json"
+    - "yarn.lock"
+    - "*.min.js"
+    - "*.map"
+    - "*.svg"
+    - "dist/**"
+    - "build/**"            # vite/adapter-node output
+    - "coverage/**"
+    - ".svelte-kit/**"      # SvelteKit-generated (svelte-kit sync)
+    - "src/lib/types/generated/**"  # type-crafter output; edit specs/types/*.yaml instead
+    - "*.d.ts"
+    - "static/**"           # bundled/static web assets
+
+  contextLines: 3
+  maxFilesPerReview: 100
+  fileAnalysisTimeout: "2m"
+
+# Review-only: never rewrite PR descriptions (also forced by the workflow input
+# skip-description-enhance: "true").
+descriptionEnhancement:
+  enabled: false
+
+# Stateless reviewer: no memory-bank dir, no knowledge-base file, no commits back
+# to the repo (needs no write access beyond posting the review).
+memoryBank:
+  enabled: false
+knowledgeBase:
+  enabled: false
+memory:
+  enabled: false
+  autoCommit: false
+
+# Cost / runtime guardrails.
+performance:
+  maxReviewDuration: "15m"
+  tokenBudget:
+    maxTokensPerReview: 800000
+    warningThreshold: 600000
+
