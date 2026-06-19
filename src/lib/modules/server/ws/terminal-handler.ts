@@ -32,7 +32,9 @@ let _ptyManager: null | PtyManagerLike = null;
 export function handleTerminalConnection(
   ws: WebSocket,
   terminalId: string,
-  scope?: TicketScope
+  scope?: TicketScope,
+  snapshotCapable = false,
+  lastSeq = 0
 ): void {
   // ── 1. Look up the terminal ──────────────────────────────────────
   if (!_ptyManager) {
@@ -48,11 +50,14 @@ export function handleTerminalConnection(
     return;
   }
 
-  // ── 2. Attach via pty-manager (registers client + sends scrollback) ──
-  // The pty-manager's attach() adds ws to terminal.clients AND
-  // terminal.outputBuffers, then replays scrollback. Its broadcastOutput()
-  // loop delivers all PTY output — no per-client onData listener needed.
-  _ptyManager.attach(terminalId, ws);
+  // ── 2. Attach via pty-manager (registers client + sends initial state) ──
+  // Snapshot-capable clients (?caps=snapshot) get a serialized current-screen
+  // snapshot; others get the legacy raw scrollback replay. A reconnecting
+  // client also passes lastSeq (>0) so attach() can replay only the missing
+  // frames from the ring instead of re-snapshotting. attach() adds the ws to
+  // terminal.clients + outputBuffers; broadcastOutput() then delivers all live
+  // PTY output — no per-client onData listener needed.
+  _ptyManager.attach(terminalId, ws, { lastSeq, snapshot: snapshotCapable });
 
   // If the terminal already exited, tell the client immediately.
   if (terminal.status === 'exited') {

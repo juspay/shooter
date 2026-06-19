@@ -73,7 +73,7 @@ export interface TerminalManagedTerminal {
 }
 
 export interface TerminalPtyManagerLike {
-  attach: (id: string, ws: WebSocket) => boolean;
+  attach: (id: string, ws: WebSocket, opts?: { lastSeq?: number; snapshot?: boolean }) => boolean;
   detach: (id: string, ws: WebSocket) => boolean;
   getTerminal: (id: string) => TerminalManagedTerminal | undefined;
 }
@@ -146,8 +146,9 @@ export type WireTerminalServerMessage =
   | { bytes: number; type: 'output-dropped' }
   | { chunk: number; data: string; total: number; type: 'scrollback' }
   | { code: null | number; signal: null | string; type: 'exit' }
+  | { cols: number; data: string; rows: number; seq: number; type: 'snapshot' }
   | { cols: number; rows: number; type: 'resize' }
-  | { data: string; type: 'output' }
+  | { data: string; seq: number; type: 'output' }
   | { message: string; type: 'error' };
 
 // ── notification-sessions type alias ────────────────────────────────

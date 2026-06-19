@@ -97,6 +97,7 @@ WsProtocol:
     required:
       - type
       - data
+      - seq
     properties:
       type:
         type: string
@@ -104,6 +105,12 @@ WsProtocol:
       data:
         type: string
         description: Raw terminal output data
+      seq:
+        type: number
+        description: >
+          Monotonic per-terminal sequence number (starts at 1, increments by 1
+          for every broadcast output frame). Clients track lastSeq to enable
+          gap detection and reconnect resume (Phase 2).
 
   TerminalOutputDroppedMessage:
     type: object

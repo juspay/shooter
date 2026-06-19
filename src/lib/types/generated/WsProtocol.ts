@@ -238,20 +238,29 @@ export type TerminalOutputMessage = {
    * @memberof TerminalOutputMessage
    */
   data: string;
+  /**
+   * @description Monotonic per-terminal sequence number (starts at 1, increments by 1 for every broadcast output frame). Clients track lastSeq to enable gap detection and reconnect resume (Phase 2).
+
+   * @type { number }
+   * @memberof TerminalOutputMessage
+  */
+  seq: number;
 };
 
 export function decodeTerminalOutputMessage(rawInput: unknown): TerminalOutputMessage | null {
   if (isJSON(rawInput)) {
     const decodedType = decodeString(rawInput['type']);
     const decodedData = decodeString(rawInput['data']);
+    const decodedSeq = decodeNumber(rawInput['seq']);
 
-    if (decodedType === null || decodedData === null) {
+    if (decodedType === null || decodedData === null || decodedSeq === null) {
       return null;
     }
 
     return {
       type: decodedType,
       data: decodedData,
+      seq: decodedSeq,
     };
   }
   return null;

@@ -108,6 +108,8 @@ export interface ShortcutsHelpProps {
 export interface TerminalInstance {
   dispose: () => void;
   fitAddon: FitAddon | null;
+  /** Highest output `seq` seen from the server (for Phase 2 reconnect resume). */
+  getLastSeq: () => number;
   sendInput: (data: string) => void;
   term: Terminal;
 }
@@ -147,5 +149,6 @@ export interface WsTerminalInboundMessage {
   data?: string;
   path?: string;
   rows?: number;
+  seq?: number;
   type: string;
 }

@@ -10,6 +10,7 @@ import type WebSocket from 'ws';
 
 import type { CodexStreamParser } from '../modules/server/sessions/codex-parser';
 import type { HolderClient } from '../modules/server/terminal/holder-client';
+import type { TerminalEmulator } from '../modules/server/terminal/terminal-emulator';
 import type { ConversationMessage } from './sessions';
 
 // ── holder-client types ─────────────────────────────────────────────
@@ -87,6 +88,8 @@ export interface PtyManagedTerminal {
   createdAt: Date;
   currentCwd: null | string;
   cwd: string;
+  /** Server-side headless emulator for snapshot-on-join (null when disabled). */
+  emulator: null | TerminalEmulator;
   exitCode: null | number;
   exitedAt: Date | null;
   holderPid: number;
@@ -100,6 +103,10 @@ export interface PtyManagedTerminal {
   pty: HolderClient;
   rows: number;
   scrollback: string;
+  /** Monotonic counter; equals the last assigned seq for this terminal. */
+  seqCounter: number;
+  /** Bounded replay ring of recent output chunks (max SEQ_RING_MAX_ENTRIES). */
+  seqRing: SeqRingEntry[];
   sessionFile: null | string;
   socketPath: string;
   status: 'exited' | 'running';
@@ -113,11 +120,30 @@ export interface PtyOutputBuffer {
   size: number;
 }
 
-// ── generic-session-watcher types ───────────────────────────────────
+/**
+ * One entry in the per-terminal sequence ring (in-memory store type;
+ * structurally identical to the generated wire SeqRingEntry).
+ */
+export interface SeqRingEntry {
+  data: string;
+  seq: number;
+}
 
 export interface SessionWatchedFile {
   callbacks: Set<OnNewEntries>;
   filePath: string;
   offset: number;
   watcher: FSWatcher;
+}
+
+// ── generic-session-watcher types ───────────────────────────────────
+
+/**
+ * A serialized snapshot of a terminal's current screen (VT escape string)
+ * produced by the server-side headless emulator, plus its dimensions.
+ */
+export interface TerminalSnapshot {
+  cols: number;
+  data: string;
+  rows: number;
 }
