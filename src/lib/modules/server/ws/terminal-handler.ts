@@ -11,6 +11,8 @@ import type {
 } from '$lib/types';
 import type { WebSocket } from 'ws';
 
+import { randomBytes } from 'crypto';
+
 // ── Constants ────────────────────────────────────────────────────────
 
 /** Signal name → numeric code for process.kill(). */
@@ -49,6 +51,10 @@ export function handleTerminalConnection(
     ws.close(1008, 'Terminal not found');
     return;
   }
+
+  // Phase 3: stable per-connection id, used to claim/hold resize authority.
+  // Phase 4 will pass this in from setupWebSocketHandlers (the WS upgrade handler).
+  const connectionId = randomBytes(8).toString('hex');
 
   // ── 2. Attach via pty-manager (registers client + sends initial state) ──
   // Snapshot-capable clients (?caps=snapshot) get a serialized current-screen
@@ -90,15 +96,21 @@ export function handleTerminalConnection(
           break;
 
         case 'resize': {
-          terminal.pty.resize(msg.cols, msg.rows);
-          // Broadcast the new PTY size to the other attached clients so
-          // view-only guests can follow the owner's terminal dimensions.
-          const resizeMsg: ServerMessage = { cols: msg.cols, rows: msg.rows, type: 'resize' };
-          for (const client of terminal.clients) {
-            if (client !== ws) {
-              safeSend(client, resizeMsg);
-            }
+          // Phase 3: driver-authoritative resize (fixes G4). Only the authority
+          // connection's resize reaches the PTY; non-authority senders keep their
+          // own xterm fitted locally — no PTY call and no broadcast from here.
+          if (!isResizeAuthority(connectionId, terminal.authorityConnectionId)) {
+            break;
           }
+          // Claim the slot on the first authoritative resize (sticky until this
+          // connection disconnects — see the close handler below).
+          if (terminal.authorityConnectionId === null) {
+            terminal.authorityConnectionId = connectionId;
+          }
+          // Route through the manager so dims persist (G5) and the new size
+          // broadcasts to ALL clients including this sender (a no-op echo),
+          // matching the REST /resize path.
+          _ptyManager?.resize(terminal.id, msg.cols, msg.rows);
           break;
         }
 
@@ -122,6 +134,11 @@ export function handleTerminalConnection(
 
   // ── 4. Cleanup on disconnect ─────────────────────────────────────
   ws.on('close', () => {
+    // Phase 3: release resize authority if this connection held it, so the next
+    // interactive client can claim it. Phase 4 replaces this with driver release.
+    if (terminal.authorityConnectionId === connectionId) {
+      terminal.authorityConnectionId = null;
+    }
     _ptyManager?.detach(terminalId, ws);
   });
 
@@ -129,6 +146,30 @@ export function handleTerminalConnection(
     // Errors are followed by 'close', which handles cleanup.
     // This handler prevents unhandled error crashes.
   });
+}
+
+/**
+ * Phase 3: driver-authoritative resize predicate (D1). Returns true iff this
+ * connection may resize the PTY.
+ *
+ * P3 policy: the first interactive (non-readOnly) connection to send a resize
+ * claims authority; it stays the authority until that connection disconnects,
+ * at which point the slot clears and the next interactive resize claims it.
+ * This is "first-claimer, sticky-until-disconnect" — NOT last-writer-wins, which
+ * is exactly what causes the multi-client resize fight (G4).
+ *
+ * Pure decision (the caller performs the claim/clear), so it mirrors the unit
+ * test and lets Phase 4 swap the body to `connectionId === terminal.driver`
+ * without touching the call site.
+ */
+export function isResizeAuthority(
+  connectionId: string,
+  authorityConnectionId: null | string
+): boolean {
+  if (authorityConnectionId === null) {
+    return true; // unclaimed — the first interactive resize wins
+  }
+  return connectionId === authorityConnectionId;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────

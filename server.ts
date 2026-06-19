@@ -60,6 +60,9 @@ const ptyManagerAdapter = {
   list() {
     return ptyManager.list();
   },
+  resize(id: string, cols: number, rows: number) {
+    return ptyManager.resize(id, cols, rows);
+  },
 };
 
 /**

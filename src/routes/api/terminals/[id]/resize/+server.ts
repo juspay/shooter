@@ -52,6 +52,9 @@ export const POST: RequestHandler = async ({ params, request }) => {
       return json({ error: 'Terminal already exited' }, { status: 409 });
     }
 
+    // Phase 3: ptyManager.resize() persists cols/rows to SQLite (G5) and
+    // broadcasts the new size to ALL attached clients (including this caller's
+    // own clients), intentionally consistent with the WS authority path.
     ptyManager.resize(params.id, cols, rows);
 
     console.log(`[terminals] Resized terminal ${params.id} to ${cols}x${rows}`);

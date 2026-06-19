@@ -60,6 +60,8 @@ export interface SessionWatcherLike {
 }
 
 export interface TerminalManagedTerminal {
+  /** Phase 3: connection allowed to resize the PTY; null = unclaimed. */
+  authorityConnectionId: null | string;
   clients: Set<WebSocket>;
   exitCode: null | number;
   id: string;
@@ -76,6 +78,8 @@ export interface TerminalPtyManagerLike {
   attach: (id: string, ws: WebSocket, opts?: { lastSeq?: number; snapshot?: boolean }) => boolean;
   detach: (id: string, ws: WebSocket) => boolean;
   getTerminal: (id: string) => TerminalManagedTerminal | undefined;
+  /** Phase 3: route resize through the manager so dims persist + broadcast to all. */
+  resize: (id: string, cols: number, rows: number) => boolean;
 }
 
 /** A message in the history payload. */

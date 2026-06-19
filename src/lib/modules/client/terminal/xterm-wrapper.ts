@@ -235,9 +235,10 @@ export async function createTerminal(options: TerminalOptions): Promise<Terminal
       } else if (msg.type === 'cwd') {
         options.onCwd?.(msg.path ?? '');
       } else if (msg.type === 'resize') {
-        // PTY was resized by another client (e.g. the owner). View-only
-        // terminals follow it; interactive ones are governed by their fit.
-        if (options.readOnly && msg.cols && msg.rows) {
+        // Phase 3: apply the PTY's authoritative size to EVERY client (G8) —
+        // view-only and interactive alike (the authority's own echo is a no-op);
+        // also delivers the size pushed on attach so late joiners size correctly.
+        if (msg.cols && msg.rows) {
           term.resize(msg.cols, msg.rows);
         }
       }
