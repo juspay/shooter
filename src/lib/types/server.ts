@@ -82,6 +82,13 @@ export interface OpenCodeWatchState {
 
 export interface PtyManagedTerminal {
   args: string[];
+  /**
+   * Phase 3: the connection currently allowed to resize the PTY (driver-
+   * authoritative resize, D1). null = unclaimed — the first interactive
+   * resize claims it, sticky until that connection disconnects. Phase 4
+   * replaces this slot with the driver token from the control registry.
+   */
+  authorityConnectionId: null | string;
   clients: Set<WebSocket>;
   cols: number;
   command: string;

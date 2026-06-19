@@ -85,6 +85,13 @@ class PtyManager {
 
     terminal.outputBuffers.set(ws, { data: [], size: 0 });
 
+    // Phase 3: level-triggered size push on join (fixes G8). Every joiner —
+    // interactive or view-only, on any of the paths below — immediately learns
+    // the PTY's current size without waiting for the next edge-triggered resize.
+    // Sent first (a direct send, not a broadcast) so it applies before the
+    // snapshot/scrollback paints.
+    this.safeSend(ws, JSON.stringify({ cols: terminal.cols, rows: terminal.rows, type: 'resize' }));
+
     const wantsSnapshot = opts?.snapshot === true;
     const lastSeq = opts?.lastSeq ?? 0;
 
@@ -244,6 +251,7 @@ class PtyManager {
     const now = new Date();
     const terminal: ManagedTerminal = {
       args: launchArgs,
+      authorityConnectionId: null, // Phase 3: claimed by the first interactive resize
       clients: new Set(),
       cols,
       command,
@@ -587,6 +595,9 @@ class PtyManager {
       terminal.cols = cols;
       terminal.rows = rows;
       terminal.emulator?.resize(cols, rows);
+      // Phase 3: persist so a server restart restores the latest size, not the
+      // creation-time default (fixes G5).
+      terminalStore.resizeDims(id, cols, rows);
       // Broadcast the new PTY size so attached clients (e.g. view-only
       // guests) can follow the terminal dimensions.
       const msg = JSON.stringify({ cols, rows, type: 'resize' });
@@ -963,6 +974,7 @@ class PtyManager {
 
     const terminal: ManagedTerminal = {
       args: parsedArgs,
+      authorityConnectionId: null, // Phase 3: claimed by the first interactive resize
       clients: new Set(),
       cols: record.cols,
       command: record.command,

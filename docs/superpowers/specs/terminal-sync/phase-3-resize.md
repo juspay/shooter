@@ -6,6 +6,8 @@
 **Gaps fixed:** G4 (resize fight between multiple interactive clients), G5 (dims not persisted — revert on restart), G8 (guests get no size on attach — edge-triggered only)
 **Design decision D1 implemented:** driver-authoritative resize. The authority predicate (`isResizeAuthority`) is a named, swappable function so Phase 4 replaces it with one line when the driver token arrives.
 
+**Authority policy (P3):** _first interactive (non-readOnly) connection to send a resize claims authority; it stays the authority until that connection disconnects, then the slot clears and the next interactive resize claims it._ This is **first-claimer, sticky-until-disconnect** — deliberately NOT last-writer-wins, because last-writer-wins is exactly the multi-client fight (G4) this phase removes. The predicate is **pure** (`isResizeAuthority(connectionId, authorityConnectionId): boolean`); the caller performs the claim on `null` and the close handler performs the clear.
+
 ---
 
 ## 1. What and Why
@@ -20,7 +22,7 @@ Today's resize has three independent bugs:
 
 **Fix strategy (bound to §2.3 of the contract):**
 
-- Introduce a named authority predicate `isResizeAuthority(connectionId, terminal)` — Phase 3 makes it return `true` for the **most-recently-active interactive (non-readOnly) connection**. Phase 4 replaces the body with `connectionId === terminal.driver` in one line.
+- Introduce a named authority predicate `isResizeAuthority(connectionId, authorityConnectionId)` — Phase 3 returns `true` when the slot is unclaimed (`null`) or matches the caller (**first-claimer, sticky-until-disconnect**; see the policy note above). Phase 4 replaces the body with `connectionId === terminal.driver` in one line.
 - Only the authority connection's `resize` frame reaches `pty.resize()`. Every other connection's resize is silently ignored for the PTY; the sender's own xterm is sized by its own `fitAddon` (local-only, no round-trip needed).
 - Every resize through `pty.resize()` — whether via WS or REST — persists `cols/rows` to SQLite via `terminalStore.update()`.
 - `attach()` pushes `{type:'resize', cols, rows}` immediately after the scrollback send so every joiner gets the current size on the first frame, level-triggered.

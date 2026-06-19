@@ -172,6 +172,16 @@ export class TerminalStore {
       .run(new Date().toISOString(), id);
   }
 
+  /**
+   * Phase 3: persist the current PTY dimensions so a server restart restores the
+   * latest size rather than the creation-time default (fixes G5). Dedicated
+   * prepared UPDATE — called on every authoritative resize, so it avoids the
+   * generic update()'s Object.entries() overhead on this hot path.
+   */
+  resizeDims(id: string, cols: number, rows: number): void {
+    this.db.prepare('UPDATE terminals SET cols = ?, rows = ? WHERE id = ?').run(cols, rows, id);
+  }
+
   update(id: string, fields: Partial<TerminalRecord>): void {
     const entries = Object.entries(fields).filter(
       ([key, val]) => key !== 'id' && val !== undefined
