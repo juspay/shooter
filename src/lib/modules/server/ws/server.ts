@@ -56,8 +56,24 @@ export function setupWebSocketHandlers(
 ): void {
   const host = request.headers.host ?? 'localhost';
   let pathname: string;
+  let snapshotCapable = false;
+  let lastSeq = 0;
   try {
-    pathname = new URL(request.url || '/', `http://${host}`).pathname;
+    const url = new URL(request.url || '/', `http://${host}`);
+    pathname = url.pathname;
+    // Capability negotiation: clients that understand the {snapshot} frame
+    // advertise ?caps=snapshot. Others fall back to raw scrollback replay.
+    snapshotCapable = url.searchParams.get('caps') === 'snapshot';
+    // Reconnect resume (Phase 2): a returning client passes the highest output
+    // seq it already applied so the server can replay just the gap (or snapshot
+    // if the gap aged out of the ring). Absent / non-numeric ⇒ fresh join.
+    const rawLastSeq = url.searchParams.get('lastSeq');
+    if (rawLastSeq !== null) {
+      const parsed = Number(rawLastSeq);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        lastSeq = Math.floor(parsed);
+      }
+    }
   } catch {
     socket.destroy();
     return;
@@ -103,7 +119,7 @@ export function setupWebSocketHandlers(
 
     if (terminalMatch) {
       const terminalId = terminalMatch[1];
-      handleTerminalConnection(ws, terminalId, scope);
+      handleTerminalConnection(ws, terminalId, scope, snapshotCapable, lastSeq);
     } else if (superSessionMatch) {
       const superSessionId = superSessionMatch[1];
       handleSuperSessionConnection(ws, superSessionId);

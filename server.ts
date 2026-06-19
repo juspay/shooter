@@ -48,8 +48,8 @@ import { validateTicket } from './src/lib/modules/server/ws/ticket-store.js';
 
 /** Adapt PtyManager (`.get()`) to the handlers' expected `.getTerminal()`. */
 const ptyManagerAdapter = {
-  attach(id: string, ws: WebSocket) {
-    return ptyManager.attach(id, ws);
+  attach(id: string, ws: WebSocket, opts?: { lastSeq?: number; snapshot?: boolean }) {
+    return ptyManager.attach(id, ws, opts);
   },
   detach(id: string, ws: WebSocket) {
     return ptyManager.detach(id, ws);

@@ -2,6 +2,7 @@ import type {
   ConversationMessage,
   PtyManagedTerminal as ManagedTerminal,
   PtyOutputBuffer as OutputBuffer,
+  SeqRingEntry,
   TerminalRecord,
 } from '$lib/types';
 import type WebSocket from 'ws';
@@ -21,6 +22,7 @@ import { broadcastEvent } from '../ws/server.js';
 import { withAgentPermissionMode } from './agent-launch.js';
 import { HolderClient } from './holder-client';
 import { openCodeWatcher } from './opencode-watcher';
+import { TerminalEmulator } from './terminal-emulator';
 import { terminalStore } from './terminal-store';
 
 export type { ManagedTerminal };
@@ -32,6 +34,16 @@ export type { ManagedTerminal };
 const MAX_SCROLLBACK_BYTES = 512 * 1024; // 512 KB cached scrollback cap
 const MAX_OUTPUT_BUFFER_BYTES = 1024 * 1024; // 1 MB per client
 const SCROLLBACK_CHUNK_SIZE = 50 * 1024; // 50 KB per chunk
+const SEQ_RING_MAX_ENTRIES = 2000; // bounded replay ring (~2-10 MB of recent output)
+// Server-side emulator + snapshot-on-join is on unless explicitly disabled
+// (SHOOTER_SNAPSHOT_FALLBACK=raw reverts to legacy raw-scrollback replay).
+const SNAPSHOT_ENABLED = process.env.SHOOTER_SNAPSHOT_FALLBACK !== 'raw';
+// Phase 2 backpressure convergence: when a client falls behind we stop dropping
+// bytes silently and instead resnapshot it to the current screen once its socket
+// drains below the low-water mark (or after a hard timeout if it never drains).
+const RESNAPSHOT_LOW_WATER_BYTES = MAX_OUTPUT_BUFFER_BYTES / 4;
+const RESNAPSHOT_POLL_MS = 100;
+const RESNAPSHOT_MAX_WAIT_MS = 10_000;
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 const EXITED_TTL_MS = 60 * 60 * 1000; // 1 hour
 const MAX_EXITED_TERMINALS = 10;
@@ -48,6 +60,10 @@ const __dirname = path.dirname(__filename);
 
 class PtyManager {
   private cleanupTimer: null | ReturnType<typeof setInterval> = null;
+  // Clients currently converging via a resnapshot (Phase 2). While pending, a
+  // client receives no normal output frames — the forthcoming snapshot brings
+  // it to the current screen. WeakSet so disconnected sockets drop out on GC.
+  private resnapshotPending = new WeakSet<WebSocket>();
   private terminals = new Map<string, ManagedTerminal>();
 
   constructor() {
@@ -61,24 +77,62 @@ class PtyManager {
   //          persists to SQLite
   // -----------------------------------------------------------------------
 
-  attach(id: string, ws: WebSocket): boolean {
+  attach(id: string, ws: WebSocket, opts?: { lastSeq?: number; snapshot?: boolean }): boolean {
     const terminal = this.terminals.get(id);
     if (!terminal) {
       return false;
     }
 
-    terminal.clients.add(ws);
     terminal.outputBuffers.set(ws, { data: [], size: 0 });
 
-    // Send cached scrollback in chunks
+    const wantsSnapshot = opts?.snapshot === true;
+    const lastSeq = opts?.lastSeq ?? 0;
+
+    // Reconnect resume (Phase 2): the client already applied output up to
+    // lastSeq. If those missing frames are still in the ring, replay just the
+    // gap and go live — a seamless catch-up with no screen flash. This branch
+    // is fully synchronous, so no live frame can interleave between computing
+    // the gap and registering the client (no missed frames). Falls through to a
+    // fresh snapshot/scrollback when the gap predates the ring (getSeqRingFrom
+    // returns null) or the seq counter reset across a server restart.
+    if (wantsSnapshot && lastSeq > 0) {
+      const gap = this.getSeqRingFrom(id, lastSeq);
+      if (gap !== null) {
+        for (const entry of gap) {
+          this.safeSend(ws, JSON.stringify({ data: entry.data, seq: entry.seq, type: 'output' }));
+        }
+        terminal.clients.add(ws);
+        return true;
+      }
+    }
+
+    if (wantsSnapshot && terminal.emulator) {
+      // Snapshot-capable client: send the current-screen snapshot FIRST, then
+      // start the live tail (add to clients). Adding to clients only after the
+      // snapshot is sent guarantees no live frame precedes or duplicates it —
+      // the emulator already includes any output produced while snapshotting,
+      // and the snapshot's seq lets the client drop already-included frames.
+      void this.snapshotAndSend(terminal, ws).then((ok) => {
+        if (ws.readyState !== 1 /* OPEN */) {
+          return;
+        }
+        if (!ok) {
+          // Snapshot failed — fall back to the legacy raw scrollback replay.
+          terminal.clients.add(ws);
+          void this.sendScrollback(terminal, ws);
+          return;
+        }
+        terminal.clients.add(ws);
+      });
+      return true;
+    }
+
+    terminal.clients.add(ws);
+    // Send cached scrollback in chunks (legacy / non-snapshot-capable clients).
     void this.sendScrollback(terminal, ws);
 
     return true;
   }
-
-  // -----------------------------------------------------------------------
-  // reconnectAll — recover persisted terminals on server startup
-  // -----------------------------------------------------------------------
 
   cleanup(): void {
     const now = Date.now();
@@ -121,7 +175,7 @@ class PtyManager {
   }
 
   // -----------------------------------------------------------------------
-  // disconnectAll — graceful shutdown: disconnect clients, keep holders alive
+  // reconnectAll — recover persisted terminals on server startup
   // -----------------------------------------------------------------------
 
   async create(
@@ -196,6 +250,7 @@ class PtyManager {
       createdAt: now,
       currentCwd: null,
       cwd,
+      emulator: SNAPSHOT_ENABLED ? new TerminalEmulator(cols, rows) : null,
       exitCode: connectResult.exitCode,
       exitedAt: null,
       holderPid,
@@ -209,6 +264,8 @@ class PtyManager {
       pty: client,
       rows,
       scrollback: connectResult.scrollback,
+      seqCounter: 0,
+      seqRing: [],
       sessionFile: null,
       socketPath,
       status: connectResult.exited ? 'exited' : 'running',
@@ -252,7 +309,7 @@ class PtyManager {
   }
 
   // -----------------------------------------------------------------------
-  // get
+  // disconnectAll — graceful shutdown: disconnect clients, keep holders alive
   // -----------------------------------------------------------------------
 
   destroy(): void {
@@ -301,8 +358,7 @@ class PtyManager {
   }
 
   // -----------------------------------------------------------------------
-  // list — running first, then recently exited, each group sorted by
-  //        createdAt descending
+  // get
   // -----------------------------------------------------------------------
 
   detach(id: string, ws: WebSocket): boolean {
@@ -317,7 +373,8 @@ class PtyManager {
   }
 
   // -----------------------------------------------------------------------
-  // kill — route through holder: SIGTERM, then SIGKILL after 5 s
+  // list — running first, then recently exited, each group sorted by
+  //        createdAt descending
   // -----------------------------------------------------------------------
 
   disconnectAll(): void {
@@ -352,7 +409,7 @@ class PtyManager {
   }
 
   // -----------------------------------------------------------------------
-  // remove — remove an exited terminal from the map
+  // kill — route through holder: SIGTERM, then SIGKILL after 5 s
   // -----------------------------------------------------------------------
 
   get(id: string): ManagedTerminal | null {
@@ -360,7 +417,7 @@ class PtyManager {
   }
 
   // -----------------------------------------------------------------------
-  // resize
+  // remove — remove an exited terminal from the map
   // -----------------------------------------------------------------------
 
   getScrollback(id: string): null | string {
@@ -373,8 +430,44 @@ class PtyManager {
   }
 
   // -----------------------------------------------------------------------
-  // attach — register a WebSocket client and replay scrollback
+  // resize
   // -----------------------------------------------------------------------
+
+  /** Current highest assigned seq for a terminal, or null if unknown. */
+  getSeqCounter(id: string): null | number {
+    return this.terminals.get(id)?.seqCounter ?? null;
+  }
+
+  /**
+   * Return the ring entries with seq > afterSeq, in order. Returns an empty
+   * array when the caller is already current, or null when the gap is
+   * unresolvable from the ring (caller must take a full snapshot). Unresolvable
+   * means any of:
+   *   - afterSeq > seqCounter: the caller claims a seq we never produced — this
+   *     happens when the seq counter reset across a server restart (the client
+   *     is from a previous terminal lifetime), so its content is unrelated.
+   *   - ring empty but afterSeq > 0: nothing buffered to bridge the gap.
+   *   - afterSeq predates the oldest retained entry: the gap aged out.
+   */
+  getSeqRingFrom(id: string, afterSeq: number): null | readonly SeqRingEntry[] {
+    const terminal = this.terminals.get(id);
+    if (!terminal) {
+      return null;
+    }
+    if (afterSeq > terminal.seqCounter) {
+      return null; // counter reset (restart) or client ahead of us — snapshot
+    }
+    const ring = terminal.seqRing;
+    if (ring.length === 0) {
+      // Caught up (afterSeq 0, nothing produced) vs. an impossible-to-bridge
+      // positive gap with no buffered frames.
+      return afterSeq <= 0 ? [] : null;
+    }
+    if (afterSeq < ring[0].seq - 1) {
+      return null; // gap predates the ring — caller must send a full snapshot
+    }
+    return ring.filter((e) => e.seq > afterSeq);
+  }
 
   kill(id: string): boolean {
     const terminal = this.terminals.get(id);
@@ -416,7 +509,7 @@ class PtyManager {
   }
 
   // -----------------------------------------------------------------------
-  // detach — remove a WebSocket client
+  // attach — register a WebSocket client and replay scrollback
   // -----------------------------------------------------------------------
 
   list(): ManagedTerminal[] {
@@ -438,7 +531,7 @@ class PtyManager {
   }
 
   // -----------------------------------------------------------------------
-  // getScrollback — return raw scrollback data for replay
+  // detach — remove a WebSocket client
   // -----------------------------------------------------------------------
 
   async reconnectAll(): Promise<void> {
@@ -462,8 +555,7 @@ class PtyManager {
   }
 
   // -----------------------------------------------------------------------
-  // cleanup — evict exited terminals older than 1 hour, cap at 10 exited;
-  //           also clean up old SQLite records
+  // getScrollback — return raw scrollback data for replay
   // -----------------------------------------------------------------------
 
   remove(id: string): boolean {
@@ -480,7 +572,8 @@ class PtyManager {
   }
 
   // -----------------------------------------------------------------------
-  // destroy — emergency forced kill (kills holder processes too)
+  // cleanup — evict exited terminals older than 1 hour, cap at 10 exited;
+  //           also clean up old SQLite records
   // -----------------------------------------------------------------------
 
   resize(id: string, cols: number, rows: number): boolean {
@@ -493,12 +586,48 @@ class PtyManager {
       terminal.pty.resize(cols, rows);
       terminal.cols = cols;
       terminal.rows = rows;
+      terminal.emulator?.resize(cols, rows);
       // Broadcast the new PTY size so attached clients (e.g. view-only
       // guests) can follow the terminal dimensions.
       const msg = JSON.stringify({ cols, rows, type: 'resize' });
       for (const ws of terminal.clients) {
         this.safeSend(ws, msg);
       }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // destroy — emergency forced kill (kills holder processes too)
+  // -----------------------------------------------------------------------
+
+  /**
+   * Compute the current-screen snapshot from the emulator and send it as a
+   * single {type:'snapshot'} frame stamped with the current seq. Returns false
+   * if there is no emulator, the socket closed, or serialization failed.
+   * Reused by Phase 2 to resnapshot a client after a backpressure gap.
+   */
+  async snapshotAndSend(terminal: ManagedTerminal, ws: WebSocket): Promise<boolean> {
+    if (!terminal.emulator) {
+      return false;
+    }
+    try {
+      const snap = await terminal.emulator.snapshot();
+      if (ws.readyState !== 1 /* OPEN */) {
+        return false;
+      }
+      this.safeSend(
+        ws,
+        JSON.stringify({
+          cols: snap.cols,
+          data: snap.data,
+          rows: snap.rows,
+          seq: terminal.seqCounter,
+          type: 'snapshot',
+        })
+      );
       return true;
     } catch {
       return false;
@@ -526,17 +655,92 @@ class PtyManager {
     }
   }
 
+  /**
+   * Assign the next sequence number to an output chunk and append it to the
+   * bounded replay ring. Returns the new seq. Phase 2 uses the ring to replay
+   * the gap to a reconnecting client without a full snapshot.
+   */
+  private appendSeqRing(terminal: ManagedTerminal, data: string): number {
+    const seq = terminal.seqCounter + 1;
+    terminal.seqRing.push({ data, seq });
+    if (terminal.seqRing.length > SEQ_RING_MAX_ENTRIES) {
+      terminal.seqRing.shift();
+    }
+    terminal.seqCounter = seq;
+    return seq;
+  }
+
+  /**
+   * Mark a client for convergence (Phase 2). Its queued output is discarded and
+   * further live frames are withheld until its socket drains below the low-water
+   * mark (or a hard timeout elapses), at which point a fresh snapshot resets it
+   * to the current screen. This replaces silent byte-dropping so a slow or
+   * throttled client can never diverge permanently (G1).
+   */
+  private beginResnapshot(terminal: ManagedTerminal, ws: WebSocket): void {
+    if (this.resnapshotPending.has(ws)) {
+      return; // already converging
+    }
+    this.resnapshotPending.add(ws);
+
+    // Drop the now-stale queue; the snapshot supersedes it.
+    const buffer = terminal.outputBuffers.get(ws);
+    if (buffer) {
+      buffer.data.length = 0;
+      buffer.size = 0;
+    }
+
+    // Signal the gap so the client can show a "resyncing" state; the snapshot
+    // that follows performs the actual screen reset.
+    this.safeSend(ws, JSON.stringify({ bytes: 0, type: 'output-dropped' }));
+
+    const startedAt = Date.now();
+    const poll = (): void => {
+      if (!this.resnapshotPending.has(ws)) {
+        return; // resolved or cancelled elsewhere
+      }
+      // Give up if the client left or the terminal/emulator went away meanwhile.
+      if (ws.readyState !== 1 /* OPEN */ || !terminal.emulator || !terminal.clients.has(ws)) {
+        this.resnapshotPending.delete(ws);
+        return;
+      }
+      const drained = ws.bufferedAmount <= RESNAPSHOT_LOW_WATER_BYTES;
+      const timedOut = Date.now() - startedAt > RESNAPSHOT_MAX_WAIT_MS;
+      if (drained || timedOut) {
+        // snapshotAndSend reads seqCounter after awaiting the emulator, so the
+        // client's lastSeq jumps to "now" and the withheld frames (already in
+        // the snapshot) are never replayed. Clear pending only after it sends.
+        void this.snapshotAndSend(terminal, ws).finally(() => {
+          this.resnapshotPending.delete(ws);
+        });
+        return;
+      }
+      setTimeout(poll, RESNAPSHOT_POLL_MS);
+    };
+    setTimeout(poll, RESNAPSHOT_POLL_MS);
+  }
+
   // -----------------------------------------------------------------------
   // Private: handleReconnectFailure — handle failed reconnection
   // -----------------------------------------------------------------------
 
   private broadcastOutput(terminal: ManagedTerminal, data: string): void {
-    const msg = JSON.stringify({ data, type: 'output' });
+    // Assign a sequence number and append to the replay ring before broadcasting.
+    const seq = this.appendSeqRing(terminal, data);
+    const msg = JSON.stringify({ data, seq, type: 'output' });
 
+    // Fallback mode (SHOOTER_SNAPSHOT_FALLBACK=raw): no emulator, so a slow
+    // client cannot be resnapshotted — keep the legacy drop-oldest behaviour.
+    if (!terminal.emulator) {
+      this.broadcastOutputLegacy(terminal, msg);
+      return;
+    }
+
+    const msgSize = Buffer.byteLength(msg, 'utf8');
     for (const ws of terminal.clients) {
-      // Skip if WebSocket has too much queued already
-      if (ws.bufferedAmount > MAX_OUTPUT_BUFFER_BYTES) {
-        this.safeSend(ws, JSON.stringify({ bytes: data.length, type: 'output-dropped' }));
+      // A converging client receives no live frames until its snapshot is sent;
+      // buffering them here would just re-overflow the socket.
+      if (this.resnapshotPending.has(ws)) {
         continue;
       }
 
@@ -545,9 +749,41 @@ class PtyManager {
         continue;
       }
 
-      const msgSize = Buffer.byteLength(msg, 'utf8');
+      // Socket- or buffer-level overflow ⇒ the client cannot keep up. Converge
+      // it to the current screen via resnapshot instead of dropping bytes (G1).
+      if (
+        ws.bufferedAmount > MAX_OUTPUT_BUFFER_BYTES ||
+        buffer.size + msgSize > MAX_OUTPUT_BUFFER_BYTES
+      ) {
+        this.beginResnapshot(terminal, ws);
+        continue;
+      }
 
-      // Check backpressure: if buffer exceeds limit, drop oldest data
+      buffer.data.push(msg);
+      buffer.size += msgSize;
+      this.flushOutputBuffer(ws, buffer);
+    }
+  }
+
+  /**
+   * Legacy broadcast path used only when the emulator is disabled
+   * (SHOOTER_SNAPSHOT_FALLBACK=raw). Drops the oldest buffered output to make
+   * room and notifies the client; there is no snapshot to converge it to.
+   */
+  private broadcastOutputLegacy(terminal: ManagedTerminal, msg: string): void {
+    const msgSize = Buffer.byteLength(msg, 'utf8');
+    for (const ws of terminal.clients) {
+      // Skip if the socket has too much queued already.
+      if (ws.bufferedAmount > MAX_OUTPUT_BUFFER_BYTES) {
+        this.safeSend(ws, JSON.stringify({ bytes: msgSize, type: 'output-dropped' }));
+        continue;
+      }
+
+      const buffer = terminal.outputBuffers.get(ws);
+      if (!buffer) {
+        continue;
+      }
+
       if (buffer.size + msgSize > MAX_OUTPUT_BUFFER_BYTES) {
         let droppedBytes = 0;
         while (buffer.size + msgSize > MAX_OUTPUT_BUFFER_BYTES && buffer.data.length > 0) {
@@ -558,21 +794,13 @@ class PtyManager {
             droppedBytes += droppedSize;
           }
         }
-
-        // Notify client of dropped output
         if (droppedBytes > 0) {
-          const dropMsg = JSON.stringify({
-            bytes: droppedBytes,
-            type: 'output-dropped',
-          });
-          this.safeSend(ws, dropMsg);
+          this.safeSend(ws, JSON.stringify({ bytes: droppedBytes, type: 'output-dropped' }));
         }
       }
 
-      // Buffer the message and attempt to send
       buffer.data.push(msg);
       buffer.size += msgSize;
-
       this.flushOutputBuffer(ws, buffer);
     }
   }
@@ -608,6 +836,10 @@ class PtyManager {
       openCodeWatcher.stop(terminal.openCodeSessionId, terminal.openCodeNoopCb);
       terminal.openCodeNoopCb = null;
     }
+
+    // Dispose the server-side emulator (frees its parser/buffer state)
+    terminal.emulator?.dispose();
+    terminal.emulator = null;
 
     // Disconnect from holder (but don't kill it — it may already be gone)
     terminal.pty.disconnect();
@@ -737,6 +969,7 @@ class PtyManager {
       createdAt: new Date(record.createdAt),
       currentCwd: null,
       cwd: record.cwd,
+      emulator: SNAPSHOT_ENABLED ? new TerminalEmulator(record.cols, record.rows) : null,
       exitCode: connectResult.exitCode,
       exitedAt: record.exitedAt ? new Date(record.exitedAt) : null,
       holderPid: record.holderPid ?? 0,
@@ -750,11 +983,21 @@ class PtyManager {
       pty: client,
       rows: record.rows,
       scrollback: connectResult.scrollback,
+      seqCounter: 0,
+      seqRing: [],
       sessionFile: record.sessionFile ?? null,
       socketPath: record.socketPath,
       status: connectResult.exited ? 'exited' : 'running',
       watcherOffset: 0,
     };
+
+    // Seed the fresh emulator with the holder's retained scrollback so a
+    // snapshot taken right after a server restart reflects the screen as it was,
+    // not a blank buffer. The scrollback is raw PTY bytes (escape sequences
+    // included), which the emulator parses into the current screen state.
+    if (terminal.emulator && connectResult.scrollback.length > 0) {
+      terminal.emulator.write(connectResult.scrollback);
+    }
 
     // If the PTY already exited, update SQLite and add to Map for visibility
     if (connectResult.exited) {
@@ -1093,6 +1336,7 @@ class PtyManager {
     });
 
     client.onOutput((data: string) => {
+      terminal.emulator?.write(data);
       this.appendScrollback(terminal, data);
       this.broadcastOutput(terminal, data);
     });

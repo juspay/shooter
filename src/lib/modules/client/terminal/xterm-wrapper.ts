@@ -138,6 +138,23 @@ export async function createTerminal(options: TerminalOptions): Promise<Terminal
   let reconnectTimer: null | ReturnType<typeof setTimeout> = null;
   let reconnectDelay = 1000;
   let disposed = false;
+  let lastSeq = 0; // highest output seq seen; sent on reconnect by Phase 2
+
+  // Reconnect with exponential backoff + jitter. The jitter spreads a fleet of
+  // clients out so they don't reconnect in lockstep after a server restart.
+  function scheduleReconnect(): void {
+    if (disposed) {
+      return;
+    }
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+    }
+    const jitter = Math.random() * reconnectDelay * 0.5;
+    reconnectTimer = setTimeout(() => {
+      reconnectDelay = Math.min(reconnectDelay * 2, 30_000);
+      void connect();
+    }, reconnectDelay + jitter);
+  }
 
   async function connect(): Promise<void> {
     if (disposed) {
@@ -151,10 +168,7 @@ export async function createTerminal(options: TerminalOptions): Promise<Terminal
       // Ticket fetch failed — schedule a retry
       if (!disposed) {
         options.onDisconnect?.();
-        reconnectTimer = setTimeout(() => {
-          reconnectDelay = Math.min(reconnectDelay * 2, 30_000);
-          void connect();
-        }, reconnectDelay);
+        scheduleReconnect();
       }
       return;
     }
@@ -163,7 +177,14 @@ export async function createTerminal(options: TerminalOptions): Promise<Terminal
       return;
     }
 
-    ws = new WebSocket(`${options.wsUrl}?ticket=${ticket}`);
+    // Advertise snapshot capability so the server sends a serialized
+    // current-screen {snapshot} on join (correct for alt-screen TUIs) instead
+    // of a raw scrollback replay. On a reconnect (lastSeq > 0) also pass the
+    // last applied seq so the server replays only the missing frames from its
+    // ring — a seamless catch-up — falling back to a snapshot if the gap is
+    // too old to bridge.
+    const resume = lastSeq > 0 ? `&lastSeq=${String(lastSeq)}` : '';
+    ws = new WebSocket(`${options.wsUrl}?ticket=${ticket}&caps=snapshot${resume}`);
 
     ws.onopen = (): void => {
       reconnectDelay = 1000; // Reset backoff
@@ -173,6 +194,22 @@ export async function createTerminal(options: TerminalOptions): Promise<Terminal
     ws.onmessage = (event: MessageEvent): void => {
       const msg = JSON.parse(event.data as string) as WsTerminalInboundMessage;
       if (msg.type === 'output') {
+        if (typeof msg.seq === 'number') {
+          // Drop frames already covered by a snapshot or reconnect replay —
+          // the snapshot's seq is the high-water mark (foundation contract §1.1).
+          if (msg.seq <= lastSeq) {
+            return;
+          }
+          lastSeq = msg.seq;
+        }
+        term.write(msg.data ?? '');
+      } else if (msg.type === 'snapshot') {
+        // Authoritative current-screen snapshot — clear and restore, then the
+        // live tail (output frames with seq > this) applies on top.
+        term.reset();
+        if (typeof msg.seq === 'number') {
+          lastSeq = msg.seq;
+        }
         term.write(msg.data ?? '');
       } else if (msg.type === 'scrollback') {
         term.write(msg.data ?? '');
@@ -185,7 +222,14 @@ export async function createTerminal(options: TerminalOptions): Promise<Terminal
         }
         options.onExit?.(msg.code ?? 0);
       } else if (msg.type === 'output-dropped') {
-        term.write(`\r\n\x1b[33m[${String(msg.bytes)} bytes dropped]\x1b[0m\r\n`);
+        // The server withholds further frames and resnapshots us to the current
+        // screen once our socket drains (Phase 2). Show a transient notice; the
+        // incoming snapshot resets the screen and clears it.
+        const note =
+          typeof msg.bytes === 'number' && msg.bytes > 0
+            ? `[${String(msg.bytes)} bytes dropped — resyncing…]`
+            : '[resyncing…]';
+        term.write(`\r\n\x1b[33m${note}\x1b[0m\r\n`);
       } else if (msg.type === 'activity') {
         options.onActivity?.(msg.active ?? false);
       } else if (msg.type === 'cwd') {
@@ -204,11 +248,7 @@ export async function createTerminal(options: TerminalOptions): Promise<Terminal
         return;
       }
       options.onDisconnect?.();
-      // Exponential backoff reconnect
-      reconnectTimer = setTimeout(() => {
-        reconnectDelay = Math.min(reconnectDelay * 2, 30_000);
-        void connect();
-      }, reconnectDelay);
+      scheduleReconnect();
     };
   }
 
@@ -258,7 +298,7 @@ export async function createTerminal(options: TerminalOptions): Promise<Terminal
     }
   }
 
-  return { dispose, fitAddon, sendInput, term };
+  return { dispose, fitAddon, getLastSeq: () => lastSeq, sendInput, term };
 }
 
 // Helper to send signals
