@@ -1,3 +1,9 @@
+## [1.24.0](https://github.com/juspay/shooter/compare/v1.23.0...v1.24.0) (2026-06-20)
+
+### Features
+
+* **(terminal-sync):**  Phase 3 — driver-authoritative resize & coherence ([c1b0b69](https://github.com/juspay/shooter/commit/c1b0b6912f2cf6912895075addb5214e23eca667))
+
 ## [1.23.0](https://github.com/juspay/shooter/compare/v1.22.0...v1.23.0) (2026-06-20)
 
 ### Features
