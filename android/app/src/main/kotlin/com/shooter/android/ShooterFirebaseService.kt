@@ -49,6 +49,8 @@ class ShooterFirebaseService : FirebaseMessagingService() {
             val json = JSONObject().apply {
                 put("token", token)
                 put("platform", "android")
+                put("deviceId", prefs.stableDeviceId)
+                put("deviceName", android.os.Build.MODEL)
             }
 
             val body = json.toString()
