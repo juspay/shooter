@@ -31,6 +31,24 @@ export interface APNsTokenResult {
 
 export type AppEnv = 'production' | 'sandbox';
 
+/**
+ * A registered device as exposed by GET /api/device-token. The raw push token
+ * is replaced by a masked form so the registered-devices UI/logs never carry a
+ * full token.
+ */
+export interface DeviceListItem {
+  appEnv: AppEnv;
+  deviceId: null | string;
+  failureCount: number;
+  friendlyName: null | string;
+  id: string;
+  isActive: boolean;
+  lastSeenAt: string;
+  platform: DevicePlatform;
+  registeredAt: string;
+  tokenMasked: string;
+}
+
 export type DevicePlatform = 'android' | 'ios';
 
 /** One registered push device. Mirrors a `device_tokens` row (camelCased). */

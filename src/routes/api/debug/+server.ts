@@ -1,6 +1,7 @@
 import { env } from '$env/dynamic/private';
 import { LibraryAPNsService } from '$lib/modules/server/apn/library-apns';
 import { validateAuth } from '$lib/modules/server/auth';
+import { deviceTokenStore } from '$lib/modules/server/push/device-token-store';
 import { json } from '@sveltejs/kit';
 
 import type { RequestHandler } from './$types';
@@ -12,7 +13,11 @@ export const GET: RequestHandler = ({ request }) => {
   }
 
   const apnsClient = new LibraryAPNsService();
-  const deviceToken = env.DEVICE_TOKEN?.trim();
+
+  // Prefer the most-recently-seen active iOS device from the registry; fall
+  // back to the legacy single-token env var for pre-migration deployments.
+  const iosDevices = deviceTokenStore.listActive('ios');
+  const deviceToken = iosDevices[0]?.token ?? env.DEVICE_TOKEN?.trim() ?? '';
 
   return json({
     apns: {
@@ -30,6 +35,10 @@ export const GET: RequestHandler = ({ request }) => {
     },
     environment: env.NODE_ENV || 'development',
     hasApiKey: !!env.API_KEY,
+    registeredDevices: {
+      android: deviceTokenStore.listActive('android').length,
+      ios: iosDevices.length,
+    },
     timestamp: new Date().toISOString(),
   });
 };

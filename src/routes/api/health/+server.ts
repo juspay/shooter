@@ -2,6 +2,7 @@ import type { FCMConfiguration, HealthChecks, HealthConfiguration, HealthStatus 
 
 import { env } from '$env/dynamic/private';
 import { validateAuth } from '$lib/modules/server/auth';
+import { deviceTokenStore } from '$lib/modules/server/push/device-token-store';
 import { getProviderAvailability } from '$lib/modules/shared/providers';
 import { json } from '@sveltejs/kit';
 import { readFileSync } from 'fs';
@@ -36,11 +37,18 @@ export const GET: RequestHandler = ({ request, url }) => {
   const hasClientEmail = !!env.FCM_CLIENT_EMAIL?.trim();
   const hasPrivateKey = !!env.FCM_PRIVATE_KEY?.trim();
 
+  // Multi-device registry counts (replace the single-token env check).
+  const iosDeviceCount = deviceTokenStore.listActive('ios').length;
+  const androidDeviceCount = deviceTokenStore.listActive('android').length;
+  const registeredDeviceCount = iosDeviceCount + androidDeviceCount;
+
   const checks: HealthChecks = {
     hasApiKey: !!env.API_KEY?.trim(),
     hasAPNsConfig: !!(env.APNS_KEY_ID?.trim() && env.APNS_TEAM_ID?.trim() && env.APNS_KEY?.trim()),
     hasBundleId: !!env.APNS_BUNDLE_ID?.trim(),
-    hasDeviceToken: !!env.DEVICE_TOKEN?.trim(),
+    // Backward-compat alias: true if any device is registered OR the legacy
+    // single-token env var is still set.
+    hasDeviceToken: registeredDeviceCount > 0 || !!env.DEVICE_TOKEN?.trim(),
     hasFCMConfig: hasProjectId && hasClientEmail && hasPrivateKey,
   };
 
@@ -68,7 +76,7 @@ export const GET: RequestHandler = ({ request, url }) => {
     warnings.push('APNs not configured — iOS push notifications disabled');
   }
   if (!checks.hasDeviceToken) {
-    warnings.push('No device token set — push notifications have no target');
+    warnings.push('No devices registered — push notifications have no target');
   }
   if (!checks.hasFCMConfig) {
     warnings.push('FCM not configured — Android push notifications disabled');
@@ -92,6 +100,11 @@ export const GET: RequestHandler = ({ request, url }) => {
     },
     checks,
     configuration,
+    devices: {
+      android: androidDeviceCount,
+      ios: iosDeviceCount,
+      total: registeredDeviceCount,
+    },
     environment: env.NODE_ENV || 'development',
     status: 'healthy' as HealthStatus,
     timestamp: new Date().toISOString(),

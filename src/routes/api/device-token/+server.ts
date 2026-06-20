@@ -1,12 +1,17 @@
+import type { AppEnv } from '$lib/types';
+
+import { env } from '$env/dynamic/private';
 import { validateAuth } from '$lib/modules/server/auth';
+import { toDeviceListItem } from '$lib/modules/server/push/device-format';
+import { deviceTokenStore } from '$lib/modules/server/push/device-token-store';
+import { shooterDataDir } from '$lib/modules/server/utils/shooter-home';
 import { json } from '@sveltejs/kit';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
-import { homedir } from 'os';
 import { join } from 'path';
 
 import type { RequestHandler } from './$types';
 
-const TOKENS_DIR = join(homedir(), '.shooter');
+const TOKENS_DIR = shooterDataDir();
 const TOKENS_FILE = join(TOKENS_DIR, 'device-tokens.json');
 
 function readTokens(): { android?: string; ios?: string } {
@@ -25,6 +30,14 @@ function readTokens(): { android?: string; ios?: string } {
   return {};
 }
 
+function resolveAppEnv(requested: unknown): AppEnv {
+  if (requested === 'production' || requested === 'sandbox') {
+    return requested;
+  }
+  // Old apps omit appEnv → match the server's configured APNs gateway.
+  return env.APNS_PRODUCTION === 'true' ? 'production' : 'sandbox';
+}
+
 function writeTokens(tokens: { android?: string; ios?: string }): void {
   if (!existsSync(TOKENS_DIR)) {
     mkdirSync(TOKENS_DIR, { mode: 0o700, recursive: true });
@@ -32,13 +45,69 @@ function writeTokens(tokens: { android?: string; ios?: string }): void {
   writeFileSync(TOKENS_FILE, JSON.stringify(tokens, null, 2), { encoding: 'utf-8', mode: 0o600 });
 }
 
+/** List all registered devices (masked tokens) plus per-platform counts. */
+export const GET: RequestHandler = ({ request }) => {
+  const authError = validateAuth(request);
+  if (authError) {
+    return authError;
+  }
+
+  const ios = deviceTokenStore.listActive('ios');
+  const android = deviceTokenStore.listActive('android');
+  const devices = [...ios, ...android].map(toDeviceListItem);
+
+  return json({
+    counts: { android: android.length, ios: ios.length, total: devices.length },
+    devices,
+  });
+};
+
+/** Remove a registered device by its registry row id. */
+export const DELETE: RequestHandler = async ({ request }) => {
+  const authError = validateAuth(request);
+  if (authError) {
+    return authError;
+  }
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
+
+  const id =
+    body && typeof body === 'object' && !Array.isArray(body)
+      ? (body as { id?: unknown }).id
+      : undefined;
+  if (typeof id !== 'string' || id.trim().length === 0) {
+    return json({ error: 'Missing required field: id' }, { status: 400 });
+  }
+
+  const removed = deviceTokenStore.deleteById(id.trim());
+  if (removed === 0) {
+    // Unknown id or already-removed device → 404 so a caller checking only the
+    // HTTP status can tell "already gone" apart from a real deletion.
+    return json({ error: 'Device not found or already removed', id: id.trim() }, { status: 404 });
+  }
+  return json({ removed, success: true });
+};
+
 export const POST: RequestHandler = async ({ request }) => {
   const authError = validateAuth(request);
   if (authError) {
     return authError;
   }
 
-  let body: { bundleId?: string; deviceToken?: string; platform: string; token?: string };
+  let body: {
+    appEnv?: string;
+    bundleId?: string;
+    deviceId?: string;
+    deviceName?: string;
+    deviceToken?: string;
+    platform: string;
+    token?: string;
+  };
   try {
     const parsed: unknown = await request.json();
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
@@ -63,8 +132,24 @@ export const POST: RequestHandler = async ({ request }) => {
     return json({ error: 'Missing device token (deviceToken or token)' }, { status: 400 });
   }
   const token = rawToken.trim();
+  const deviceId = body.deviceId?.trim() || null;
+  const friendlyName = body.deviceName?.trim() || null;
+  const bundleId = body.bundleId?.trim() || null;
+  const appEnv = resolveAppEnv(body.appEnv);
 
-  // Persist to ~/.shooter/device-tokens.json
+  // Register in the multi-device SQLite registry (one row per device).
+  const record = deviceTokenStore.upsert({
+    appEnv,
+    bundleId,
+    deviceId,
+    friendlyName,
+    platform,
+    token,
+  });
+
+  // Dual-write the legacy ~/.shooter/device-tokens.json during the transition.
+  // /api/notify still reads it (and env.DEVICE_TOKEN) until the PR-5 fan-out
+  // cutover; keeping both in sync means there is no regression window.
   const tokens = readTokens();
   tokens[platform] = token;
   writeTokens(tokens);
@@ -79,9 +164,13 @@ export const POST: RequestHandler = async ({ request }) => {
     process.env.DEVICE_TOKEN = token;
   }
 
-  console.log(`[device-token] Registered ${platform} token (length: ${token.length})`);
+  console.log(
+    `[device-token] Registered ${platform} device ${record.id} (token len ${token.length})`
+  );
 
   return json({
+    deviceId: record.deviceId,
+    id: record.id,
     platform,
     success: true,
     timestamp: new Date().toISOString(),
