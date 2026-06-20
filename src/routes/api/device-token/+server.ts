@@ -4,31 +4,9 @@ import { env } from '$env/dynamic/private';
 import { validateAuth } from '$lib/modules/server/auth';
 import { toDeviceListItem } from '$lib/modules/server/push/device-format';
 import { deviceTokenStore } from '$lib/modules/server/push/device-token-store';
-import { shooterDataDir } from '$lib/modules/server/utils/shooter-home';
 import { json } from '@sveltejs/kit';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
-import { join } from 'path';
 
 import type { RequestHandler } from './$types';
-
-const TOKENS_DIR = shooterDataDir();
-const TOKENS_FILE = join(TOKENS_DIR, 'device-tokens.json');
-
-function readTokens(): { android?: string; ios?: string } {
-  try {
-    if (existsSync(TOKENS_FILE)) {
-      const parsed: unknown = JSON.parse(readFileSync(TOKENS_FILE, 'utf-8'));
-      // Guard against valid-but-wrong JSON (null, array, number, string)
-      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        return {};
-      }
-      return parsed as { android?: string; ios?: string };
-    }
-  } catch {
-    // Corrupt file -- start fresh
-  }
-  return {};
-}
 
 function resolveAppEnv(requested: unknown): AppEnv {
   if (requested === 'production' || requested === 'sandbox') {
@@ -36,13 +14,6 @@ function resolveAppEnv(requested: unknown): AppEnv {
   }
   // Old apps omit appEnv → match the server's configured APNs gateway.
   return env.APNS_PRODUCTION === 'true' ? 'production' : 'sandbox';
-}
-
-function writeTokens(tokens: { android?: string; ios?: string }): void {
-  if (!existsSync(TOKENS_DIR)) {
-    mkdirSync(TOKENS_DIR, { mode: 0o700, recursive: true });
-  }
-  writeFileSync(TOKENS_FILE, JSON.stringify(tokens, null, 2), { encoding: 'utf-8', mode: 0o600 });
 }
 
 /** List all registered devices (masked tokens) plus per-platform counts. */
@@ -137,7 +108,9 @@ export const POST: RequestHandler = async ({ request }) => {
   const bundleId = body.bundleId?.trim() || null;
   const appEnv = resolveAppEnv(body.appEnv);
 
-  // Register in the multi-device SQLite registry (one row per device).
+  // Register in the multi-device SQLite registry (one row per device). This is
+  // now the single source of truth — /api/notify reads it directly, so there is
+  // no longer a legacy JSON dual-write or a process.env.DEVICE_TOKEN mutation.
   const record = deviceTokenStore.upsert({
     appEnv,
     bundleId,
@@ -146,23 +119,6 @@ export const POST: RequestHandler = async ({ request }) => {
     platform,
     token,
   });
-
-  // Dual-write the legacy ~/.shooter/device-tokens.json during the transition.
-  // /api/notify still reads it (and env.DEVICE_TOKEN) until the PR-5 fan-out
-  // cutover; keeping both in sync means there is no regression window.
-  const tokens = readTokens();
-  tokens[platform] = token;
-  writeTokens(tokens);
-
-  // Update in-memory env so APNs can use it immediately (iOS is the primary APNs target).
-  // SvelteKit's $env/dynamic/private exposes a Proxy whose getter reads process.env at
-  // access time but whose setter does NOT propagate to process.env. Assigning via the
-  // Proxy is a silent no-op, so subsequent /api/notify calls still read the stale value
-  // from .env. Write straight to process.env so env.DEVICE_TOKEN picks up the new token
-  // on the next read.
-  if (platform === 'ios') {
-    process.env.DEVICE_TOKEN = token;
-  }
 
   console.log(
     `[device-token] Registered ${platform} device ${record.id} (token len ${token.length})`

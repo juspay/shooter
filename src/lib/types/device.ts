@@ -120,6 +120,15 @@ export interface MultiDeviceNotifyResult {
   timestamp: string;
 }
 
+/** Combined APNs + FCM delivery summary for one /api/notify fan-out (PR 5). */
+export interface NotifyDeliverySummary {
+  delivered: boolean;
+  failed: number;
+  sent: number;
+  staleTokens: string[];
+  succeededTokens: string[];
+}
+
 /** Consecutive delivery failures before a token is considered dead. */
 export const MAX_FAILURE_COUNT = 3;
 

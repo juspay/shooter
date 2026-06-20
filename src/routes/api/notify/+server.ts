@@ -1,38 +1,26 @@
-import type { NotificationData, OptionChoice, ResponseKind } from '$lib/types';
+import type {
+  APNsFanOutResult,
+  AppEnv,
+  DeviceRecord,
+  FCMFanOutResult,
+  NotificationData,
+  OptionChoice,
+  ResponseKind,
+} from '$lib/types';
 
 import { env } from '$env/dynamic/private';
 import { LibraryAPNsService } from '$lib/modules/server/apn/library-apns';
 import { addNotification, getNotifications } from '$lib/modules/server/apn/notification-history';
+import { selectPlatforms, summarizeNotifyDelivery } from '$lib/modules/server/apn/notify-fanout';
 import { createPendingRequest } from '$lib/modules/server/apn/pending-requests';
 import { validateAuth } from '$lib/modules/server/auth';
-import { isFCMConfigured, sendFCMNotification } from '$lib/modules/server/fcm/fcm-service.js';
+import { isFCMConfigured, sendFCMNotificationMulti } from '$lib/modules/server/fcm/fcm-service.js';
+import { deviceTokenStore } from '$lib/modules/server/push/device-token-store';
 import { toErrorMessage } from '$lib/modules/server/utils/error';
 import { broadcastEvent } from '$lib/modules/server/ws/server';
 import { json } from '@sveltejs/kit';
-import { existsSync, readFileSync } from 'fs';
-import { homedir } from 'os';
-import { join } from 'path';
 
 import type { RequestHandler } from './$types';
-
-// Reads tokens persisted by /api/device-token — populated automatically when
-// the Android or iOS app registers on first launch.
-function readPersistedDeviceToken(platform: 'android' | 'ios'): string | undefined {
-  const tokensFile = join(homedir(), '.shooter', 'device-tokens.json');
-  if (!existsSync(tokensFile)) {
-    return undefined;
-  }
-  try {
-    const parsed: unknown = JSON.parse(readFileSync(tokensFile, 'utf-8'));
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      const value = (parsed as Record<string, unknown>)[platform];
-      return typeof value === 'string' && value ? value : undefined;
-    }
-  } catch {
-    // corrupt / unreadable — fall through
-  }
-  return undefined;
-}
 
 // Singleton APNs client - reuses HTTP/2 connection across requests
 let apnsSingleton: LibraryAPNsService | null = null;
@@ -41,6 +29,73 @@ function getAPNsClient(): LibraryAPNsService {
     apnsSingleton = new LibraryAPNsService();
   }
   return apnsSingleton;
+}
+
+const EMPTY_APNS_RESULT: APNsFanOutResult = {
+  results: [],
+  staleTokens: [],
+  totalFailed: 0,
+  totalSent: 0,
+};
+const EMPTY_FCM_RESULT: FCMFanOutResult = {
+  failureCount: 0,
+  results: [],
+  staleTokens: [],
+  successCount: 0,
+};
+
+/** Android tokens to deliver to: active registry rows, else the ANDROID_DEVICE_TOKEN seed. */
+function resolveAndroidTokens(): string[] {
+  const rows = deviceTokenStore.listActive('android');
+  if (rows.length > 0) {
+    return rows.map((r) => r.token);
+  }
+  const seed = env.ANDROID_DEVICE_TOKEN?.trim();
+  return seed ? [seed] : [];
+}
+
+/**
+ * iOS devices to deliver to: an explicit request override, else all active
+ * registry rows for the server's gateway, else the legacy DEVICE_TOKEN env seed
+ * (so .env-only deployments keep working without ever writing to the DB).
+ */
+function resolveIosDevices(override?: string): DeviceRecord[] {
+  const appEnv = serverApnEnv();
+  if (override) {
+    return [syntheticSeedDevice(override, 'ios', appEnv)];
+  }
+  const rows = deviceTokenStore.listActiveForEnv('ios', appEnv);
+  if (rows.length > 0) {
+    return rows;
+  }
+  const seed = env.DEVICE_TOKEN?.trim();
+  return seed ? [syntheticSeedDevice(seed, 'ios', appEnv)] : [];
+}
+
+function serverApnEnv(): AppEnv {
+  return env.APNS_PRODUCTION === 'true' ? 'production' : 'sandbox';
+}
+
+/** A throwaway DeviceRecord wrapping a legacy env-seed or request-override token. */
+function syntheticSeedDevice(
+  token: string,
+  platform: 'android' | 'ios',
+  appEnv: AppEnv
+): DeviceRecord {
+  const nowIso = new Date().toISOString();
+  return {
+    appEnv,
+    bundleId: null,
+    deviceId: null,
+    failureCount: 0,
+    friendlyName: null,
+    id: `seed-${platform}`,
+    isActive: true,
+    lastSeenAt: nowIso,
+    platform,
+    registeredAt: nowIso,
+    token,
+  };
 }
 
 // NOTIFICATION DEDUPLICATION CACHE
@@ -156,6 +211,13 @@ function intelligentNotificationFilter(
   waitForResponse = false
 ): { reason: string; send: boolean } {
   const source = data?.source || 'unknown';
+
+  // Never filter a bidirectional (waitForResponse) request: the caller blocks
+  // on polling, and a filtered 200 would read as success:true and hang it for
+  // the full permission timeout. These are also dedup-exempt below.
+  if (waitForResponse) {
+    return { reason: 'Bidirectional request — never filtered', send: true };
+  }
 
   // Check for duplicate notifications first
   if (isDuplicateNotification(title, message, data, waitForResponse)) {
@@ -286,7 +348,7 @@ function releaseNotification(title: string, message: string, data?: Notification
 // helpers. This handler grew past the 300-line guideline organically; PR-2
 // adds 4 lines for dynamic-options fields. A dedicated cleanup PR is the
 // right place to split it, not a feature PR.
-// eslint-disable-next-line max-lines-per-function
+
 export const POST: RequestHandler = async ({ request }) => {
   try {
     // Use singleton APNs client to reuse HTTP/2 connection
@@ -441,169 +503,99 @@ export const POST: RequestHandler = async ({ request }) => {
       title,
     };
 
-    // Platform-based routing: Android (FCM) or iOS (APNs)
-    const platform = env.DEVICE_PLATFORM || 'ios';
+    // Multi-device fan-out. DEVICE_PLATFORM is now a FILTER (unset → both
+    // platforms), not a binary switch. A request-scoped deviceToken override
+    // (config "send test") bypasses the registry and targets one token.
+    const override = requestDeviceToken?.trim() || undefined;
+    const { doAndroid, doIos } = selectPlatforms(env.DEVICE_PLATFORM);
 
-    if (platform === 'android') {
-      // --- FCM (Android) path ---
-      if (!isFCMConfigured()) {
-        return json(
-          {
-            details:
-              'Missing FCM_PROJECT_ID, FCM_CLIENT_EMAIL, or FCM_PRIVATE_KEY environment variables',
-            error: 'FCM not configured',
-          },
-          { status: 500 }
-        );
-      }
+    // An override is a single token of unknown platform; honour the platform
+    // FILTER (unset → try both) rather than assuming iOS, so an Android override
+    // is not silently dropped when DEVICE_PLATFORM is unset. Firing a token at
+    // the wrong gateway is harmless here because override sends never prune (see
+    // the pruning guard below).
+    const iosDevices: DeviceRecord[] = doIos
+      ? override
+        ? resolveIosDevices(override)
+        : resolveIosDevices()
+      : [];
 
-      // Honor request-scoped deviceToken, then the Android-specific env var,
-      // then the token auto-registered by the Android app via /api/device-token.
-      // env.DEVICE_TOKEN is intentionally NOT in this chain: the iOS branch
-      // treats it as an APNs token (see below), and letting it bleed into the
-      // FCM path would ship an APNs token to FCM in mixed-platform setups.
-      const androidToken =
-        requestDeviceToken?.trim() ||
-        env.ANDROID_DEVICE_TOKEN?.trim() ||
-        readPersistedDeviceToken('android');
+    const androidTokens: string[] = doAndroid
+      ? override
+        ? [override]
+        : resolveAndroidTokens()
+      : [];
 
-      if (!androidToken) {
-        return json(
-          {
-            details:
-              'No Android device token available — set ANDROID_DEVICE_TOKEN, pass deviceToken in the request body, or open the Android app so it can auto-register its FCM token.',
-            error: 'No device token configured',
-          },
-          { status: 500 }
-        );
-      }
+    // Collapse permission pushes by requestId so a re-notify replaces (not
+    // stacks) the prompt on every device, and answering on one clears it.
+    const collapseId = waitForResponse ? canonicalRequestId : undefined;
 
-      const fcmResult = await sendFCMNotification(androidToken, payload);
+    const [apnsResult, fcmResult] = await Promise.all([
+      iosDevices.length > 0 && apnsClient.isConfigured()
+        ? apnsClient.sendToMany(iosDevices, payload, collapseId)
+        : Promise.resolve(EMPTY_APNS_RESULT),
+      androidTokens.length > 0 && isFCMConfigured()
+        ? sendFCMNotificationMulti(androidTokens, payload)
+        : Promise.resolve(EMPTY_FCM_RESULT),
+    ]);
 
-      if (fcmResult.success) {
-        // Record in dedup cache only after successful delivery
-        recordNotification(title, message, data);
+    const summary = summarizeNotifyDelivery(apnsResult, fcmResult);
 
-        if (waitForResponse) {
-          createPendingRequest(canonicalRequestId, {
-            options,
-            question: question ?? null,
-            responseKind: responseKind ?? 'hook',
-            sessionId: (data?.sessionId as string) || '',
-            toolInput: (data?.toolInput as Record<string, unknown>) || {},
-            toolName: (data?.toolName as string) || '',
-          });
-        }
-
-        addNotification(buildNotificationRecord(canonicalRequestId, title, message, 'sent', data));
-
-        return json({
-          message: 'Notification sent successfully',
-          requestId: canonicalRequestId,
-          result: { messageId: fcmResult.messageId },
-          success: true,
-          timestamp: new Date().toISOString(),
-        });
-      } else {
-        console.error(`[notify] FCM delivery failed: ${fcmResult.error}`);
-        releaseNotification(title, message, data); // free the reserved dedup slot for a retry
-
-        addNotification(
-          buildNotificationRecord(
-            canonicalRequestId,
-            title,
-            message,
-            'failed',
-            data,
-            fcmResult.error
-          )
-        );
-
-        return json(
-          {
-            details: fcmResult.error,
-            error: 'Failed to send notification',
-            requestId: canonicalRequestId,
-            timestamp: new Date().toISOString(),
-          },
-          { status: 500 }
-        );
-      }
-    } else {
-      // --- APNs (iOS) path ---
-      if (!apnsClient.isConfigured()) {
-        return json(
-          {
-            details: 'Missing APNS_KEY, APNS_KEY_ID, or APNS_TEAM_ID environment variables',
-            error: 'APNs client not configured',
-          },
-          { status: 500 }
-        );
-      }
-
-      // Honor request-scoped deviceToken (e.g., from config page test),
-      // falling back to the server-wide environment variable.
-      const deviceToken = requestDeviceToken?.trim() || env.DEVICE_TOKEN?.trim();
-
-      if (!deviceToken) {
-        return json(
-          {
-            details:
-              'DEVICE_TOKEN environment variable is missing and no deviceToken in request body',
-            error: 'No device token configured',
-          },
-          { status: 500 }
-        );
-      }
-
-      try {
-        const result = await apnsClient.sendNotification(deviceToken, payload);
-
-        // Record in dedup cache only after successful delivery
-        recordNotification(title, message, data);
-
-        // If this is a bidirectional permission request, store it for polling
-        // only after confirming APNs delivery succeeded
-        if (waitForResponse) {
-          createPendingRequest(canonicalRequestId, {
-            options,
-            question: question ?? null,
-            responseKind: responseKind ?? 'hook',
-            sessionId: (data?.sessionId as string) || '',
-            toolInput: (data?.toolInput as Record<string, unknown>) || {},
-            toolName: (data?.toolName as string) || '',
-          });
-        }
-
-        addNotification(buildNotificationRecord(canonicalRequestId, title, message, 'sent', data));
-
-        return json({
-          message: 'Notification sent successfully',
-          requestId: canonicalRequestId,
-          result,
-          success: true,
-          timestamp: new Date().toISOString(),
-        });
-      } catch (notificationError) {
-        const notifErrMsg = toErrorMessage(notificationError);
-        console.error(`[notify] APNs delivery failed: ${notifErrMsg}`);
-        releaseNotification(title, message, data); // free the reserved dedup slot for a retry
-
-        addNotification(
-          buildNotificationRecord(canonicalRequestId, title, message, 'failed', data, notifErrMsg)
-        );
-
-        return json(
-          {
-            details: notifErrMsg,
-            error: 'Failed to send notification',
-            requestId: canonicalRequestId,
-            timestamp: new Date().toISOString(),
-          },
-          { status: 500 }
-        );
-      }
+    // Lazy prune dead tokens; bump last-seen for the ones that delivered.
+    // Never prune on an override send: the override token is a one-off explicit
+    // target (not necessarily a registry row), and firing it at the wrong
+    // gateway must not soft-delete a real device that happens to hold it.
+    const pruned =
+      !override && summary.staleTokens.length
+        ? deviceTokenStore.pruneByTokens(summary.staleTokens)
+        : 0;
+    if (summary.succeededTokens.length > 0) {
+      deviceTokenStore.touchLastSeen(summary.succeededTokens);
     }
+
+    // Keep the dedup reservation only on a clean, fully-successful delivery;
+    // otherwise release it so a legitimate retry is not blocked (a transient
+    // failure for one device must not poison the cache for everyone).
+    if (summary.delivered && summary.failed === 0) {
+      recordNotification(title, message, data);
+    } else {
+      releaseNotification(title, message, data);
+    }
+
+    // Register the pending request for bidirectional polling only if at least
+    // one device received the push — otherwise no one can answer.
+    if (waitForResponse && summary.delivered) {
+      createPendingRequest(canonicalRequestId, {
+        options,
+        question: question ?? null,
+        responseKind: responseKind ?? 'hook',
+        sessionId: (data?.sessionId as string) || '',
+        toolInput: (data?.toolInput as Record<string, unknown>) || {},
+        toolName: (data?.toolName as string) || '',
+      });
+    }
+
+    addNotification(
+      buildNotificationRecord(
+        canonicalRequestId,
+        title,
+        message,
+        summary.delivered ? 'sent' : 'failed',
+        data,
+        summary.delivered ? null : 'No registered device accepted the notification'
+      )
+    );
+
+    // 200 even when nothing was delivered (success:false) so the notifier hook
+    // fast-fails instead of hanging for the full permission timeout.
+    return json({
+      failed: summary.failed,
+      pruned,
+      requestId: canonicalRequestId,
+      sent: summary.sent,
+      success: summary.delivered,
+      timestamp: new Date().toISOString(),
+    });
   } catch (error) {
     console.error('Notification error:', error);
     return json(

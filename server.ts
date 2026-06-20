@@ -23,6 +23,7 @@ if (!existsSync(handlerPath)) {
 }
 
 const { handler } = await import('./build/handler.js');
+import { deviceTokenStore } from './src/lib/modules/server/push/device-token-store.js';
 import { startAutopilotEngine } from './src/lib/modules/server/sessions/autopilot-engine.js';
 import { isReadOnlyProviderPath } from './src/lib/modules/server/sessions/provider-paths.js';
 import { sosCoordinator } from './src/lib/modules/server/sos/coordinator.js';
@@ -251,6 +252,10 @@ server.once('error', (err: NodeJS.ErrnoException): void => {
 
 server.listen(requestedPort, () => {
   console.log(`Shooter server running on http://localhost:${requestedPort}`);
+  // Multi-device registry: import legacy device-tokens.json + setup seeds, then
+  // drop long-dead (inactive >30d) rows. Runs once at startup.
+  deviceTokenStore.migrate();
+  deviceTokenStore.startupCleanup();
   startAutopilotEngine();
 });
 
