@@ -9,6 +9,15 @@
 // $lib/types barrel stays safe to import from client bundles. Row-id
 // generation lives in the server-only DeviceTokenStore via crypto.randomUUID().
 
+/** One device's raw APNs delivery outcome, before aggregation (PR 3 fan-out). */
+export interface ApnsDeliveryOutcome {
+  appEnv: AppEnv;
+  httpStatus: number;
+  reason: null | string;
+  registeredAt: string;
+  timestampMs: number;
+  token: string;
+}
 /** Aggregate APNs fan-out result across all iOS tokens (PR 3). */
 export interface APNsFanOutResult {
   results: APNsTokenResult[];
@@ -16,6 +25,7 @@ export interface APNsFanOutResult {
   totalFailed: number;
   totalSent: number;
 }
+
 /** Outcome of classifying a single APNs delivery result for pruning. */
 export type ApnsTokenDisposition = 'sent' | 'stale_token' | 'transient_error';
 
