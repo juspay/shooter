@@ -91,9 +91,11 @@ jobs:
         # Don't auto-fail the job on the action's exit code — the next step maps
         # the verdict to the check result explicitly.
         continue-on-error: true
-        # External consumer → published action. For strict supply-chain
-        # immutability pin the full commit SHA behind this ref.
-        uses: juspay/yama@v2.7.1
+        # External consumer → published action. Pinned to v2.6.0 to match
+        # juspay/neurolink's working setup — v2.7.1 stopped producing review runs
+        # on this repo. For strict supply-chain immutability pin the full commit
+        # SHA behind this ref.
+        uses: juspay/yama@v2.6.0
         with:
           github-token: ${{ secrets.YAMA_GITHUB_TOKEN }}
           ai-provider: litellm
