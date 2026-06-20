@@ -1,3 +1,9 @@
+## [1.24.1](https://github.com/juspay/shooter/compare/v1.24.0...v1.24.1) (2026-06-20)
+
+### Bug Fixes
+
+* **(notify):**  prefer persisted device token over stale env value ([2a3a0f4](https://github.com/juspay/shooter/commit/2a3a0f4359bcfdfab5c2b363235e5873d9eef577))
+
 ## [1.24.0](https://github.com/juspay/shooter/compare/v1.23.0...v1.24.0) (2026-06-20)
 
 ### Features

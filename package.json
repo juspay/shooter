@@ -1,6 +1,6 @@
 {
   "name": "@juspay/shooter",
-  "version": "1.24.0",
+  "version": "1.24.1",
   "description": "Bidirectional communication server for Claude Code and iOS — push notifications, remote terminal, session viewing",
   "type": "module",
   "packageManager": "pnpm@10.28.2",
