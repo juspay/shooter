@@ -19,9 +19,16 @@ export const GET: RequestHandler = async ({ request, url }) => {
 
   // Use a configured server URL from env when available (trusted), otherwise
   // fall back to url.origin (derived from the incoming request URL by SvelteKit).
-  const serverUrl = env.ORIGIN?.trim() || url.origin;
+  // Strip any trailing slash so registerUrl never becomes "https://x//api/...".
+  const serverUrl = (env.ORIGIN?.trim() || url.origin).replace(/\/+$/, '');
 
-  const configPayload = JSON.stringify({ apiKey, serverUrl });
+  // registerUrl lets a scanning app POST its push token straight to the
+  // device registry after pairing (multi-device auto-registration).
+  const configPayload = JSON.stringify({
+    apiKey,
+    registerUrl: `${serverUrl}/api/device-token`,
+    serverUrl,
+  });
 
   try {
     const dataUrl = await QRCode.toDataURL(configPayload, {

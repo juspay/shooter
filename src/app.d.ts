@@ -2,7 +2,11 @@
 
 declare global {
   interface ShooterBridge {
+    getApnsToken?: () => string;
     getConfig?: () => string;
+    getDeviceId?: () => string;
+    getDeviceName?: () => string;
+    getEnvironment?: () => string;
     getFcmToken?: () => string;
     getPlatform?: () => string;
     saveConfig?: (config: string) => void;
