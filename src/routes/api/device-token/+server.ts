@@ -10,31 +10,9 @@ import {
   MAX_NAME_LENGTH,
   MAX_TOKEN_LENGTH,
 } from '$lib/modules/server/push/device-token-store';
-import { shooterDataDir } from '$lib/modules/server/utils/shooter-home';
 import { json } from '@sveltejs/kit';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
-import { join } from 'path';
 
 import type { RequestHandler } from './$types';
-
-const TOKENS_DIR = shooterDataDir();
-const TOKENS_FILE = join(TOKENS_DIR, 'device-tokens.json');
-
-function readTokens(): { android?: string; ios?: string } {
-  try {
-    if (existsSync(TOKENS_FILE)) {
-      const parsed: unknown = JSON.parse(readFileSync(TOKENS_FILE, 'utf-8'));
-      // Guard against valid-but-wrong JSON (null, array, number, string)
-      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        return {};
-      }
-      return parsed as { android?: string; ios?: string };
-    }
-  } catch {
-    // Corrupt file -- start fresh
-  }
-  return {};
-}
 
 function resolveAppEnv(requested: unknown): AppEnv {
   if (requested === 'production' || requested === 'sandbox') {
@@ -42,13 +20,6 @@ function resolveAppEnv(requested: unknown): AppEnv {
   }
   // Old apps omit appEnv → match the server's configured APNs gateway.
   return env.APNS_PRODUCTION === 'true' ? 'production' : 'sandbox';
-}
-
-function writeTokens(tokens: { android?: string; ios?: string }): void {
-  if (!existsSync(TOKENS_DIR)) {
-    mkdirSync(TOKENS_DIR, { mode: 0o700, recursive: true });
-  }
-  writeFileSync(TOKENS_FILE, JSON.stringify(tokens, null, 2), { encoding: 'utf-8', mode: 0o600 });
 }
 
 /** List all registered devices (masked tokens) plus per-platform counts. */
@@ -97,19 +68,8 @@ export const DELETE: RequestHandler = async ({ request }) => {
     return json({ error: 'Device not found or already removed', id: id.trim() }, { status: 404 });
   }
 
-  // Keep the legacy single-token sinks in sync (symmetric with POST's dual-write).
-  // /api/notify still reads device-tokens.json + env.DEVICE_TOKEN until the PR-5
-  // fan-out cutover, so re-point them at the most-recently-seen surviving device
-  // (or clear them when none remain) — otherwise a just-deleted token keeps
-  // receiving pushes through the legacy path.
-  const iosFallback = deviceTokenStore.listActive('ios')[0]?.token ?? '';
-  const androidFallback = deviceTokenStore.listActive('android')[0]?.token ?? '';
-  writeTokens({
-    ...(iosFallback ? { ios: iosFallback } : {}),
-    ...(androidFallback ? { android: androidFallback } : {}),
-  });
-  process.env.DEVICE_TOKEN = iosFallback;
-
+  // Registry is the single source of truth post-cutover (/api/notify reads it
+  // directly), so removing the row fully stops delivery — no legacy sink to sync.
   return json({ removed, success: true });
 };
 
@@ -175,7 +135,9 @@ export const POST: RequestHandler = async ({ request }) => {
 
   const appEnv = resolveAppEnv(body.appEnv);
 
-  // Register in the multi-device SQLite registry (one row per device).
+  // Register in the multi-device SQLite registry (one row per device). This is
+  // now the single source of truth — /api/notify reads it directly, so there is
+  // no longer a legacy JSON dual-write or a process.env.DEVICE_TOKEN mutation.
   const record = deviceTokenStore.upsert({
     appEnv,
     bundleId,
@@ -190,29 +152,12 @@ export const POST: RequestHandler = async ({ request }) => {
   // back isn't this caller's (its deviceId differs from the requested one — incl.
   // a legacy null-deviceId caller hitting a token owned by a deviceId'd device),
   // surface a 409 instead of leaking the other device's metadata as a misleading
-  // success — and skip the legacy-sink write for a token we didn't actually claim.
+  // success.
   if (record.deviceId !== deviceId) {
     return json(
       { error: 'Token is already registered to a different active device' },
       { status: 409 }
     );
-  }
-
-  // Dual-write the legacy ~/.shooter/device-tokens.json during the transition.
-  // /api/notify still reads it (and env.DEVICE_TOKEN) until the PR-5 fan-out
-  // cutover; keeping both in sync means there is no regression window.
-  const tokens = readTokens();
-  tokens[platform] = token;
-  writeTokens(tokens);
-
-  // Update in-memory env so APNs can use it immediately (iOS is the primary APNs target).
-  // SvelteKit's $env/dynamic/private exposes a Proxy whose getter reads process.env at
-  // access time but whose setter does NOT propagate to process.env. Assigning via the
-  // Proxy is a silent no-op, so subsequent /api/notify calls still read the stale value
-  // from .env. Write straight to process.env so env.DEVICE_TOKEN picks up the new token
-  // on the next read.
-  if (platform === 'ios') {
-    process.env.DEVICE_TOKEN = token;
   }
 
   console.log(
