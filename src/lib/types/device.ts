@@ -86,6 +86,14 @@ export interface DeviceUpsertInput {
   token: string;
 }
 
+/** One device's raw FCM delivery outcome, before aggregation (PR 4 fan-out). */
+export interface FcmDeliveryOutcome {
+  errorCode: null | string;
+  messageId: null | string;
+  success: boolean;
+  token: string;
+}
+
 /** Aggregate FCM fan-out result across all Android tokens (PR 4). */
 export interface FCMFanOutResult {
   failureCount: number;
