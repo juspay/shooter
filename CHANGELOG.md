@@ -1,3 +1,9 @@
+## [1.23.0](https://github.com/juspay/shooter/compare/v1.22.0...v1.23.0) (2026-06-20)
+
+### Features
+
+* **(terminal-sync):**  live multi-client sync spine — sequencing, snapshot-on-join, reconnect resume ([aa4b37b](https://github.com/juspay/shooter/commit/aa4b37b275254d8b56f2644aa10d0155153c2968))
+
 ## [1.22.0](https://github.com/juspay/shooter/compare/v1.21.0...v1.22.0) (2026-06-13)
 
 ### Features
