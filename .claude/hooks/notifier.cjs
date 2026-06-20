@@ -60,7 +60,9 @@ if (!process.env.API_KEY && !process.env.SHOOTER_API_KEY) {
 
 // Authentication
 const API_KEY = process.env.API_KEY || process.env.SHOOTER_API_KEY;
-const DEVICE_TOKEN = process.env.SHOOTER_DEVICE_TOKEN || null;
+// SHOOTER_DEVICE_TOKEN is removed: the server now fans out to every device in
+// its registry (see /api/device-token). Set DEVICE_TOKEN in the server's .env
+// if you still want a single env-seeded fallback target.
 const AUTH_KEY = API_KEY || '';
 
 // Validate required environment variables for Claude Code and Codex CLI modes
@@ -1678,7 +1680,6 @@ function sendNotificationAndPoll(
     message: finalBody,
     waitForResponse: true,
     ...(skipPush ? { skipPush: true } : {}),
-    ...(DEVICE_TOKEN && { deviceToken: DEVICE_TOKEN }),
     ...(notificationCategory && { notificationCategory }),
     ...(question !== undefined && { question }),
     ...(options && { options }),
@@ -1796,6 +1797,20 @@ function sendNotificationAndPoll(
           return;
         }
 
+        // 200 + success:false means the server reached 0 devices (none registered
+        // or all tokens dead). No device can answer — fall through immediately
+        // instead of polling for the full permission timeout (the 120s hang).
+        try {
+          const body = JSON.parse(responseData);
+          if (body && body.success === false) {
+            debugLog('Notification reached 0 devices (success:false) - falling through to local dialog');
+            resolve(null);
+            return;
+          }
+        } catch {
+          // Non-JSON 200 body — proceed to poll as before.
+        }
+
         // Step 2: Start polling for user response
         startPolling(requestId, resolve);
       });
@@ -1864,6 +1879,18 @@ function startPolling(requestId, resolve) {
       res.on('end', () => {
         if (resolved) return;
 
+        // 404 → the pending request is gone (expired, or another device already
+        // answered and the row was consumed). Terminal: stop polling and fall
+        // through to the local dialog instead of hanging until the timeout.
+        if (res.statusCode === 404) {
+          resolved = true;
+          clearInterval(pollTimer);
+          clearTimeout(overallTimeout);
+          debugLog(`Pending request not found (HTTP 404, ${elapsed}s) - falling through to local dialog`);
+          resolve(null);
+          return;
+        }
+
         try {
           const result = JSON.parse(data);
           if (result.status === 'decided' && result.decision) {
@@ -1881,7 +1908,9 @@ function startPolling(requestId, resolve) {
 
             resolve({ decision: result.decision });
           }
-          // status === 'pending' → keep polling
+          // The "request gone" case is the HTTP 404 above; GET /api/response
+          // never returns 200 with a not_found body, so there is no such branch
+          // here. Any other 200 status (i.e. 'pending') → keep polling.
         } catch (e) {
           debugLog(`Poll parse error: ${e.message}`);
         }
@@ -1931,7 +1960,6 @@ function sendNotification(
     title,
     ...(subtitle ? { subtitle } : {}),
     message: finalBody,
-    ...(DEVICE_TOKEN && { deviceToken: DEVICE_TOKEN }),
     ...(extras.waitForResponse && { waitForResponse: true }),
     ...(extras.notificationCategory && { notificationCategory: extras.notificationCategory }),
     ...(extras.question !== undefined && { question: extras.question }),
