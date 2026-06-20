@@ -81,7 +81,15 @@ class PermissionActionReceiver : BroadcastReceiver() {
             }
 
             override fun onResponse(call: Call, response: Response) {
+                val code = response.code
                 response.close()
+                // First-responder-wins: 404 means another device already answered
+                // this request (or it expired). Terminal — do NOT retry. Mirrors
+                // the iOS handling in NotificationManager.attemptDecisionResponse.
+                if (code == 404) {
+                    pendingResult.finish()
+                    return
+                }
                 if (!response.isSuccessful && attempt < MAX_RETRIES) {
                     val delayMs = INITIAL_BACKOFF_MS * (1L shl (attempt - 1))
                     android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
