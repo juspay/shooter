@@ -66,6 +66,10 @@ COPY tsconfig.json ./
 # Copy source modules imported by server.ts at runtime (tsx resolves these)
 COPY src/lib/env.ts ./src/lib/env.ts
 COPY src/lib/modules/server ./src/lib/modules/server
+# device-token-store.ts imports the runtime guard isDeviceRecord from
+# src/lib/types/device.ts; server.ts loads it at startup under tsx, so the
+# types source must be present in the runtime image (not just the Vite build).
+COPY src/lib/types ./src/lib/types
 
 # Create data directory for SQLite persistence
 RUN mkdir -p /root/.shooter

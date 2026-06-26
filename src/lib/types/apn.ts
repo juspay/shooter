@@ -17,8 +17,12 @@ export interface APNsSendResult {
   details?: unknown[];
   error?: string;
   failed: number;
+  /** APNs HTTP status (200, 400, 410, …); 0 on a transport error. */
+  httpStatus?: number;
   sent: number;
   success: boolean;
+  /** Parsed `timestamp` from a 410 Unregistered body, in ms (for the prune guard). */
+  timestampMs?: number;
 }
 
 export interface LibraryResult {

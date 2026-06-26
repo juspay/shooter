@@ -375,11 +375,19 @@ struct WebView: UIViewRepresentable {
         window.ShooterBridge._config = {
             serverUrl: '\(esc(serverUrl))',
             apiKey: '\(esc(apiKey))',
-            fcmToken: '\(esc(deviceToken))'
+            apnsToken: '\(esc(deviceToken))',
+            fcmToken: '',
+            deviceId: '\(esc(NotificationManager.stableDeviceId()))',
+            deviceName: '\(esc(NotificationManager.deviceDisplayName()))',
+            appEnv: '\(esc(NotificationManager.apnsEnvironment()))'
         };
 
         window.ShooterBridge.getConfig = function() { return JSON.stringify(this._config); };
         window.ShooterBridge.getFcmToken = function() { return this._config.fcmToken || ''; };
+        window.ShooterBridge.getApnsToken = function() { return this._config.apnsToken || ''; };
+        window.ShooterBridge.getDeviceId = function() { return this._config.deviceId || ''; };
+        window.ShooterBridge.getDeviceName = function() { return this._config.deviceName || ''; };
+        window.ShooterBridge.getEnvironment = function() { return this._config.appEnv || ''; };
         window.ShooterBridge.getPlatform = function() { return 'ios'; };
         window.ShooterBridge.saveConfig = function(json) {
             window.webkit.messageHandlers.shooterBridge.postMessage(json);

@@ -221,7 +221,10 @@ class NotificationManager: NSObject, ObservableObject {
         let body: [String: Any] = [
             "deviceToken": token,
             "platform": "ios",
-            "bundleId": AppConfig.App.bundleId
+            "bundleId": AppConfig.App.bundleId,
+            "deviceId": Self.stableDeviceId(),
+            "deviceName": Self.deviceDisplayName(),
+            "appEnv": Self.apnsEnvironment()
         ]
 
         do {
@@ -244,6 +247,42 @@ class NotificationManager: NSObject, ObservableObject {
                 }
             }
         }.resume()
+    }
+
+    // MARK: - Device Identity (multi-device registry)
+
+    /// A stable per-device identifier sent on registration so the server can
+    /// upsert by device on token rotation instead of accumulating duplicate
+    /// rows. Prefers a Keychain-persisted UUID (survives an identifierForVendor
+    /// reset); seeds it from identifierForVendor, falling back to a fresh UUID.
+    static func stableDeviceId() -> String {
+        if let existing = KeychainHelper.read(key: "deviceId"), !existing.isEmpty {
+            return existing
+        }
+        let id = UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString
+        if !KeychainHelper.save(key: "deviceId", value: id) {
+            // Persist failed (e.g. device locked before first unlock). The id is
+            // still used for this call, but won't survive — surface it so a
+            // duplicate-row situation on the server is diagnosable.
+            print("[stableDeviceId] Keychain save failed; device id may not persist until next unlock")
+        }
+        return id
+    }
+
+    /// Human-friendly name for the registered-devices list (e.g. "Sachin's iPhone").
+    static func deviceDisplayName() -> String {
+        UIDevice.current.name
+    }
+
+    /// APNs gateway this build registers with — a DEBUG build's token belongs to
+    /// the sandbox gateway, a release build's to production. The server filters
+    /// fan-out by this so a sandbox token is never sent to the production gateway.
+    static func apnsEnvironment() -> String {
+        #if DEBUG
+        return "sandbox"
+        #else
+        return "production"
+        #endif
     }
 
     // MARK: - Server Health Check
@@ -300,12 +339,12 @@ class NotificationManager: NSObject, ObservableObject {
     }
 
     private func attemptDecisionResponse(request: URLRequest, decision: String, attempt: Int) {
-        URLSession.shared.dataTask(with: request) { [weak self] _, response, error in
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
             guard let self = self else { return }
 
             if let error = error {
                 if attempt < Self.maxRetryAttempts {
-                    let delay = pow(2.0, Double(attempt)) // 2s, 4s, 8s
+                    let delay = pow(2.0, Double(attempt)) // 2s, 4s (3 total attempts; attempt 3 is terminal)
                     print("Decision response attempt \(attempt) failed: \(error). Retrying in \(delay)s...")
                     DispatchQueue.global().asyncAfter(deadline: .now() + delay) {
                         self.attemptDecisionResponse(request: request, decision: decision, attempt: attempt + 1)
@@ -319,6 +358,15 @@ class NotificationManager: NSObject, ObservableObject {
             if let httpResponse = response as? HTTPURLResponse {
                 if (200...299).contains(httpResponse.statusCode) {
                     print("Decision response sent (\(decision)): HTTP \(httpResponse.statusCode)")
+                } else if httpResponse.statusCode == 404,
+                    (String(data: data ?? Data(), encoding: .utf8) ?? "").lowercased().contains("request not found or expired") {
+                    // Server's own "Request not found or expired" 404: first-
+                    // responder-wins (another device answered) or the request
+                    // expired. Terminal — do NOT retry. An infrastructure 404
+                    // (tunnel down, wrong host) has a different body and falls
+                    // through to the retry path below, so a real decision is not
+                    // silently dropped.
+                    print("Decision response: request already resolved (HTTP 404 — another device answered)")
                 } else if attempt < Self.maxRetryAttempts {
                     let delay = pow(2.0, Double(attempt))
                     print("Decision response attempt \(attempt) got HTTP \(httpResponse.statusCode). Retrying in \(delay)s...")
