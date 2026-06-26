@@ -81,8 +81,20 @@ class PermissionActionReceiver : BroadcastReceiver() {
             }
 
             override fun onResponse(call: Call, response: Response) {
+                val code = response.code
+                val isSuccessful = response.isSuccessful
+                val body = response.body?.string() ?: ""
                 response.close()
-                if (!response.isSuccessful && attempt < MAX_RETRIES) {
+                // Server's own "Request not found or expired" 404: first-responder-
+                // wins (another device answered) or the request expired. Terminal —
+                // do NOT retry. An infrastructure 404 (tunnel down, wrong host, proxy
+                // error) has a different body and falls through to retry, so a real
+                // decision is not silently dropped. Mirrors NotificationManager (iOS).
+                if (code == 404 && body.contains("request not found or expired", ignoreCase = true)) {
+                    pendingResult.finish()
+                    return
+                }
+                if (!isSuccessful && attempt < MAX_RETRIES) {
                     val delayMs = INITIAL_BACKOFF_MS * (1L shl (attempt - 1))
                     android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                         sendWithRetry(request, pendingResult, attempt + 1)

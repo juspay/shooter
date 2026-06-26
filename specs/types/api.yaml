@@ -205,9 +205,25 @@ API:
     required:
       - platform
     properties:
+      appEnv:
+        type: string
+        enum:
+          - sandbox
+          - production
+        description: >
+          APNs gateway the token is registered with (multi-device fan-out
+          filters by this). Omitted by old apps; defaults to the server's env.
       bundleId:
         type: string
         description: iOS app bundle identifier
+      deviceId:
+        type: string
+        description: >
+          Stable per-device identifier (iOS identifierForVendor / Android UUID)
+          used to upsert by device on token rotation. Omitted by old apps.
+      deviceName:
+        type: string
+        description: Human-friendly device name for the registered-devices list
       deviceToken:
         type: string
         description: iOS device token for APNs (required when platform is "ios")
@@ -231,6 +247,63 @@ API:
       ios:
         type: string
         description: iOS APNs device token
+
+  DeviceRecord:
+    type: object
+    description: >
+      A registered push device in the multi-device registry (one row of the
+      device_tokens table). NOTE: the canonical type is hand-written in
+      src/lib/types/device.ts — the type-crafter generator currently truncates
+      generated/API.ts before this point, so this entry is documentation only.
+    required:
+      - id
+      - token
+      - platform
+      - appEnv
+      - registeredAt
+      - lastSeenAt
+      - failureCount
+      - isActive
+    properties:
+      id:
+        type: string
+        description: Server-generated UUID row id
+      token:
+        type: string
+        description: APNs or FCM push token
+      platform:
+        type: string
+        enum:
+          - ios
+          - android
+      appEnv:
+        type: string
+        enum:
+          - sandbox
+          - production
+      deviceId:
+        type: string
+        nullable: true
+        description: Stable per-device id; null for old apps
+      friendlyName:
+        type: string
+        nullable: true
+        description: Human-friendly device name
+      bundleId:
+        type: string
+        nullable: true
+      registeredAt:
+        type: string
+        description: ISO-8601 first-registration timestamp
+      lastSeenAt:
+        type: string
+        description: ISO-8601 last re-registration or successful delivery
+      failureCount:
+        type: integer
+        description: Consecutive delivery failures
+      isActive:
+        type: boolean
+        description: false = soft-deleted / pruned, retained for audit
 
   # ─── Webhook Types (/api/webhook) ──────────────────────────────────
 

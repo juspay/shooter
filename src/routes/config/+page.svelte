@@ -1,17 +1,17 @@
 <script lang="ts">
-  import type { ConfigPageData, NativeBridgeConfig, ShooterConfig } from '$lib/types';
+  import type {
+    ConfigPageData,
+    DeviceListItem,
+    NativeBridgeConfig,
+    ShooterConfig,
+  } from '$lib/types';
 
   import { browser } from '$app/environment';
   import AlertTriangleSvg from '$lib/assets/icons/alert-triangle.svg?raw';
   import CheckCircleSvg from '$lib/assets/icons/check-circle.svg?raw';
   import PlaySvg from '$lib/assets/icons/play.svg?raw';
   import XCircleSvg from '$lib/assets/icons/x-circle.svg?raw';
-  import {
-    hasScanner,
-    isShooterConfig,
-    scanQR,
-    toErrorMessage,
-  } from '$lib/modules/client/common';
+  import { hasScanner, isShooterConfig, scanQR, toErrorMessage } from '$lib/modules/client/common';
   import { PROVIDERS } from '$lib/modules/client/neurolink/provider-config';
   import { Banner, Button, Card, Icon, Input, Stepper } from '@juspay/svelte-ui-components';
   import { onMount } from 'svelte';
@@ -20,11 +20,13 @@
 
   let serverUrl = $state('');
   let apiKey = $state('');
-  let deviceToken = $state('');
+  let registeredDevices = $state<DeviceListItem[]>([]);
+  let loadingDevices = $state(false);
+  let loadDevicesError = $state('');
+  let thisDeviceId = $state('');
   let result = $state('');
   let loading = $state(false);
   let statusType = $state<'' | 'error' | 'success' | 'warning'>('');
-  let isNativeApp = $state(false);
   let qrDataUrl = $state('');
   let qrServerUrl = $state('');
   let qrLoading = $state(false);
@@ -130,7 +132,6 @@
   function hydrateBridge(): void {
     const bridge = getNativeBridge();
     if (bridge && !bridgeHydrated) {
-      isNativeApp = true;
       try {
         const nativeConfig = JSON.parse(
           bridge.getConfig?.() ?? '{}'
@@ -144,10 +145,12 @@
         if (nativeConfig.apiKey) {
           apiKey = nativeConfig.apiKey;
         }
-        // Auto-populate device token with FCM token
-        const fcmToken = bridge.getFcmToken?.();
-        if (fcmToken) {
-          deviceToken = fcmToken;
+        // Capture this device's stable id so the registered-devices list can
+        // highlight "this device". The app registers its own push token
+        // directly via /api/device-token — no manual token entry here.
+        const bridgeDeviceId = bridge.getDeviceId?.();
+        if (bridgeDeviceId) {
+          thisDeviceId = bridgeDeviceId;
         }
         // Mark hydrated only after native reads succeeded
         bridgeHydrated = true;
@@ -187,11 +190,16 @@
               if (parsed.apiKey) {
                 apiKey = parsed.apiKey;
               }
-              if (parsed.deviceToken) {
-                deviceToken = parsed.deviceToken;
-              }
               if (parsed.serverUrl) {
                 serverUrl = parsed.serverUrl;
+              }
+              // Migration: drop the legacy single deviceToken from stored config —
+              // devices are now managed server-side via the registry.
+              if (parsed.deviceToken) {
+                localStorage.setItem(
+                  'shooter_config',
+                  JSON.stringify({ ...parsed, deviceToken: null } satisfies ShooterConfig)
+                );
               }
             } else {
               localStorage.removeItem('shooter_config');
@@ -210,6 +218,7 @@
         serverUrl = getDefaultServerUrl();
       }
       _bridgeCheckDone = true;
+      void loadDevices();
 
       // The native bridge may be injected after SvelteKit hydration.
       // Re-check periodically for a short window to catch late injection.
@@ -221,11 +230,19 @@
           }
         }, 200);
         // Stop checking after 3 seconds
-        setTimeout(() => {
+        const recheckTimeout = setTimeout(() => {
           clearInterval(recheckInterval);
         }, 3000);
+
+        // Cancel both timers if the component unmounts before they fire,
+        // so hydrateBridge() never writes to a destroyed component.
+        return (): void => {
+          clearInterval(recheckInterval);
+          clearTimeout(recheckTimeout);
+        };
       }
     }
+    return undefined;
   });
 
   async function saveConfiguration(): Promise<void> {
@@ -239,7 +256,7 @@
         'shooter_config',
         JSON.stringify({
           apiKey: apiKey.trim(),
-          deviceToken: deviceToken.trim(),
+          deviceToken: null,
           lastUpdated: Date.now(),
           serverUrl: trimmedUrl || getDefaultServerUrl(),
         } satisfies ShooterConfig)
@@ -264,6 +281,8 @@
         result = 'Configuration saved but system health check failed';
         statusType = 'warning';
       }
+
+      void loadDevices();
     } catch (error) {
       result = `Configuration failed: ${toErrorMessage(error)}`;
       statusType = 'error';
@@ -284,20 +303,13 @@
     statusType = '';
 
     try {
-      const testPayload: {
-        data: Record<string, unknown>;
-        deviceToken?: string;
-        message: string;
-        title: string;
-      } = {
+      // No deviceToken override — the test now fans out to every registered
+      // device, exactly like a real notification.
+      const testPayload = {
         data: { source: 'config-test', timestamp: Date.now() },
         message: `Configuration test at ${new Date().toLocaleTimeString()}`,
         title: 'Configuration Test',
       };
-
-      if (deviceToken.trim()) {
-        testPayload.deviceToken = deviceToken.trim();
-      }
 
       const response = await fetch('/api/notify', {
         body: JSON.stringify(testPayload),
@@ -330,7 +342,7 @@
       localStorage.removeItem('shooter_config');
       serverUrl = typeof window !== 'undefined' ? window.location.origin : '';
       apiKey = '';
-      deviceToken = '';
+      registeredDevices = [];
       result = 'Configuration cleared';
       statusType = 'success';
 
@@ -339,6 +351,62 @@
         bridge.saveConfig?.(JSON.stringify({ apiKey: '', serverUrl: '' }));
       }
     }
+  }
+
+  /** Load the registered-devices list from the server registry. */
+  async function loadDevices(): Promise<void> {
+    if (!apiKey.trim()) {
+      registeredDevices = [];
+      loadDevicesError = '';
+      return;
+    }
+    loadingDevices = true;
+    try {
+      const response = await fetch('/api/device-token', {
+        headers: { Authorization: `Bearer ${apiKey.trim()}` },
+      });
+      if (response.ok) {
+        const data = (await response.json()) as { devices?: DeviceListItem[] };
+        registeredDevices = Array.isArray(data.devices) ? data.devices : [];
+        loadDevicesError = '';
+      } else {
+        // Distinguish a load failure from a genuinely empty list — otherwise a
+        // 401 (wrong key) shows the misleading "No devices registered yet".
+        registeredDevices = [];
+        loadDevicesError =
+          response.status === 401
+            ? 'Could not load devices: the API key was rejected (401). Check the key above.'
+            : `Could not load devices (HTTP ${response.status}).`;
+      }
+    } catch (error) {
+      registeredDevices = [];
+      loadDevicesError = `Could not load devices: ${toErrorMessage(error)}`;
+    }
+    loadingDevices = false;
+  }
+
+  /** Remove a device from the registry, then refresh the list. */
+  async function removeDevice(id: string): Promise<void> {
+    result = '';
+    statusType = '';
+    try {
+      const response = await fetch('/api/device-token', {
+        body: JSON.stringify({ id }),
+        headers: { Authorization: `Bearer ${apiKey.trim()}`, 'Content-Type': 'application/json' },
+        method: 'DELETE',
+      });
+      if (!response.ok) {
+        const data = (await response.json().catch(() => ({}))) as { error?: string };
+        result = `Failed to remove device: ${data.error ?? response.statusText}`;
+        statusType = 'error';
+        return;
+      }
+    } catch (error) {
+      result = `Failed to remove device: ${toErrorMessage(error)}`;
+      statusType = 'error';
+      return;
+    }
+    await loadDevices();
   }
 </script>
 
@@ -384,19 +452,42 @@
             Find this in your <code>~/.shooter/.env</code> file. Run <code>shooter setup</code> to generate
             one.
           </p>
+        </Card>
 
-          <Input
-            name="deviceToken"
-            label="Device Token"
-            bind:value={deviceToken}
-            dataType="text"
-            placeholder={isNativeApp ? 'Waiting for token...' : '64-character hex string'}
-            infoMessage={isNativeApp && deviceToken
-              ? 'Auto-detected from app'
-              : 'Device token from app registration'}
-            classes="input-mono"
-          />
-          <p class="input-help">Optional — only needed for iOS/Android push notifications.</p>
+        <Card title="Registered Devices" description="Phones that receive push notifications">
+          {#if loadingDevices}
+            <p class="input-help">Loading…</p>
+          {:else if loadDevicesError}
+            <p class="input-help" style="color: var(--color-error, #f87171);">{loadDevicesError}</p>
+          {:else if registeredDevices.length === 0}
+            <p class="input-help">
+              No devices registered yet. Open the Shooter app on your phone with this server's URL +
+              API key — it registers automatically. Every notification fans out to all devices here.
+            </p>
+          {:else}
+            <ul class="device-list">
+              {#each registeredDevices as device (device.id)}
+                <li class="device-row">
+                  <div class="device-meta">
+                    <span class="device-name">
+                      {device.friendlyName || device.deviceId || 'Unknown device'}
+                      {#if device.deviceId && device.deviceId === thisDeviceId}
+                        <span class="device-badge">this device</span>
+                      {/if}
+                    </span>
+                    <span class="device-sub"
+                      >{device.platform} · {device.appEnv} · {device.tokenMasked}</span
+                    >
+                  </div>
+                  <Button
+                    classes="btn-secondary"
+                    onclick={(): void => void removeDevice(device.id)}
+                    text="Remove"
+                  />
+                </li>
+              {/each}
+            </ul>
+          {/if}
         </Card>
 
         {#if result}
@@ -439,10 +530,14 @@
           <Stepper
             steps={[
               { label: 'Get API Key' },
-              { label: 'Find Device Token' },
+              { label: 'Register a Device' },
               { label: 'Test Connection' },
             ]}
-            currentStepIndex={apiKey.trim() && deviceToken.trim() ? 2 : apiKey.trim() ? 1 : 0}
+            currentStepIndex={apiKey.trim() && registeredDevices.length > 0
+              ? 2
+              : apiKey.trim()
+                ? 1
+                : 0}
             classes="setup-stepper"
           />
         </Card>
@@ -733,6 +828,49 @@
     border-radius: var(--radius-sm);
     font-family: var(--font-mono);
     font-size: var(--text-xs);
+  }
+
+  .device-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+  .device-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-2) 0;
+    border-bottom: 1px solid var(--ds-gray-200, #1a1a1a);
+  }
+  .device-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .device-name {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .device-badge {
+    font-size: var(--text-xs);
+    font-weight: 500;
+    color: var(--ds-green-900, #16a34a);
+    border: 1px solid var(--ds-green-700, #16a34a);
+    border-radius: var(--radius-sm);
+    padding: 0 6px;
+  }
+  .device-sub {
+    font-size: var(--text-xs);
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
   }
 
   @media (max-width: 768px) {

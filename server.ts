@@ -22,7 +22,7 @@ if (!existsSync(handlerPath)) {
   process.exit(1);
 }
 
-const { handler } = await import('./build/handler.js');
+import { deviceTokenStore } from './src/lib/modules/server/push/device-token-store.js';
 import { startAutopilotEngine } from './src/lib/modules/server/sessions/autopilot-engine.js';
 import { isReadOnlyProviderPath } from './src/lib/modules/server/sessions/provider-paths.js';
 import { sosCoordinator } from './src/lib/modules/server/sos/coordinator.js';
@@ -40,6 +40,10 @@ import {
 } from './src/lib/modules/server/ws/session-handler.js';
 import { setPtyManager as setTerminalHandlerPtyManager } from './src/lib/modules/server/ws/terminal-handler.js';
 import { validateTicket } from './src/lib/modules/server/ws/ticket-store.js';
+
+// Dynamically import the SvelteKit build output AFTER the static imports above
+// (the build guard ran first, so this fails fast on a missing build).
+const { handler } = await import('./build/handler.js');
 
 // ── Adapters ─────────────────────────────────────────────────────────
 // The WS handlers define their own duck-typed interfaces (PtyManagerLike,
@@ -254,6 +258,16 @@ server.once('error', (err: NodeJS.ErrnoException): void => {
 
 server.listen(requestedPort, () => {
   console.log(`Shooter server running on http://localhost:${requestedPort}`);
+  // Multi-device registry: import legacy device-tokens.json + setup seeds, then
+  // drop long-dead (inactive >30d) rows. Runs once at startup. Best-effort — a
+  // filesystem/DB hiccup here must not crash a server that's already listening,
+  // so degrade gracefully and keep serving.
+  try {
+    deviceTokenStore.migrate();
+    deviceTokenStore.startupCleanup();
+  } catch (err) {
+    console.error('[device-token] startup migrate/cleanup failed:', err);
+  }
   startAutopilotEngine();
 });
 

@@ -9,6 +9,7 @@ export type * from './codex';
 export type * from './common';
 export type * from './dashboard';
 export * from './decision';
+export * from './device';
 export type * from './gemini';
 export * from './generated';
 export type * from './neurolink';

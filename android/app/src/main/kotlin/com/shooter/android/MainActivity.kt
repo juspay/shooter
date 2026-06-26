@@ -274,19 +274,37 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun getConfig(): String {
             val prefs = AppPreferences(this@MainActivity)
+            // Read the stable id once: each access is an EncryptedSharedPreferences
+            // decrypt, and re-reading risks logging a different value than the JSON.
+            val deviceId = prefs.stableDeviceId
             val json = JSONObject().apply {
                 put("serverUrl", prefs.serverUrl ?: "")
                 put("apiKey", prefs.apiKey ?: "")
                 put("fcmToken", prefs.fcmToken ?: "")
+                put("deviceId", deviceId)
+                put("deviceName", android.os.Build.MODEL)
             }
             val result = json.toString()
-            android.util.Log.d(TAG, "ShooterBridge.getConfig() → $result")
+            // Never log the API key or push token to logcat (readable via adb /
+            // READ_LOGS). Log only non-sensitive fields.
+            android.util.Log.d(
+                TAG,
+                "ShooterBridge.getConfig() → serverUrl=${prefs.serverUrl ?: ""}, " +
+                    "apiKey=${if (prefs.apiKey.isNullOrBlank()) "unset" else "[redacted]"}, " +
+                    "deviceId=${deviceId.take(8)}…"
+            )
             return result
         }
 
         @JavascriptInterface
+        fun getDeviceId(): String {
+            return AppPreferences(this@MainActivity).stableDeviceId
+        }
+
+        @JavascriptInterface
         fun saveConfig(json: String) {
-            android.util.Log.d(TAG, "ShooterBridge.saveConfig($json)")
+            // Do not log the raw payload — it carries the API key.
+            android.util.Log.d(TAG, "ShooterBridge.saveConfig(...)")
             try {
                 val obj = JSONObject(json)
                 val prefs = AppPreferences(this@MainActivity)

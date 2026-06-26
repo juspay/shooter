@@ -1,6 +1,7 @@
 import { env } from '$env/dynamic/private';
 import { LibraryAPNsService } from '$lib/modules/server/apn/library-apns';
 import { validateAuth } from '$lib/modules/server/auth';
+import { deviceTokenStore } from '$lib/modules/server/push/device-token-store';
 import { json } from '@sveltejs/kit';
 
 import type { RequestHandler } from './$types';
@@ -12,7 +13,14 @@ export const GET: RequestHandler = ({ request }) => {
   }
 
   const apnsClient = new LibraryAPNsService();
-  const deviceToken = env.DEVICE_TOKEN?.trim();
+
+  // Prefer the most-recently-seen active iOS device matching the server's APNs
+  // gateway (the same filter /api/notify uses), so the debug view never lists a
+  // wrong-env device that pushes silently skip; fall back to the legacy env var.
+  const apnsEnv: 'production' | 'sandbox' =
+    env.APNS_PRODUCTION === 'true' ? 'production' : 'sandbox';
+  const iosDevices = deviceTokenStore.listActiveForEnv('ios', apnsEnv);
+  const deviceToken = iosDevices[0]?.token ?? env.DEVICE_TOKEN?.trim() ?? '';
 
   return json({
     apns: {
@@ -30,6 +38,10 @@ export const GET: RequestHandler = ({ request }) => {
     },
     environment: env.NODE_ENV || 'development',
     hasApiKey: !!env.API_KEY,
+    registeredDevices: {
+      android: deviceTokenStore.listActive('android').length,
+      ios: iosDevices.length,
+    },
     timestamp: new Date().toISOString(),
   });
 };
