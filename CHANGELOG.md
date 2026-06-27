@@ -1,3 +1,9 @@
+## [1.24.2](https://github.com/juspay/shooter/compare/v1.24.1...v1.24.2) (2026-06-27)
+
+### Bug Fixes
+
+*  restart the daemon after a clean SIGTERM (manager-owned lifecycle) ([6309bc4](https://github.com/juspay/shooter/commit/6309bc4fc29d7ac5f1e7fd9c12108567ea6abc80))
+
 ## [1.24.1](https://github.com/juspay/shooter/compare/v1.24.0...v1.24.1) (2026-06-20)
 
 ### Bug Fixes
