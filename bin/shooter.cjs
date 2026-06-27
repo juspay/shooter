@@ -13,8 +13,14 @@ const {
   discoverNamedTunnels,
   healAndEnsureRunning,
   probeReachability,
-  xmlEscapeText,
 } = require('./lib/tunnel-discovery.cjs');
+const {
+  MANAGED_ENV,
+  resolveStartAction,
+  resolveStopAction,
+  buildLaunchdPlist,
+  buildSystemdUnit,
+} = require('./lib/service-manager.cjs');
 
 // ── Resolve paths ───────────────────────────────────────────────────
 const PKG_ROOT = path.resolve(__dirname, '..');
@@ -315,6 +321,24 @@ function startServer() {
     process.exit(1);
   }
 
+  // Service-manager delegation: a real `shooter start` (not spawned by the
+  // service manager) hands off to launchd/systemd so the OS owns restart and
+  // recovers from any clean SIGTERM. The manager-spawned instance carries
+  // SHOOTER_MANAGED=1 (or ppid 1 on macOS) and falls through to run directly.
+  // Runtime start flags the static unit can't express must bypass delegation so
+  // they aren't silently dropped (e.g. `shooter start --port 9000` on a machine
+  // with autostart installed).
+  const hasRuntimeOverrides =
+    parsePortFlag() !== undefined || hasFlag('--daemon') || hasFlag('-d') || hasFlag('--no-tunnel');
+  const startAction = resolveStartAction({
+    managed: isSpawnedByManager(),
+    agentInstalled: isAutostartInstalled(),
+    platform: os.platform(),
+    hasRuntimeOverrides,
+  });
+  if (startAction === 'delegate-launchd') return delegateStartToLaunchd();
+  if (startAction === 'delegate-systemd') return delegateStartToSystemd();
+
   // Check if already running
   const existingPid = readPid();
   if (existingPid) {
@@ -502,6 +526,16 @@ function startServer() {
 // ── stop ────────────────────────────────────────────────────────────
 
 function stopServer() {
+  // Manager-owned services stop by removing the job from the manager (bootout /
+  // systemctl stop) so KeepAlive/Restart can't immediately resurrect it.
+  // Dev/manual runs fall through to the pidfile path below.
+  const stopAction = resolveStopAction({
+    agentManaging: isLaunchdManaging() || isSystemdManaging(),
+    platform: os.platform(),
+  });
+  if (stopAction === 'bootout') return stopViaLaunchd();
+  if (stopAction === 'systemctl-stop') return stopViaSystemd();
+
   const pid = readPid();
   if (!pid) {
     // Still try to stop tunnel even if server isn't running
@@ -682,48 +716,17 @@ function enableLaunchAgent() {
   const shooterBin = resolveShooterBin();
   const nodeBin = process.execPath;
 
-  // All five interpolations below are system-derived paths (no user
-  // input), but XML-escaping them keeps the plist well-formed if any
-  // path ever contains `&`, `<`, or `>` — same hardening as the named-
-  // tunnel rewrite path.
-  const e = xmlEscapeText;
-  const plist = `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key>
-  <string>${LAUNCHD_LABEL}</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>${e(nodeBin)}</string>
-    <string>${e(shooterBin)}</string>
-    <string>start</string>
-  </array>
-  <key>WorkingDirectory</key>
-  <string>${e(PKG_ROOT)}</string>
-  <key>EnvironmentVariables</key>
-  <dict>
-    <key>PATH</key>
-    <string>${e(path.dirname(nodeBin))}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
-    <key>SHOOTER_HOME</key>
-    <string>${e(SHOOTER_HOME)}</string>
-  </dict>
-  <key>KeepAlive</key>
-  <dict>
-    <key>SuccessfulExit</key>
-    <false/>
-  </dict>
-  <key>RunAtLoad</key>
-  <true/>
-  <key>StandardOutPath</key>
-  <string>${e(LOG_FILE)}</string>
-  <key>StandardErrorPath</key>
-  <string>${e(LOG_FILE)}</string>
-  <key>ThrottleInterval</key>
-  <integer>10</integer>
-</dict>
-</plist>`;
+  // Path interpolations are XML-escaped inside buildLaunchdPlist so a path
+  // containing `&`, `<`, or `>` can't corrupt the plist.
+  const plist = buildLaunchdPlist({
+    label: LAUNCHD_LABEL,
+    nodeBin,
+    shooterBin,
+    pkgRoot: PKG_ROOT,
+    pathEnv: `${path.dirname(nodeBin)}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin`,
+    shooterHome: SHOOTER_HOME,
+    logFile: LOG_FILE,
+  });
 
   // Ensure directories exist
   fs.mkdirSync(path.dirname(LAUNCHD_PLIST), { recursive: true });
@@ -764,25 +767,15 @@ function disableLaunchAgent() {
 function enableSystemdUnit() {
   const shooterBin = resolveShooterBin();
 
-  // Quote interpolated paths so systemd's word-splitter doesn't treat
-  // a space inside e.g. "/Users/John Doe/.local/bin/shooter" as an
-  // argument separator. systemd supports double-quoting per token in
-  // ExecStart= and the whole RHS in Environment=.
-  const unit = `[Unit]
-Description=Shooter — Mobile dev notifications & remote terminal
-After=network.target
-
-[Service]
-Type=simple
-ExecStart="${process.execPath}" "${shooterBin}" start
-WorkingDirectory="${PKG_ROOT}"
-Environment="SHOOTER_HOME=${SHOOTER_HOME}"
-Restart=on-failure
-RestartSec=10
-
-[Install]
-WantedBy=default.target
-`;
+  // Paths are double-quoted inside buildSystemdUnit so systemd's word-splitter
+  // doesn't treat a space inside e.g. "/Users/John Doe/.local/bin/shooter" as
+  // an argument separator.
+  const unit = buildSystemdUnit({
+    nodeBin: process.execPath,
+    shooterBin,
+    pkgRoot: PKG_ROOT,
+    shooterHome: SHOOTER_HOME,
+  });
 
   fs.mkdirSync(path.dirname(SYSTEMD_UNIT), { recursive: true });
   fs.mkdirSync(LOG_DIR, { recursive: true });
@@ -1151,6 +1144,102 @@ function isLaunchdManaging() {
   } catch {
     return false;
   }
+}
+
+function isSystemdManaging() {
+  if (os.platform() !== 'linux') return false;
+  try {
+    execFileSync('systemctl', ['--user', 'is-active', '--quiet', 'shooter.service'], {
+      stdio: 'ignore',
+      timeout: 5_000,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// True when this process was spawned by the service manager — so `shooter start`
+// runs the server directly instead of delegating back to the manager.
+function isSpawnedByManager() {
+  // Primary signal: the marker env injected into the generated unit.
+  if (process.env[MANAGED_ENV] === '1') return true;
+  // Best-effort transition fallback for an older, marker-less plist still on
+  // disk: launchd reparents its GUI agents to PID 1, so a launchd-spawned
+  // `shooter start` has ppid 1 while a shell-run one does not. This is only a
+  // heuristic (it won't hold if shooter is wrapped by e.g. sudo) and exists
+  // solely to avoid delegate-recursion until the plist is regenerated with the
+  // SHOOTER_MANAGED marker — it can be dropped once all installs carry it.
+  if (os.platform() === 'darwin' && process.ppid === 1) return true;
+  return false;
+}
+
+// Hand a manual `shooter start` off to launchd. If the job is already loaded it
+// is already running (KeepAlive); otherwise bootstrap it (e.g. after a stop).
+function delegateStartToLaunchd() {
+  const uid = process.getuid ? process.getuid() : 501;
+  // bootstrap if the job isn't loaded; if it is, `kickstart -k` restarts it so
+  // `shooter start` recycles a loaded-but-stale agent instead of no-opping.
+  const loaded = isLaunchdManaging();
+  try {
+    if (loaded) {
+      execFileSync('launchctl', ['kickstart', '-k', `gui/${uid}/${LAUNCHD_LABEL}`], {
+        stdio: 'ignore',
+      });
+    } else {
+      execFileSync('launchctl', ['bootstrap', `gui/${uid}`, LAUNCHD_PLIST], { stdio: 'ignore' });
+    }
+  } catch (err) {
+    console.error(`Failed to start via launchd: ${err.message}`);
+    console.error('Try: shooter autostart on');
+    process.exit(1);
+  }
+  console.log(`Shooter ${loaded ? 'restarted' : 'started'} (launchd-managed).`);
+  console.log('  Logs:   shooter logs');
+}
+
+function delegateStartToSystemd() {
+  // restart if the unit is active (recycle a stale instance), else start it.
+  const active = isSystemdManaging();
+  const action = active ? 'restart' : 'start';
+  try {
+    execFileSync('systemctl', ['--user', action, 'shooter.service'], { stdio: 'ignore' });
+  } catch (err) {
+    console.error(`Failed to start via systemd: ${err.message}`);
+    console.error('Try: shooter autostart on');
+    process.exit(1);
+  }
+  console.log(`Shooter ${active ? 'restarted' : 'started'} (systemd-managed).`);
+  console.log('  Logs:   shooter logs');
+}
+
+// Stop a launchd-managed service by removing the job from the domain. The plist
+// file stays on disk, so it returns on next login or `shooter start`.
+function stopViaLaunchd() {
+  const uid = process.getuid ? process.getuid() : 501;
+  console.log('Stopping Shooter (launchd-managed)...');
+  stopTunnel();
+  stopGuard();
+  try {
+    execFileSync('launchctl', ['bootout', `gui/${uid}/${LAUNCHD_LABEL}`], { stdio: 'ignore' });
+  } catch {
+    // Not loaded / already booted out — nothing to do.
+  }
+  removePid();
+  console.log('Shooter stopped. (Returns on next login or "shooter start".)');
+}
+
+function stopViaSystemd() {
+  console.log('Stopping Shooter (systemd-managed)...');
+  stopTunnel();
+  stopGuard();
+  try {
+    execFileSync('systemctl', ['--user', 'stop', 'shooter.service'], { stdio: 'ignore' });
+  } catch {
+    // Not active — nothing to do.
+  }
+  removePid();
+  console.log('Shooter stopped.');
 }
 
 function runGuard() {
