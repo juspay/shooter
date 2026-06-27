@@ -1,3 +1,9 @@
+## [1.25.0](https://github.com/juspay/shooter/compare/v1.24.2...v1.25.0) (2026-06-27)
+
+### Features
+
+* **(push):**  multi-device push notifications — SQLite device registry, APNs/FCM fan-out, config UI, hardened notifier ([a9919f2](https://github.com/juspay/shooter/commit/a9919f20f0b13d1d0d447bea5c305282b7d16ba0))
+
 ## [1.24.2](https://github.com/juspay/shooter/compare/v1.24.1...v1.24.2) (2026-06-27)
 
 ### Bug Fixes
