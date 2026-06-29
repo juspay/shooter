@@ -15,6 +15,12 @@ export interface AutopilotState {
 /** Per-session autopilot lifecycle state. */
 export type AutopilotStatus = 'error' | 'idle' | 'running';
 
+/**
+ * Lifecycle status of an autopilot card. 'active' while the session is in
+ * progress; 'completed' once the pipeline judges the goal done (LLM-signalled).
+ */
+export type AutopilotTaskStatus = 'active' | 'completed';
+
 /** Verdict from guardCommand() — whether a concrete command is safe to write to the PTY. */
 export interface CommandVerdict {
   /** The trimmed command (echoed back for convenience). */
@@ -126,12 +132,16 @@ export interface SessionAutopilotFields {
 
 /** A persisted summary record stored in session_summaries. */
 export interface SessionSummaryRecord {
+  /** Why the task was judged complete (LLM-provided); null while active. */
+  completionReason: null | string;
   createdAt: string;
   id: string;
   /** JSON-serialised NextStep[] */
   nextSteps: string;
   projectName: null | string;
   sessionId: null | string;
+  /** Lifecycle status — 'active' (default) or 'completed'. */
+  status: AutopilotTaskStatus;
   summary: string;
   terminalId: null | string;
   trigger: string;

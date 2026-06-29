@@ -87,6 +87,8 @@ interface TerminalRuntime {
   autoActionCount: number;
   busy: boolean;
   command: string;
+  // True once the engine judged this terminal's task complete — the loop stops injecting.
+  completed: boolean;
   consensus: ConsensusResult | null;
   injectSocket: null | WebSocket;
   isManaged: boolean;
@@ -207,6 +209,7 @@ export class AutopilotDriver {
       autoActionCount: 0,
       busy: false,
       command: '',
+      completed: false,
       consensus: null,
       injectSocket: null,
       isManaged: false,
@@ -227,8 +230,8 @@ export class AutopilotDriver {
       return;
     }
     const rt = this.terminals.get(terminalId);
-    if (!rt || rt.busy || !rt.consensus) {
-      return;
+    if (!rt || rt.busy || !rt.consensus || rt.completed) {
+      return; // completed tasks are terminal — never inject again until fresh active work arrives
     }
     const state: InjectionState = {
       autoActionCount: rt.autoActionCount,
@@ -320,11 +323,23 @@ export class AutopilotDriver {
         }
         latest.add(tid);
         rt.consensus = { agentCount: 5, quorum: 3, steps: parseSteps(rec.nextSteps) };
+        const createdMs = Date.parse(rec.createdAt);
+        // The latest card's status gates the loop: once the engine marks the task complete the
+        // driver stops injecting. Honour a completed verdict ONLY if it is at least as fresh as the
+        // last live WS event — otherwise a stale completed row (re-fetched before the engine's next
+        // MIN_INTERVAL run persists a new one) would re-halt a terminal that a tool-started event
+        // already self-healed. An active row always clears the flag.
+        if (rec.status === 'completed') {
+          if (!Number.isFinite(createdMs) || createdMs >= rt.lastEventAt) {
+            rt.completed = true;
+          }
+        } else {
+          rt.completed = false;
+        }
         // Resume the inject path when the WS missed the transition to idle: if this is a recent
         // agent-idle-triggered summary and nothing newer arrived over the WS, treat the terminal as
         // idle so the poll loop can act (decideInjection hard-requires lastEventType==='agent-idle',
         // which only the WS path otherwise sets — leaving the poll path dead after a reconnect).
-        const createdMs = Date.parse(rec.createdAt);
         if (
           rec.trigger === 'agent-idle' &&
           Number.isFinite(createdMs) &&
@@ -402,6 +417,15 @@ export class AutopilotDriver {
     rt.lastEventAt = this.deps.now(); // so a later summary can't downgrade a fresher live signal
     if (type !== 'agent-idle' && type !== 'agent-question') {
       rt.lastActivityAt = this.deps.now(); // tool/human activity → resets the grace window
+    }
+    if (type === 'tool-started') {
+      // Fresh work in a terminal whose task was marked done → clear the local halt immediately
+      // instead of waiting up to a poll cycle for a new active summary to arrive (the engine's
+      // MIN_INTERVAL means that row can be ~30s away). Scoped to tool-started to match the engine's
+      // own re-arm contract (autopilot-engine.ts only clears session.completed on tool-started), so
+      // a trailing tool-completed for already-done work can't reopen a task the server still holds
+      // complete.
+      rt.completed = false;
     }
     if (type === 'tool-completed' && raw.success === true) {
       rt.autoActionCount = 0; // real progress resets the circuit breaker
@@ -551,7 +575,7 @@ async function litellmProduceCommand(input: ProduceCommandInput): Promise<null |
   if (!base || !input.apiKey) {
     return null;
   }
-  const model = readProcessEnv('LITELLM_MODEL') || 'open-large';
+  const model = readProcessEnv('LITELLM_MODEL') || 'open-large-sa';
   const userPrompt =
     `Recent terminal output:\n${input.recentOutput.slice(-2000)}\n\n` +
     `Suggested next step: ${input.step.text}\n\n` +

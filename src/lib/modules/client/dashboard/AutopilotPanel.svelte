@@ -7,6 +7,7 @@
     startPresenceReporting,
   } from '$lib/modules/client/common';
   import { onMount } from 'svelte';
+  import { SvelteSet } from 'svelte/reactivity';
 
   import { autopilotDriver } from './autopilot-driver.svelte';
 
@@ -58,6 +59,43 @@
       }
     } catch {
       // ignore transient errors
+    }
+  }
+
+  // Ids with a DELETE in flight — guards against a double-click firing concurrent requests and
+  // drives the button's disabled state.
+  const dismissingIds = new SvelteSet<string>();
+
+  async function dismiss(id: string): Promise<void> {
+    if (dismissingIds.has(id)) {
+      return; // already in flight — ignore the repeat click
+    }
+    dismissingIds.add(id);
+    // Optimistic removal — drop the card immediately, then ask the server to delete it.
+    const removed = summaries.find((s) => s.id === id);
+    summaries = summaries.filter((s) => s.id !== id);
+    // On failure, reinsert ONLY this record into the CURRENT array (not a whole-array snapshot),
+    // so a concurrent dismiss of another card or a fresher poll isn't clobbered. Re-sort newest
+    // first to match the server's created_at DESC ordering.
+    const restore = (): void => {
+      if (removed && !summaries.some((s) => s.id === id)) {
+        summaries = [...summaries, removed].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      }
+    };
+    try {
+      const res = await fetch('/api/summaries', {
+        body: JSON.stringify({ id }),
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        method: 'DELETE',
+      });
+      // 404 = already gone (fine). Any other failure → restore so the user can retry.
+      if (!res.ok && res.status !== 404) {
+        restore();
+      }
+    } catch {
+      restore();
+    } finally {
+      dismissingIds.delete(id);
     }
   }
 
@@ -197,17 +235,36 @@
     <div class="sessions-list">
       {#each latest as s (s.id)}
         {@const steps = parseSteps(s.nextSteps)}
-        <div class="session-card">
+        <div class="session-card" class:session-card--done={s.status === 'completed'}>
           <div class="session-header">
             <span class="session-name">{s.projectName ?? s.terminalId}</span>
-            <span class="session-status session-status--idle">{s.trigger}</span>
+            {#if s.status === 'completed'}
+              <span class="session-status session-status--done">✓ done</span>
+            {:else}
+              <span class="session-status session-status--idle">{s.trigger}</span>
+            {/if}
+            <button
+              class="dismiss-btn"
+              title="Dismiss"
+              aria-label="Dismiss"
+              disabled={dismissingIds.has(s.id)}
+              onclick={(): void => {
+                void dismiss(s.id);
+              }}
+            >
+              ✕
+            </button>
           </div>
 
           {#if s.summary}
             <p class="session-summary">{s.summary}</p>
           {/if}
 
-          {#if steps.length > 0}
+          {#if s.status === 'completed' && s.completionReason}
+            <p class="completion-reason">{s.completionReason}</p>
+          {/if}
+
+          {#if steps.length > 0 && s.status !== 'completed'}
             <div class="next-steps">
               <span class="next-steps-label">Next steps</span>
               <ul class="steps-list">
@@ -373,6 +430,42 @@
 
   .session-status--idle {
     color: var(--text-tertiary, #7d7d7d);
+  }
+
+  .session-status--done {
+    color: var(--success, #34c759);
+    font-weight: 600;
+  }
+
+  .session-card--done {
+    border-color: var(--success-border, rgba(52, 199, 89, 0.35));
+  }
+
+  .completion-reason {
+    color: var(--success, #34c759);
+    font-size: var(--text-xs, 12px);
+    line-height: var(--leading-normal, 1.5);
+    margin: 0;
+  }
+
+  .dismiss-btn {
+    background: none;
+    border: none;
+    color: var(--text-tertiary, #7d7d7d);
+    cursor: pointer;
+    flex-shrink: 0;
+    font-size: var(--text-xs, 12px);
+    line-height: 1;
+    padding: 2px 4px;
+  }
+
+  .dismiss-btn:hover {
+    color: var(--text-primary, #ededed);
+  }
+
+  .dismiss-btn:disabled {
+    cursor: default;
+    opacity: 0.4;
   }
 
   .session-summary {

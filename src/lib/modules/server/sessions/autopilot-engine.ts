@@ -56,7 +56,16 @@ const STATE_FILE = join(shooterDataDir(), 'autopilot.json');
 // `open-large` does this badly: it reasons out loud and ignores response_format, so the JSON never
 // parses and the consensus collapses to tentative garbage. Pin a fast NON-reasoning model for the
 // pipeline, independent of the user's chat model (LITELLM_MODEL). Overridable via AUTOPILOT_MODEL.
-const ENGINE_MODEL = process.env.AUTOPILOT_MODEL?.trim() || 'open-fast';
+// NB: the default is the `-sa` variant — the Juspay LiteLLM grid only grants teams the `*-sa`
+// models, so a bare `open-fast` returns "team not allowed to access model" and the pipeline dies
+// silently. Keep the default on an accessible model so autopilot works without an env override.
+const ENGINE_MODEL = process.env.AUTOPILOT_MODEL?.trim() || 'open-fast-sa';
+
+// Retention for the persisted summary cards (the dashboard list). Without this the auto-* records
+// accumulate forever — the original "tasks never got removed" bug. Pruned at startup + hourly.
+const PRUNE_MAX_AGE_DAYS = Number(process.env.AUTOPILOT_SUMMARY_MAX_AGE_DAYS) || 7;
+const PRUNE_MAX_PER_TERMINAL = Number(process.env.AUTOPILOT_SUMMARY_MAX_PER_TERMINAL) || 20;
+const PRUNE_INTERVAL_MS = 60 * 60 * 1000;
 
 // Lead with the JSON-only contract; the per-lens perspective is a TRAILING modifier so the model
 // doesn't start "thinking" about a role. No copyable placeholder value in the schema — reasoning
@@ -79,6 +88,10 @@ const LENSES = [
 // eslint-disable-next-line no-restricted-syntax -- internal engine state, never exported
 interface EngineSession {
   cancelled: boolean;
+  // Set once the pipeline judged the goal complete. Halts further pipeline runs (no wasted LLM
+  // spend, no duplicate "done" pushes, no card resurrection) until genuine new work — a
+  // tool-started event — clears it.
+  completed: boolean;
   errorCount: number;
   eventCount: number;
   events: string[];
@@ -103,6 +116,7 @@ const sessions: Map<string, EngineSession> =
 
 let enabled = readPersistedEnabled();
 let unsubscribe: (() => void) | null = null;
+let pruneTimer: null | ReturnType<typeof setInterval> = null;
 
 // ── Control (exposed on globalThis so the /api/autopilot route can reach it) ──
 
@@ -155,12 +169,29 @@ export function startAutopilotEngine(): void {
   } catch {
     // ptyManager not ready yet — sessions will be created lazily on first event
   }
+  // Retention: prune the summary cards now and on an hourly timer so the dashboard
+  // list cannot grow without bound. Best-effort — a DB hiccup must not stop the engine.
+  pruneSummaries();
+  pruneTimer = setInterval(pruneSummaries, PRUNE_INTERVAL_MS);
+  pruneTimer.unref();
   console.log(
-    `[autopilot] engine started (enabled=${enabled}, litellm=${isLiteLLMConfigured() ? 'configured' : 'absent'}, lensConcurrency=${LENS_CONCURRENCY})`
+    `[autopilot] engine started (enabled=${enabled}, litellm=${isLiteLLMConfigured() ? 'configured' : 'absent'}, model=${ENGINE_MODEL}, lensConcurrency=${LENS_CONCURRENCY})`
   );
 }
 
-// ── Event handling ───────────────────────────────────────────────────
+/**
+ * Tear down the engine: unsubscribe from the event stream and stop the prune timer. The inverse of
+ * startAutopilotEngine() — wired into server.ts's shutdown() and available for test teardown. Safe
+ * to call when never started (both handles are null).
+ */
+export function stopAutopilotEngine(): void {
+  unsubscribe?.();
+  unsubscribe = null;
+  if (pruneTimer) {
+    clearInterval(pruneTimer);
+    pruneTimer = null;
+  }
+}
 
 function applyEvent(session: EngineSession, event: WireShooterEvent): void {
   const parts: string[] = [event.type];
@@ -196,15 +227,20 @@ function applyEvent(session: EngineSession, event: WireShooterEvent): void {
     case 'tool-started':
       session.toolCallCount += 1;
       session.status = 'running';
+      // Genuine new work in this terminal → the task is no longer "done"; re-arm the pipeline.
+      session.completed = false;
       break;
     default:
       break;
   }
 }
 
+// ── Event handling ───────────────────────────────────────────────────
+
 function createSession(terminalId: string): EngineSession {
   const session: EngineSession = {
     cancelled: false,
+    completed: false,
     errorCount: 0,
     eventCount: 0,
     events: [],
@@ -252,6 +288,11 @@ function handleEvent(event: WireShooterEvent): void {
   if (!enabled || session.running) {
     return;
   }
+  // A task judged complete stays quiet — no more pipeline runs, LLM spend, or duplicate "done"
+  // pushes — until a tool-started event (handled in applyEvent above) clears the flag.
+  if (session.completed) {
+    return;
+  }
   const isHigh = HIGH_SIGNAL.has(event.type);
   const isPeriodic = session.eventCount % PERIODIC_EVERY === 0;
   const isErrorThreshold = session.errorCount >= ERROR_THRESHOLD;
@@ -279,6 +320,18 @@ function handleEvent(event: WireShooterEvent): void {
   }
 }
 
+/**
+ * URL for the engine's internal same-process call to its own /api/notify. Host defaults to
+ * loopback — the server binds all interfaces (server.listen(port) with no host), so 127.0.0.1
+ * always resolves — but is overridable via SHOOTER_INTERNAL_HOST for setups that pin the server to
+ * a specific interface and block loopback.
+ */
+function internalNotifyUrl(): string {
+  const host = process.env.SHOOTER_INTERNAL_HOST?.trim() || '127.0.0.1';
+  const port = process.env.PORT || '54007';
+  return `http://${host}:${port}/api/notify`;
+}
+
 // ── Pipeline ─────────────────────────────────────────────────────────
 
 /** Run `fn` over `items` with at most `limit` in flight; preserves input order. */
@@ -303,9 +356,12 @@ function persist(
   session: EngineSession,
   summary: string,
   steps: NextStep[],
-  trigger: string
+  trigger: string,
+  status: 'active' | 'completed',
+  completionReason: null | string
 ): void {
   const record: SessionSummaryRecord = {
+    completionReason,
     createdAt: new Date().toISOString(),
     id: `auto-${session.terminalId}-${Date.now()}`,
     nextSteps: JSON.stringify(steps),
@@ -313,6 +369,7 @@ function persist(
     // No separate JSONL session UUID server-side; key on terminalId so
     // GET /api/summaries?sessionId=<terminalId> works (was previously null).
     sessionId: session.terminalId,
+    status,
     summary,
     terminalId: session.terminalId,
     trigger,
@@ -337,6 +394,17 @@ function projectNameFor(terminalId: string): string {
   return terminalId;
 }
 
+function pruneSummaries(): void {
+  try {
+    summaryStore.pruneOld({
+      maxAgeDays: PRUNE_MAX_AGE_DAYS,
+      maxPerTerminal: PRUNE_MAX_PER_TERMINAL,
+    });
+  } catch (err) {
+    console.warn('[autopilot] summary prune failed:', err instanceof Error ? err.message : err);
+  }
+}
+
 async function push(session: EngineSession, summary: string, steps: NextStep[]): Promise<void> {
   const top = steps[0];
   if (!top) {
@@ -348,13 +416,12 @@ async function push(session: EngineSession, summary: string, steps: NextStep[]):
   if (isViewerPresent()) {
     return;
   }
-  const port = process.env.PORT || '54007';
   const apiKey = process.env.API_KEY;
   if (!apiKey) {
     return;
   }
   try {
-    await fetch(`http://127.0.0.1:${port}/api/notify`, {
+    await fetch(internalNotifyUrl(), {
       body: JSON.stringify({
         data: {
           category: session.terminalId,
@@ -370,6 +437,46 @@ async function push(session: EngineSession, summary: string, steps: NextStep[]):
     });
   } catch (err) {
     console.warn('[autopilot] push failed:', err instanceof Error ? err.message : String(err));
+  }
+}
+
+/**
+ * Notify the phone that an autopilot task finished. Unlike push(), this is NOT presence-gated: a
+ * completion fires exactly once (the session.completed guard prevents re-fires), so we always
+ * deliver it — otherwise a task that finishes while the dashboard is open, then the viewer leaves
+ * with no further events, would never notify at all.
+ */
+async function pushCompletion(
+  session: EngineSession,
+  summary: string,
+  reason: null | string
+): Promise<void> {
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    return;
+  }
+  try {
+    await fetch(internalNotifyUrl(), {
+      body: JSON.stringify({
+        data: {
+          category: session.terminalId,
+          // Distinct dedupKey from the next-step push so a completion is never suppressed by a
+          // recent nudge for the same terminal.
+          dedupKey: `${session.terminalId}|complete`,
+          sessionId: session.terminalId,
+          source: 'autopilot',
+        },
+        message: reason ?? summary.slice(0, 80),
+        title: `✅ Autopilot done: ${session.projectName}`,
+      }),
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      method: 'POST',
+    });
+  } catch (err) {
+    console.warn(
+      '[autopilot] completion push failed:',
+      err instanceof Error ? err.message : String(err)
+    );
   }
 }
 
@@ -408,13 +515,24 @@ async function runPipeline(
       trigger,
     });
 
-    const summaryResult = await litellmJson<{ summary: string }>({
+    // One call yields BOTH the status sentence and the completion judgment (LLM-signalled
+    // completion) — folding it in here costs no extra request. `complete` is trusted only when
+    // strictly true; anything else keeps the card active.
+    const summaryResult = await litellmJson<{
+      complete?: boolean;
+      completionReason?: string;
+      summary: string;
+    }>({
       maxTokens: SUMMARY_MAX_TOKENS,
       model: ENGINE_MODEL,
-      systemInstruction: `${JSON_API_RULES} The object has one key "summary": a single sentence (max 120 characters) describing the current status of this coding session.`,
-      userPrompt: `${context}\n\nSummarise what is happening in this coding session in ONE sentence (max 120 chars).`,
+      systemInstruction: `${JSON_API_RULES} The object has keys: "summary" (a single sentence, max 120 characters, describing the current status of this coding session), "complete" (boolean — true ONLY when the session's goal is fully achieved and no further action is needed), and "completionReason" (a short string saying why it is complete, or "" when not complete).`,
+      userPrompt: `${context}\n\nSummarise this coding session in ONE sentence (max 120 chars), and decide whether its goal is fully complete.`,
     });
     const summary = summaryResult?.summary?.trim() || fallbackSummary(session);
+    const complete = summaryResult?.complete === true;
+    const completionReason = complete
+      ? summaryResult?.completionReason?.trim() || 'Goal complete'
+      : null;
 
     // Run the five lenses at most LENS_CONCURRENCY in flight (default 3) so the engine never
     // saturates the LiteLLM key's parallel cap by itself. Each failed lens yields an empty list;
@@ -433,11 +551,24 @@ async function runPipeline(
     if (!enabled || session.cancelled) {
       return; // engine disabled or terminal exited mid-pipeline — don't persist/push a dead session
     }
-    persist(session, summary, consensus.steps, trigger);
+    persist(
+      session,
+      summary,
+      consensus.steps,
+      trigger,
+      complete ? 'completed' : 'active',
+      completionReason
+    );
     // A run consumed the accumulated errors — reset so the error-threshold trigger (errorCount >= 3)
     // does not stick and re-fire on every subsequent event for the rest of the session's life.
     session.errorCount = 0;
-    if (isHigh && consensus.steps.length > 0 && !consensus.steps[0].tentative) {
+    if (complete) {
+      // Mark the session done BEFORE pushing so no concurrent/subsequent run can double-fire the
+      // completion notification — handleEvent now bails on a completed session until tool-started.
+      session.completed = true;
+      // Terminal lifecycle event — tell the phone the task is done instead of nudging a next step.
+      await pushCompletion(session, summary, completionReason);
+    } else if (isHigh && consensus.steps.length > 0 && !consensus.steps[0].tentative) {
       await push(session, summary, consensus.steps);
     }
   } catch (err) {

@@ -133,10 +133,25 @@ async function attemptCompletion<T>(
       // Surface the failure — silently returning null here made the whole autopilot pipeline
       // produce empty consensus invisibly (no log, no signal). 429 = the LiteLLM key's
       // max_parallel_requests is exhausted (often by other processes sharing the key).
+      // `detail` is the gateway's error RESPONSE body (not the outgoing request), so it carries no
+      // API key / Authorization header — safe to log, truncated to 200 chars below.
       const detail = await res.text().catch(() => '');
-      console.warn(
-        `[litellm] HTTP ${res.status} (model=${body.model as string}, jsonMode=${jsonMode}): ${detail.slice(0, 200)}`
-      );
+      // A model-access denial is a CONFIGURATION error, not a transient blip: the configured model
+      // is not granted to this key/team (e.g. `open-fast` instead of `open-fast-sa`). It will fail
+      // on EVERY call, so log it as an error with a clear hint instead of a quiet warn. The regex
+      // matches the two observed LiteLLM proxy substrings — deliberately narrow to avoid
+      // misclassifying a transient/validation 4xx as a permanent config error; add real observed
+      // strings here if the gateway ever returns a new phrasing.
+      const isModelAccess = /not allowed to access model|can only access models/i.test(detail);
+      if (isModelAccess) {
+        console.error(
+          `[litellm] model "${body.model as string}" is not accessible to this key — autopilot will produce nothing. Set AUTOPILOT_MODEL/LITELLM_MODEL to an allowed model. Detail: ${detail.slice(0, 200)}`
+        );
+      } else {
+        console.warn(
+          `[litellm] HTTP ${res.status} (model=${body.model as string}, jsonMode=${jsonMode}): ${detail.slice(0, 200)}`
+        );
+      }
       return null;
     }
     const data: unknown = await res.json();
@@ -166,6 +181,8 @@ function litellmConfig(): null | { base: string; key: string; model: string } {
   return {
     base: base.replace(/\/+$/, ''),
     key,
-    model: process.env.LITELLM_MODEL?.trim() || 'open-large',
+    // `-sa` variant: the bare `open-large` is not granted to teams on the Juspay grid (see the
+    // model-access note in attemptCompletion). Use an accessible default so an unset env still works.
+    model: process.env.LITELLM_MODEL?.trim() || 'open-large-sa',
   };
 }
