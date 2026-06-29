@@ -51,13 +51,18 @@ export const POST: RequestHandler = async ({ request }) => {
   if (typeof body.nextSteps === 'string' && body.nextSteps.length > 8192) {
     return json({ error: 'nextSteps must be 8192 characters or fewer' }, { status: 400 });
   }
+  if (typeof body.completionReason === 'string' && body.completionReason.length > 500) {
+    return json({ error: 'completionReason must be 500 characters or fewer' }, { status: 400 });
+  }
 
   const record: SessionSummaryRecord = {
+    completionReason: typeof body.completionReason === 'string' ? body.completionReason : null,
     createdAt: body.createdAt,
     id: body.id,
     nextSteps: typeof body.nextSteps === 'string' ? body.nextSteps : '[]',
     projectName: typeof body.projectName === 'string' ? body.projectName : null,
     sessionId: typeof body.sessionId === 'string' ? body.sessionId : null,
+    status: body.status === 'completed' ? 'completed' : 'active',
     summary: body.summary,
     terminalId: typeof body.terminalId === 'string' ? body.terminalId : null,
     trigger: body.trigger,
@@ -76,6 +81,45 @@ export const POST: RequestHandler = async ({ request }) => {
   }
 
   return json({ id: record.id, success: true }, { status: 201 });
+};
+
+export const DELETE: RequestHandler = async ({ request }) => {
+  const authError = validateAuth(request);
+  if (authError) {
+    return authError;
+  }
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
+
+  const id =
+    body && typeof body === 'object' && !Array.isArray(body)
+      ? (body as { id?: unknown }).id
+      : undefined;
+  if (typeof id !== 'string' || id.trim().length === 0) {
+    return json({ error: 'id is required and must be a non-empty string' }, { status: 400 });
+  }
+  if (id.trim().length > 128) {
+    // Cap before touching the DB / echoing in the 404 — mirrors the POST id cap.
+    return json({ error: 'id must be 128 characters or fewer' }, { status: 400 });
+  }
+
+  let removed: number;
+  try {
+    removed = summaryStore.deleteById(id.trim());
+  } catch {
+    // A DB throw (busy/locked/corrupt) must surface as a clean JSON 500, mirroring POST's insert.
+    return json({ error: 'Failed to delete summary' }, { status: 500 });
+  }
+  if (removed === 0) {
+    // Unknown / already-dismissed id → 404 so the caller can tell "gone" from a real delete.
+    return json({ error: 'Summary not found', id: id.trim() }, { status: 404 });
+  }
+  return json({ removed, success: true });
 };
 
 export const GET: RequestHandler = ({ request, url }) => {

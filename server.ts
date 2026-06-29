@@ -23,7 +23,10 @@ if (!existsSync(handlerPath)) {
 }
 
 import { deviceTokenStore } from './src/lib/modules/server/push/device-token-store.js';
-import { startAutopilotEngine } from './src/lib/modules/server/sessions/autopilot-engine.js';
+import {
+  startAutopilotEngine,
+  stopAutopilotEngine,
+} from './src/lib/modules/server/sessions/autopilot-engine.js';
 import { isReadOnlyProviderPath } from './src/lib/modules/server/sessions/provider-paths.js';
 import { sosCoordinator } from './src/lib/modules/server/sos/coordinator.js';
 import { codexWatcher } from './src/lib/modules/server/terminal/codex-watcher.js';
@@ -277,6 +280,7 @@ function shutdown(signal: string): void {
   console.log(`\n${signal} received — shutting down…`);
 
   stopKeepalive();
+  stopAutopilotEngine();
   ptyManager.disconnectAll();
   sessionWatcher.stopAll();
   openCodeWatcher.stopAll();
