@@ -1,3 +1,9 @@
+## [1.26.0](https://github.com/juspay/shooter/compare/v1.25.0...v1.26.0) (2026-07-04)
+
+### Features
+
+* **(autopilot):**  task lifecycle — LLM-signalled completion, retention/dismiss, fix silent model-access death ([c834ee3](https://github.com/juspay/shooter/commit/c834ee33529dee1c2d9e85eeff8b8b4c91226962))
+
 ## [1.25.0](https://github.com/juspay/shooter/compare/v1.24.2...v1.25.0) (2026-06-27)
 
 ### Features
