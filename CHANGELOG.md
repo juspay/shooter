@@ -1,3 +1,9 @@
+## [1.29.0](https://github.com/juspay/shooter/compare/v1.28.0...v1.29.0) (2026-07-11)
+
+### Features
+
+* **(ios):**  drive the Live Activity from session notifications (compile-verified) ([5fe67ca](https://github.com/juspay/shooter/commit/5fe67cac0732aae369923bb58c66ebe694b4866c))
+
 ## [1.28.0](https://github.com/juspay/shooter/compare/v1.27.0...v1.28.0) (2026-07-11)
 
 ### Features
