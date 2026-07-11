@@ -16,8 +16,21 @@ final class LiveActivityManager {
     private var current: Activity<ShooterActivityAttributes>?
     private var tokenTask: Task<Void, Never>?
 
-    /// Start a Live Activity for a session and stream its push token to the server.
+    /// Start a Live Activity for a session — or, if one is already running for the
+    /// same session, just update it. Safe to call repeatedly from a notification
+    /// tap (must be foreground; iOS only permits `Activity.request` there). Once
+    /// started, the streamed push token lets the SERVER drive later updates + end.
     func start(sessionId: String, title: String, status: String, detail: String? = nil) {
+        // Already showing this session → update in place instead of stacking a
+        // second activity.
+        if let activity = current, activity.attributes.sessionId == sessionId {
+            update(status: status, title: title, detail: detail)
+            return
+        }
+        // A different session is showing → retire it before starting the new one.
+        if current != nil {
+            end()
+        }
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
         let attributes = ShooterActivityAttributes(sessionId: sessionId)
         let state = ShooterActivityAttributes.ContentState(
@@ -41,6 +54,16 @@ final class LiveActivityManager {
         } catch {
             print("[LiveActivity] start failed: \(error)")
         }
+    }
+
+    /// Update the current activity's content locally (the server also updates via push).
+    func update(status: String, title: String? = nil, detail: String? = nil) {
+        guard let activity = current else { return }
+        let state = ShooterActivityAttributes.ContentState(
+            title: title ?? activity.content.state.title, status: status, detail: detail,
+            progress: nil, updatedAt: ISO8601DateFormatter().string(from: Date())
+        )
+        Task { await activity.update(.init(state: state, staleDate: nil)) }
     }
 
     /// End the current activity (optionally showing a final state briefly).
