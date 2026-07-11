@@ -421,12 +421,15 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
             // User explicitly asked to make the decision in-app — show
             // the Decide screen for richer context / unlimited options.
             DispatchQueue.main.async { self.decideRequestId = DecideRequestId(value: requestId) }
-        } else if actionIdentifier == UNNotificationDefaultActionIdentifier,
-                  let requestId = requestId {
+            syncLiveActivity(response.notification.request.content)
+        } else if actionIdentifier == UNNotificationDefaultActionIdentifier {
             // User tapped the notification body (not an action button).
-            // Open the Decide screen so they see context before
-            // choosing.
-            DispatchQueue.main.async { self.decideRequestId = DecideRequestId(value: requestId) }
+            // Open the Decide screen when there's a decision to make, and
+            // reflect the session in a Live Activity now that we're foreground.
+            if let requestId = requestId {
+                DispatchQueue.main.async { self.decideRequestId = DecideRequestId(value: requestId) }
+            }
+            syncLiveActivity(response.notification.request.content)
         } else if actionIdentifier == UNNotificationDismissActionIdentifier {
             // Dismissed -- hook will timeout and fall through to the
             // local CC permission dialog. No-op on our side.
@@ -445,5 +448,41 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
     ) {
         // Show the banner even when the app is in the foreground
         completionHandler([.banner, .sound, .badge])
+    }
+
+    /// Reflect a tapped session in a Live Activity. Called only from foreground-
+    /// bringing taps (default / open-in-app), because iOS only permits starting
+    /// an activity in the foreground. Once started, the push token this streams to
+    /// the server lets the server drive precise updates + the eventual end.
+    private func syncLiveActivity(_ content: UNNotificationContent) {
+        guard #available(iOS 16.2, *) else { return }
+        let userInfo = content.userInfo
+        guard let sessionId = userInfo["sessionId"] as? String, !sessionId.isEmpty else { return }
+        let eventType = userInfo["eventType"] as? String ?? ""
+        let source = userInfo["source"] as? String ?? ""
+        let title = content.title.isEmpty ? "Session" : content.title
+
+        // A completion notification ends the activity; everything else starts/updates it.
+        if source.contains("completion") || eventType == "session.complete" {
+            LiveActivityManager.shared.end(finalStatus: "Done")
+            return
+        }
+        LiveActivityManager.shared.start(
+            sessionId: sessionId,
+            title: title,
+            status: liveActivityStatus(for: eventType),
+            detail: content.body.isEmpty ? nil : content.body
+        )
+    }
+
+    private func liveActivityStatus(for eventType: String) -> String {
+        switch eventType {
+        case "permission", "permission_notification": return "Permission needed"
+        case "question": return "Awaiting answer"
+        case "idle_input", "session.idle": return "Awaiting input"
+        case "error": return "Error"
+        case "tool.before", "tool.after", "session.status": return "Running"
+        default: return "Active"
+        }
     }
 }
