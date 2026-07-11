@@ -1,3 +1,9 @@
+## [1.31.0](https://github.com/juspay/shooter/compare/v1.30.0...v1.31.0) (2026-07-11)
+
+### Features
+
+* **(ios):**  deep links — tapping the widget / Live Activity opens the session ([26aaec8](https://github.com/juspay/shooter/commit/26aaec81880eb7df50dcfcdd60c70a70f7b9f0e3))
+
 ## [1.30.0](https://github.com/juspay/shooter/compare/v1.29.0...v1.30.0) (2026-07-11)
 
 ### Features
