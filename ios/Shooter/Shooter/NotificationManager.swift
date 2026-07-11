@@ -24,6 +24,10 @@ class NotificationManager: NSObject, ObservableObject {
     /// (String isn't Identifiable on its own).
     @Published var decideRequestId: DecideRequestId?
 
+    // Dedup key for the home-screen widget snapshot (requestId|status) so the same
+    // notification written on arrival and again on tap doesn't do redundant work.
+    private var lastWidgetKey: String?
+
     private var serverUrl: String {
         UserDefaults.standard.string(forKey: "serverUrl") ?? AppConfig.defaultServerURL
     }
@@ -436,6 +440,10 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         } else if let decision = decisionFor(actionIdentifier: actionIdentifier),
                   let requestId = requestId {
             sendDecisionResponse(requestId: requestId, decision: decision)
+            // Answering from the lock screen doesn't foreground the app (so we
+            // can't touch the Live Activity), but the widget snapshot is a cheap
+            // App-Group write — refresh it so the home screen reflects the action.
+            updateWidgetSnapshot(response.notification.request.content)
         }
 
         completionHandler()
@@ -446,43 +454,97 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
-        // Show the banner even when the app is in the foreground
+        // Show the banner even when the app is in the foreground, and refresh the
+        // home-screen widget from the arriving session event (no tap required).
+        updateWidgetSnapshot(notification.request.content)
         completionHandler([.banner, .sound, .badge])
     }
 
-    /// Reflect a tapped session in a Live Activity. Called only from foreground-
-    /// bringing taps (default / open-in-app), because iOS only permits starting
-    /// an activity in the foreground. Once started, the push token this streams to
-    /// the server lets the server drive precise updates + the eventual end.
+    /// Persist the latest session state for the home-screen widget (App Group).
+    /// Cheap + WidgetKit-only (16.1+), so it runs regardless of Live Activity support.
+    ///
+    /// The delivered push carries the session's state in `data.category` (spread to
+    /// the top level of userInfo) — NOT `eventType` (a WS-only field) or `source`
+    /// (the server overwrites it with a transport label). `completion` marks a
+    /// finished session.
+    private func updateWidgetSnapshot(_ content: UNNotificationContent) {
+        let userInfo = content.userInfo
+        guard let sessionId = userInfo["sessionId"] as? String, !sessionId.isEmpty else { return }
+        let category = notificationCategory(userInfo)
+        let title = content.title.isEmpty ? "Session" : content.title
+        let isDone = category == "completion"
+        let status = isDone ? "Done" : sessionStatus(forCategory: category)
+
+        // Dedup (finding: redundant double-write) — the same push written on arrival
+        // and again on tap has the same requestId+status, so skip the repeat.
+        let requestId = (userInfo["requestId"] as? String) ?? sessionId
+        let key = "\(requestId)|\(status)"
+        if key == lastWidgetKey { return }
+
+        // Session affinity — don't let a lower-urgency event from a DIFFERENT
+        // session silently downgrade an unacted urgent snapshot. Same session, a
+        // finished/stale stored state, or equal-or-higher urgency all overwrite.
+        let current = WidgetShared.read()
+        let staleOrDone = !current.hasActivity || Date().timeIntervalSince(current.updatedAt) > 3600
+        guard current.sessionId == sessionId || staleOrDone
+                || urgency(status) >= urgency(current.status) else { return }
+
+        lastWidgetKey = key
+        WidgetShared.write(WidgetShared.Snapshot(
+            sessionId: sessionId, title: title, status: status,
+            hasActivity: !isDone, updatedAt: Date()
+        ))
+    }
+
+    /// Reflect a tapped session in a Live Activity + the widget. Called only from
+    /// foreground-bringing taps (default / open-in-app), because iOS only permits
+    /// starting an activity in the foreground. Once started, the push token this
+    /// streams to the server lets the server drive precise updates + the end.
     private func syncLiveActivity(_ content: UNNotificationContent) {
+        updateWidgetSnapshot(content)
         guard #available(iOS 16.2, *) else { return }
         let userInfo = content.userInfo
         guard let sessionId = userInfo["sessionId"] as? String, !sessionId.isEmpty else { return }
-        let eventType = userInfo["eventType"] as? String ?? ""
-        let source = userInfo["source"] as? String ?? ""
+        let category = notificationCategory(userInfo)
         let title = content.title.isEmpty ? "Session" : content.title
 
         // A completion notification ends the activity; everything else starts/updates it.
-        if source.contains("completion") || eventType == "session.complete" {
+        if category == "completion" {
             LiveActivityManager.shared.end(finalStatus: "Done")
             return
         }
         LiveActivityManager.shared.start(
             sessionId: sessionId,
             title: title,
-            status: liveActivityStatus(for: eventType),
+            status: sessionStatus(forCategory: category),
             detail: content.body.isEmpty ? nil : content.body
         )
     }
 
-    private func liveActivityStatus(for eventType: String) -> String {
-        switch eventType {
+    /// The session state category the server actually delivers (top-level
+    /// `data.category`), falling back to the WS-only `eventType` for completeness.
+    private func notificationCategory(_ userInfo: [AnyHashable: Any]) -> String {
+        (userInfo["category"] as? String) ?? (userInfo["eventType"] as? String) ?? ""
+    }
+
+    private func sessionStatus(forCategory category: String) -> String {
+        switch category {
         case "permission", "permission_notification": return "Permission needed"
         case "question": return "Awaiting answer"
         case "idle_input", "session.idle": return "Awaiting input"
-        case "error": return "Error"
-        case "tool.before", "tool.after", "session.status": return "Running"
+        case "intervention": return "Attention needed"
+        case "completion": return "Done"
         default: return "Active"
+        }
+    }
+
+    /// How urgently a status wants to be surfaced (higher = don't let another
+    /// session downgrade it). Attention states outrank Running/Active outrank Done.
+    private func urgency(_ status: String) -> Int {
+        switch status {
+        case "Permission needed", "Awaiting answer", "Awaiting input", "Attention needed": return 3
+        case "Done": return 1
+        default: return 2
         }
     }
 }

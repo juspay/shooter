@@ -11,6 +11,7 @@ import WidgetKit
 @main
 struct ShooterWidgetBundle: WidgetBundle {
     var body: some Widget {
+        ShooterHomeWidget()
         ShooterLiveActivity()
     }
 }
