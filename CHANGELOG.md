@@ -1,3 +1,9 @@
+## [1.28.0](https://github.com/juspay/shooter/compare/v1.27.0...v1.28.0) (2026-07-11)
+
+### Features
+
+* **(ios):**  wire the ShooterWidget Live Activity extension target (compile-verified) ([74aa054](https://github.com/juspay/shooter/commit/74aa05488b80aedfe10033ed9b7d9c4757168908))
+
 ## [1.27.0](https://github.com/juspay/shooter/compare/v1.26.0...v1.27.0) (2026-07-11)
 
 ### Features
