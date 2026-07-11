@@ -8,6 +8,11 @@ extension Notification.Name {
     /// serverUrl/apiKey no longer leaves the user stuck on the error
     /// page — needsPairing flips true and PairingView takes over.
     static let shooterWebViewLoadFailed = Notification.Name("ShooterWebViewLoadFailed")
+
+    /// Posted by ContentView.onOpenURL when a shooter:// deep link (widget /
+    /// Live Activity tap) resolves to a target URL; the WebView coordinator
+    /// navigates there. userInfo["url"] is the fully-qualified target URL.
+    static let shooterDeepLink = Notification.Name("ShooterDeepLink")
 }
 
 struct ContentView: View {
@@ -56,6 +61,27 @@ struct ContentView: View {
             lastWebViewError = note.userInfo?["message"] as? String
             webViewLoadFailed = true
         }
+        .onOpenURL { handleDeepLink($0) }
+    }
+
+    /// Translate a shooter:// deep link (widget / Live Activity tap) into a WebView
+    /// navigation. Supported:
+    ///   shooter://session/<id>   → /session/<id>
+    ///   shooter://terminal[/<id>] → /terminals[/<id>]
+    /// Unrecognized links just bring the app forward at its current location.
+    private func handleDeepLink(_ url: URL) {
+        guard url.scheme == "shooter" else { return }
+        let id = url.pathComponents.first(where: { $0 != "/" }) ?? ""
+        let path: String
+        switch url.host {
+        case "session" where !id.isEmpty: path = "/session/\(id)"
+        case "terminal", "terminals": path = id.isEmpty ? "/terminals" : "/terminals/\(id)"
+        default: return
+        }
+        let rawBase = UserDefaults.standard.string(forKey: "serverUrl") ?? AppConfig.defaultServerURL
+        let base = rawBase.hasSuffix("/") ? String(rawBase.dropLast()) : rawBase
+        guard let target = URL(string: base + path) else { return }
+        NotificationCenter.default.post(name: .shooterDeepLink, object: nil, userInfo: ["url": target])
     }
 
     private var needsPairing: Bool {
@@ -529,6 +555,18 @@ struct WebView: UIViewRepresentable {
                 name: .shooterSilentWake,
                 object: nil
             )
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(handleDeepLink(_:)),
+                name: .shooterDeepLink,
+                object: nil
+            )
+        }
+
+        /// Navigate the WebView to a deep-link target (widget / Live Activity tap).
+        @objc func handleDeepLink(_ note: Notification) {
+            guard let url = note.userInfo?["url"] as? URL else { return }
+            webView?.load(URLRequest(url: url))
         }
 
         @objc func handleRefresh(_ refreshControl: UIRefreshControl) {

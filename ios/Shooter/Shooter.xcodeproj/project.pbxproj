@@ -56,6 +56,7 @@
 		1596767D9C6A296E6DDF07DE /* ShooterLiveActivity.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ShooterLiveActivity.swift; sourceTree = "<group>"; };
 		386826547C4FC8536CB58FC4 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		513CA31DE7FB674403C08675 /* ShooterWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ShooterWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		5920E3B83FEC63FF5556A0F0 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		68A36FE1EC09C89CA2E4CF80 /* ShooterActivityAttributes.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ShooterActivityAttributes.swift; sourceTree = "<group>"; };
 		6BF921E2E5F0934B4CC8F7E6 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		74E4E8E3D19DF78BE6632FD7 /* ShooterWidgetBundle.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ShooterWidgetBundle.swift; sourceTree = "<group>"; };
@@ -151,6 +152,7 @@
 				A7B8E1A42C5F1A3C00123456 /* Assets.xcassets */,
 				A7B8E1A62C5F1A3C00123456 /* Preview Content */,
 				AE672EB5DE4A681A39D88AFC /* LiveActivityManager.swift */,
+				5920E3B83FEC63FF5556A0F0 /* Info.plist */,
 			);
 			path = Shooter;
 			sourceTree = "<group>";
@@ -437,6 +439,7 @@
 				DEVELOPMENT_TEAM = YM9U73Z2JM;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Shooter/Info.plist;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Camera access is needed to scan QR codes for server configuration";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -472,6 +475,7 @@
 				DEVELOPMENT_TEAM = YM9U73Z2JM;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Shooter/Info.plist;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Camera access is needed to scan QR codes for server configuration";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
