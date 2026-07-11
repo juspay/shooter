@@ -13,28 +13,32 @@
   --button-font-family: var(--font-sans);
   --button-font-size: var(--text-sm);
   --button-font-weight: 500;
-  --button-color: var(--ds-blue-700);
-  --button-text-color: #fff;
+  --button-color: var(--accent);
+  --button-text-color: var(--accent-fg);
   --button-padding: 8px 16px;
-  --button-border-radius: var(--radius-md);
+  --button-border-radius: var(--radius-lg);
   --button-border: 1px solid transparent;
-  --button-hover-color: var(--ds-blue-900);
-  --button-hover-text-color: #fff;
+  --button-hover-color: var(--accent-hover);
+  --button-hover-text-color: var(--accent-fg);
+  --button-active-background: var(--accent-hover);
   --button-content-gap: 8px;
+  /* Press/focus feedback read by the library Button (:active + :focus-visible on 2.87.0). */
+  --button-active-transform: scale(0.97);
+  --button-focus-visible-box-shadow: 0 0 0 2px var(--accent);
 
   /* ===== Input ===== */
   --input-background: var(--ds-gray-100);
   --input-font-family: var(--font-sans);
   --input-font-size: var(--text-base);
   --input-font-weight: 400;
-  --input-radius: var(--radius-md);
+  --input-radius: var(--radius-lg);
   --input-padding: 10px 12px;
   --input-height: 40px;
   --input-width: 100%;
   --input-margin: 0;
   --input-box-shadow: none;
   --input-border: 1px solid var(--border);
-  --input-focus-border: 1px solid var(--ds-blue-700);
+  --input-focus-border: 1px solid var(--accent);
   --input-text-color: var(--text-primary);
   --input-placeholder-color: var(--text-tertiary);
   --input-label-msg-text-color: var(--text-secondary);
@@ -47,6 +51,22 @@
   --input-info-msg-text-size: var(--text-xs);
   --input-info-msg-margin: var(--space-2) 0 0 0;
   --input-container-margin: 0 0 var(--space-5) 0;
+
+  /* ===== Card ===== */
+  --card-background: linear-gradient(135deg, rgba(20, 20, 20, 0.9) 0%, rgba(28, 28, 32, 0.9) 100%);
+  --card-border: 1px solid rgba(255, 255, 255, 0.06);
+  --card-border-radius: var(--radius-lg);
+  --card-overflow: hidden;
+  --card-header-padding: var(--space-4) var(--space-5) 0;
+  --card-header-border-bottom: none;
+  --card-title-font-size: var(--text-sm);
+  --card-title-font-weight: 500;
+  --card-title-color: var(--text-primary);
+  --card-description-font-size: var(--text-sm);
+  --card-description-color: var(--text-tertiary);
+  --card-description-opacity: 1;
+  --card-description-margin-top: var(--space-1);
+  --card-content-padding: var(--space-5);
 
   /* ===== Banner (replaces Alert) ===== */
   --banner-background: var(--ds-gray-100);
@@ -107,7 +127,7 @@
   --tabs-item-background: transparent;
   --tabs-active-color: var(--text-primary);
   --tabs-active-font-weight: 600;
-  --tabs-indicator-color: var(--ds-blue-700);
+  --tabs-indicator-color: var(--accent);
   --tabs-indicator-height: 2px;
   --tabs-hover-color: var(--text-secondary);
   --tabs-hover-background: var(--ds-gray-alpha-100);
@@ -136,7 +156,7 @@
   --select-bgcolor: var(--ds-gray-100);
   --select-font-family: var(--font-sans);
   --select-font-size: var(--text-base);
-  --select-radius: var(--radius-md);
+  --select-radius: var(--radius-lg);
   --select-box-shadow: none;
   --select-border: 1px solid var(--border);
   --select-color: var(--text-primary);
@@ -186,8 +206,8 @@
   --choicebox-gap: 12px;
   --choicebox-hover-border-color: var(--border-hover);
   --choicebox-hover-background: var(--ds-gray-200);
-  --choicebox-selected-border-color: var(--ds-blue-700);
-  --choicebox-selected-background: var(--ds-blue-100);
+  --choicebox-selected-border-color: var(--accent);
+  --choicebox-selected-background: var(--accent-dim);
   --choicebox-title-color: var(--text-primary);
   --choicebox-title-font-size: var(--text-base);
   --choicebox-title-font-weight: 500;
@@ -195,8 +215,8 @@
   --choicebox-description-color: var(--text-tertiary);
   --choicebox-description-font-size: var(--text-sm);
   --choicebox-indicator-border: 2px solid var(--ds-gray-500);
-  --choicebox-indicator-selected-color: var(--ds-blue-700);
-  --choicebox-focus-ring: 0 0 0 3px rgba(0, 112, 243, 0.2);
+  --choicebox-indicator-selected-color: var(--accent);
+  --choicebox-focus-ring: 0 0 0 3px var(--accent-line);
 
   /* ===== Toast ===== */
   --toast-font-family: var(--font-sans);
@@ -238,12 +258,12 @@
 /* Library Button has NO variant/size props. Use classes prop + CSS vars. */
 
 .btn-primary {
-  --button-color: var(--ds-gray-1000);
-  --button-text-color: var(--ds-background-100);
-  --button-border: 1px solid var(--ds-gray-1000);
-  --button-hover-color: #fff;
-  --button-hover-text-color: var(--ds-background-100);
-  --button-hover-border: 1px solid #fff;
+  --button-color: var(--accent);
+  --button-text-color: var(--accent-fg);
+  --button-border: 1px solid var(--accent);
+  --button-hover-color: var(--accent-hover);
+  --button-hover-text-color: var(--accent-fg);
+  --button-hover-border: 1px solid var(--accent-hover);
 }
 
 .btn-secondary {
@@ -714,6 +734,12 @@
   }
   100% {
     transform: translateX(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shimmer::after {
+    animation: none;
   }
 }
 

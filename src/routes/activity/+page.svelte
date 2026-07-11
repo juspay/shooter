@@ -2,7 +2,8 @@
   import { browser } from '$app/environment';
   import { goto } from '$app/navigation';
   import { ActivityFeed } from '$lib/modules/client/activity';
-  import { isShooterConfig } from '$lib/modules/client/common';
+  import { isShooterConfig, markActivitySeen } from '$lib/modules/client/common';
+  import NavBar from '$lib/modules/client/nav/NavBar.svelte';
   import { onMount } from 'svelte';
 
   let configured = $state(false);
@@ -11,6 +12,9 @@
     if (!browser) {
       return;
     }
+
+    // Opening the feed acknowledges current activity — clears the NavBar bell dot.
+    markActivitySeen();
 
     // Check config exists
     try {
@@ -40,19 +44,10 @@
   <meta name="description" content="Real-time activity feed" />
 </svelte:head>
 
+<NavBar variant="root" title="Activity" />
+
 <main class="main">
-  <h1 class="page-title">Activity Feed</h1>
   {#if configured}
     <ActivityFeed />
   {/if}
 </main>
-
-<style>
-  .page-title {
-    font-size: var(--text-2xl);
-    font-weight: 600;
-    letter-spacing: -0.03em;
-    color: var(--text-primary);
-    margin-bottom: var(--space-4);
-  }
-</style>

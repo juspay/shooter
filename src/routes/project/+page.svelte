@@ -15,7 +15,13 @@
     sourceLabel,
     sourceToCommand,
   } from '$lib/modules/client/common';
-  import { Banner, Button, EmptyState, Icon, Pill, Shimmer } from '@juspay/svelte-ui-components';
+  import Glyph from '$lib/modules/client/common/Glyph.svelte';
+  import SkeletonCard from '$lib/modules/client/common/SkeletonCard.svelte';
+  import EdgeSwipeBack from '$lib/modules/client/nav/EdgeSwipeBack.svelte';
+  import InfiniteScroll from '$lib/modules/client/nav/InfiniteScroll.svelte';
+  import NavBar from '$lib/modules/client/nav/NavBar.svelte';
+  import PullToRefresh from '$lib/modules/client/nav/PullToRefresh.svelte';
+  import { Banner, Button, EmptyState, Icon, Pill } from '@juspay/svelte-ui-components';
   import { onDestroy, onMount } from 'svelte';
 
   const POLL_INTERVAL_MS = 15_000;
@@ -229,123 +235,112 @@
   <meta name="description" content="Project sessions sorted by latest update" />
 </svelte:head>
 
-<main class="main">
-  {#if fetchError}
-    <Banner text={fetchError} classes="banner-error" />
-  {/if}
-
-  {#if loading && !project}
-    <div class="loading-container">
-      <Shimmer classes="shimmer-header" />
-      {#each Array(4) as _, i (i)}
-        <Shimmer classes="shimmer-card" />
-      {/each}
-    </div>
-  {:else if !project}
-    <div class="project-back-row">
-      <a href="/" class="back-link">
-        <span class="back-arrow">&larr;</span>
-        Back to Projects
-      </a>
-    </div>
-    <EmptyState title="Project Not Found" description="The requested project could not be found.">
-      {#snippet icon()}<Icon svg={AlertTriangleSvg} classes="icon-24" />{/snippet}
-    </EmptyState>
-  {:else}
-    <div class="chat-session-header">
-      <div class="chat-session-header-top">
-        <a href="/" class="back-link">&#8592; Back to Projects</a>
-        <Button classes="btn-secondary" onclick={forceRefresh} disabled={loading}>
-          <Icon svg={RefreshSvg} classes="icon-14" />
-          Refresh
+<EdgeSwipeBack backHref="/">
+  <NavBar variant="drilldown" title={project?.name ?? 'Project'} backHref="/">
+    {#snippet trailing()}
+      {#if project}
+        <Button
+          classes="btn-secondary"
+          onclick={forceRefresh}
+          disabled={loading}
+          ariaLabel="Refresh"
+        >
+          <Glyph svg={RefreshSvg} size={14} />
         </Button>
-      </div>
-      <h1 class="chat-session-title">{project.name}</h1>
-      <div class="chat-session-meta">
-        <span class="session-card-subtitle">{project.fullPath}</span>
-        <span>{project.sessionCount} sessions</span>
-      </div>
-    </div>
-
-    {#if project.sessions.length === 0}
-      <EmptyState title="No sessions yet" description="Sessions for this project will appear here">
-        {#snippet icon()}<Icon svg={BellSvg} classes="icon-24" />{/snippet}
-      </EmptyState>
-    {:else}
-      <div class="sessions-container">
-        {#each visibleSessions as session (session.id)}
-          <a href="/session/{session.id}?project={projectId}" class="session-card">
-            <div class="session-card-header">
-              <div>
-                <h3 class="session-card-title">{session.title}</h3>
-                {#if session.summary}
-                  <div class="session-card-subtitle">{truncate(session.summary, 80)}</div>
-                {/if}
-              </div>
-              <div class="session-card-actions">
-                <Pill text={formatRelativeTime(session.modified)} classes="pill-session-time" />
-                {#if runningSessionIds.has(session.id)}
-                  <Button
-                    classes="btn-connect btn-xs"
-                    onclick={(e: MouseEvent): void =>
-                      void connectToSession(e, session.id, sourceToCommand(session.source))}
-                    disabled={connectingSessionId === session.id}
-                    showLoader={connectingSessionId === session.id}
-                  >
-                    <span class="connect-dot"></span>
-                    Connect
-                  </Button>
-                {:else}
-                  <Button
-                    classes="btn-resume btn-xs"
-                    onclick={(e: MouseEvent): void =>
-                      void connectToSession(e, session.id, sourceToCommand(session.source))}
-                    disabled={connectingSessionId === session.id}
-                    showLoader={connectingSessionId === session.id}
-                    text="Resume"
-                  />
-                {/if}
-              </div>
-            </div>
-            <div class="session-stats">
-              <span><strong>{session.messageCount}</strong> messages</span>
-              {#if session.gitBranch}
-                <Pill text="🌿 {session.gitBranch}" classes="pill-git-branch" />
-              {/if}
-              <Pill text={sourceLabel(session.source)} classes="pill-source-{session.source}" />
-            </div>
-            <div class="session-meta-row">
-              <span class="session-modified">Last updated {formatDate(session.modified)}</span>
-              <span class="session-duration">Created {formatDate(session.created)}</span>
-            </div>
-          </a>
-        {/each}
-      </div>
-      {#if hasMore}
-        <div style="text-align: center; padding: 1rem;">
-          <Button
-            classes="btn-secondary"
-            onclick={loadMore}
-            text={`Load More (${project.sessions.length - visibleCount} remaining)`}
-          />
-        </div>
       {/if}
-    {/if}
-  {/if}
-</main>
+    {/snippet}
+  </NavBar>
+
+  <PullToRefresh onRefresh={forceRefresh}>
+    <main class="main">
+      {#if fetchError}
+        <Banner text={fetchError} classes="banner-error" />
+      {/if}
+
+      {#if loading && !project}
+        <div class="loading-container">
+          {#each Array(4) as _, i (i)}
+            <SkeletonCard lines={2} />
+          {/each}
+        </div>
+      {:else if !project}
+        <EmptyState
+          title="Project Not Found"
+          description="The requested project could not be found."
+        >
+          {#snippet icon()}<Icon svg={AlertTriangleSvg} classes="icon-24" />{/snippet}
+        </EmptyState>
+      {:else}
+        <div class="chat-session-meta">
+          <span class="session-card-subtitle">{project.fullPath}</span>
+          <span>{project.sessionCount} sessions</span>
+        </div>
+
+        {#if project.sessions.length === 0}
+          <EmptyState
+            title="No sessions yet"
+            description="Sessions for this project will appear here"
+          >
+            {#snippet icon()}<Icon svg={BellSvg} classes="icon-24" />{/snippet}
+          </EmptyState>
+        {:else}
+          <div class="sessions-container">
+            {#each visibleSessions as session (session.id)}
+              <a href="/session/{session.id}?project={projectId}" class="session-card">
+                <div class="session-card-header">
+                  <div>
+                    <h3 class="session-card-title">{session.title}</h3>
+                    {#if session.summary}
+                      <div class="session-card-subtitle">{truncate(session.summary, 80)}</div>
+                    {/if}
+                  </div>
+                  <div class="session-card-actions">
+                    <Pill text={formatRelativeTime(session.modified)} classes="pill-session-time" />
+                    {#if runningSessionIds.has(session.id)}
+                      <Button
+                        classes="btn-connect btn-xs"
+                        onclick={(e: MouseEvent): void =>
+                          void connectToSession(e, session.id, sourceToCommand(session.source))}
+                        disabled={connectingSessionId === session.id}
+                        showLoader={connectingSessionId === session.id}
+                      >
+                        <span class="connect-dot"></span>
+                        Connect
+                      </Button>
+                    {:else}
+                      <Button
+                        classes="btn-resume btn-xs"
+                        onclick={(e: MouseEvent): void =>
+                          void connectToSession(e, session.id, sourceToCommand(session.source))}
+                        disabled={connectingSessionId === session.id}
+                        showLoader={connectingSessionId === session.id}
+                        text="Resume"
+                      />
+                    {/if}
+                  </div>
+                </div>
+                <div class="session-stats">
+                  <span><strong>{session.messageCount}</strong> messages</span>
+                  {#if session.gitBranch}
+                    <Pill text="🌿 {session.gitBranch}" classes="pill-git-branch" />
+                  {/if}
+                  <Pill text={sourceLabel(session.source)} classes="pill-source-{session.source}" />
+                </div>
+                <div class="session-meta-row">
+                  <span class="session-modified">Last updated {formatDate(session.modified)}</span>
+                  <span class="session-duration">Created {formatDate(session.created)}</span>
+                </div>
+              </a>
+            {/each}
+          </div>
+          <InfiniteScroll {hasMore} onLoadMore={loadMore} />
+        {/if}
+      {/if}
+    </main>
+  </PullToRefresh>
+</EdgeSwipeBack>
 
 <style>
-  .project-back-row {
-    margin-bottom: var(--space-5);
-  }
-
-  .chat-session-header-top {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: var(--space-2);
-  }
-
   .sessions-container {
     display: flex;
     flex-direction: column;
@@ -383,12 +378,6 @@
   }
 
   @media (max-width: 480px) {
-    .chat-session-header-top {
-      flex-direction: column;
-      align-items: flex-start;
-      gap: var(--space-2);
-    }
-
     .session-card-actions {
       flex-wrap: wrap;
     }

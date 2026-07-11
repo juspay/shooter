@@ -392,6 +392,9 @@ struct WebView: UIViewRepresentable {
         window.ShooterBridge.saveConfig = function(json) {
             window.webkit.messageHandlers.shooterBridge.postMessage(json);
         };
+        window.ShooterBridge.haptic = function(kind) {
+            window.webkit.messageHandlers.shooterHaptic.postMessage(kind || 'light');
+        };
 
         // Generic native callback infrastructure — reusable for scanner, image picker, etc.
         window.handleNativeResponse = function(callbackId, jsonString) {
@@ -448,6 +451,11 @@ struct WebView: UIViewRepresentable {
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.allowsInlineMediaPlayback = true
+        // Match the web meta[name=format-detection] behavior natively: plain text
+        // (session paths, timestamps, IDs) should never auto-link as tel/date/address/email.
+        if #available(iOS 14.5, *) {
+            config.dataDetectorTypes = []
+        }
 
         let prefs = WKWebpagePreferences()
         prefs.allowsContentJavaScript = true
@@ -469,6 +477,8 @@ struct WebView: UIViewRepresentable {
         // Phone-resident agent: durable file persistence + on-device decide step
         config.userContentController.add(context.coordinator, name: "shooterFiles")
         config.userContentController.add(context.coordinator, name: "shooterAgentDecide")
+        // Native haptic feedback ticks
+        config.userContentController.add(context.coordinator, name: "shooterHaptic")
 
         let webView = WKWebView(frame: .zero, configuration: config)
         #if DEBUG
@@ -543,6 +553,8 @@ struct WebView: UIViewRepresentable {
                 handleFiles(message)
             case "shooterAgentDecide":
                 handleAgentDecide(message)
+            case "shooterHaptic":
+                handleHaptic(message)
             default:
                 break
             }
@@ -563,6 +575,35 @@ struct WebView: UIViewRepresentable {
                 KeychainHelper.save(key: "apiKey", value: apiKey)
             }
             print("[ShooterBridge] saveConfig: serverUrl=\(obj["serverUrl"] ?? "nil"), apiKey=\((obj["apiKey"] as? String)?.isEmpty == false ? "(set)" : "(empty)")")
+        }
+
+        // MARK: - Haptic feedback handler
+
+        /// Maps a web-side HapticKind string to the matching UIKit feedback generator.
+        /// Impact generators for light/medium/heavy taps, notification generator for
+        /// success/warning/error outcomes, selection generator for picker-style changes.
+        private func handleHaptic(_ message: WKScriptMessage) {
+            guard let kind = message.body as? String else { return }
+            DispatchQueue.main.async {
+                switch kind {
+                case "light":
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                case "medium":
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                case "heavy":
+                    UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+                case "success":
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                case "warning":
+                    UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                case "error":
+                    UINotificationFeedbackGenerator().notificationOccurred(.error)
+                case "selection":
+                    UISelectionFeedbackGenerator().selectionChanged()
+                default:
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                }
+            }
         }
 
         // MARK: - QR Scanner handler

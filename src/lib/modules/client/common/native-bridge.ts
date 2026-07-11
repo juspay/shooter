@@ -8,6 +8,8 @@
  * resolving scanner/picker promises using its own callback registry.
  */
 
+import type { HapticKind } from '$lib/types';
+
 /** True when the native bridge exposes a QR scanner */
 export function hasScanner(): boolean {
   return getScanFn() !== null;
@@ -55,4 +57,41 @@ function getScanFn(): (() => Promise<string>) | null {
     return () => androidScanner.scan();
   }
   return null;
+}
+
+/** navigator.vibrate() fallback durations (ms) per haptic kind, for browsers/PWA with no native bridge. */
+const VIBRATION_MS: Record<HapticKind, number> = {
+  error: 40,
+  heavy: 30,
+  light: 10,
+  medium: 20,
+  selection: 5,
+  success: 15,
+  warning: 25,
+};
+
+/**
+ * Fire a haptic tick.
+ * Resolution order: window.ShooterBridge.haptic (iOS) → window.ShooterNativeBridge.haptic
+ * (Android) → navigator.vibrate (web/PWA) → no-op. SSR/desktop-safe — never throws.
+ */
+export function haptic(kind: HapticKind = 'light'): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  try {
+    if (typeof window.ShooterBridge?.haptic === 'function') {
+      window.ShooterBridge.haptic(kind);
+      return;
+    }
+    if (typeof window.ShooterNativeBridge?.haptic === 'function') {
+      window.ShooterNativeBridge.haptic(kind);
+      return;
+    }
+    if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+      navigator.vibrate(VIBRATION_MS[kind]);
+    }
+  } catch {
+    // Haptics are best-effort — never let a native-bridge exception surface to callers.
+  }
 }

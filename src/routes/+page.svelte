@@ -12,6 +12,8 @@
     isShooterConfig,
     setCache,
   } from '$lib/modules/client/common';
+  import Glyph from '$lib/modules/client/common/Glyph.svelte';
+  import SkeletonCard from '$lib/modules/client/common/SkeletonCard.svelte';
   import {
     AutopilotPanel,
     connect,
@@ -19,7 +21,10 @@
     disconnect,
     getCards,
   } from '$lib/modules/client/dashboard';
-  import { Banner, Button, EmptyState, Icon, Pill, Shimmer } from '@juspay/svelte-ui-components';
+  import InfiniteScroll from '$lib/modules/client/nav/InfiniteScroll.svelte';
+  import NavBar from '$lib/modules/client/nav/NavBar.svelte';
+  import PullToRefresh from '$lib/modules/client/nav/PullToRefresh.svelte';
+  import { Banner, Button, EmptyState, Icon, Pill } from '@juspay/svelte-ui-components';
   import { onDestroy, onMount } from 'svelte';
 
   const POLL_INTERVAL_MS = 10_000;
@@ -156,20 +161,16 @@
   <meta name="description" content="Active terminals and Claude Code sessions" />
 </svelte:head>
 
-<main class="main">
-  <div class="page-header">
-    <div class="page-header-content">
-      <div>
-        <h1 class="page-title">Dashboard</h1>
-        <p class="page-description">Active terminals and Claude Code sessions</p>
-      </div>
-      <div class="page-actions">
-        <Button classes="btn-secondary" onclick={forceRefresh} disabled={loading}>
-          <Icon svg={RefreshSvg} classes="icon-14" />
-          Refresh
-        </Button>
-      </div>
-    </div>
+<NavBar variant="root" title="Dashboard">
+  {#snippet trailing()}
+    <Button classes="btn-secondary" onclick={forceRefresh} disabled={loading} ariaLabel="Refresh">
+      <Glyph svg={RefreshSvg} size={14} />
+    </Button>
+  {/snippet}
+</NavBar>
+
+<PullToRefresh onRefresh={forceRefresh}>
+  <main class="main">
     {#if projects.length > 0}
       <div class="stats-bar">
         <div class="stat-chip">
@@ -188,89 +189,85 @@
         {/if}
       </div>
     {/if}
-  </div>
 
-  {#if fetchError}
-    <Banner text={fetchError} classes="banner-error" />
-  {/if}
-
-  {#if loading && projects.length === 0 && cards.length === 0}
-    <div class="loading-container">
-      {#each Array(3) as _, i (i)}
-        <Shimmer classes="shimmer-card" />
-      {/each}
-    </div>
-  {:else if !config?.apiKey}
-    <EmptyState
-      title="Configuration Required"
-      description="Set up your API credentials to start tracking sessions"
-    >
-      {#snippet icon()}<Icon svg={SettingsSvg} classes="icon-24" />{/snippet}
-      <Button classes="btn-primary" onclick={navigateToConfig} text="Configure Settings" />
-    </EmptyState>
-  {:else}
-    <AutopilotPanel />
-
-    <!-- Dashboard section: active terminal sessions -->
-    {#if cards.length > 0}
-      <div class="dashboard-section">
-        <DashboardView
-          {cards}
-          onCardClick={(card: DashboardCard): void => {
-            navigateToTerminal(card.terminalId);
-          }}
-        />
-      </div>
+    {#if fetchError}
+      <Banner text={fetchError} classes="banner-error" />
     {/if}
 
-    <!-- Sessions archive below dashboard -->
-    {#if loading && projects.length === 0}
+    {#if loading && projects.length === 0 && cards.length === 0}
       <div class="loading-container">
         {#each Array(3) as _, i (i)}
-          <Shimmer classes="shimmer-card" />
+          <SkeletonCard lines={1} />
         {/each}
       </div>
-    {:else if totalSessionCount() === 0 && cards.length === 0}
+    {:else if !config?.apiKey}
       <EmptyState
-        title="No sessions yet"
-        description="Claude Code sessions will appear here once JSONL files are found"
+        title="Configuration Required"
+        description="Set up your API credentials to start tracking sessions"
       >
-        {#snippet icon()}<Icon svg={BellSvg} classes="icon-24" />{/snippet}
+        {#snippet icon()}<Icon svg={SettingsSvg} classes="icon-24" />{/snippet}
+        <Button classes="btn-primary" onclick={navigateToConfig} text="Configure Settings" />
       </EmptyState>
-    {:else if projects.length > 0}
+    {:else}
+      <AutopilotPanel />
+
+      <!-- Dashboard section: active terminal sessions -->
       {#if cards.length > 0}
-        <h3 class="section-label">Sessions</h3>
-      {/if}
-      <div class="projects-container">
-        {#each projects as project (project.id)}
-          <a href="/project?id={project.id}" class="session-card">
-            <div class="session-card-header">
-              <div>
-                <h3 class="session-card-title">{project.name}</h3>
-                <div class="session-card-subtitle">{project.fullPath}</div>
-              </div>
-              <Pill
-                text="Last updated {formatRelativeTime(project.lastModified)}"
-                classes="pill-session-time"
-              />
-            </div>
-            <div class="session-stats">
-              <span
-                ><strong>{project.sessionCount}</strong>
-                {project.sessionCount === 1 ? 'session' : 'sessions'}</span
-              >
-            </div>
-          </a>
-        {/each}
-      </div>
-      {#if hasMore}
-        <div style="text-align: center; padding: 1rem;">
-          <Button classes="btn-secondary" onclick={loadMore} text="Load More" />
+        <div class="dashboard-section">
+          <DashboardView
+            {cards}
+            onCardClick={(card: DashboardCard): void => {
+              navigateToTerminal(card.terminalId);
+            }}
+          />
         </div>
       {/if}
+
+      <!-- Sessions archive below dashboard -->
+      {#if loading && projects.length === 0}
+        <div class="loading-container">
+          {#each Array(3) as _, i (i)}
+            <SkeletonCard lines={1} />
+          {/each}
+        </div>
+      {:else if totalSessionCount() === 0 && cards.length === 0}
+        <EmptyState
+          title="No sessions yet"
+          description="Claude Code sessions will appear here once JSONL files are found"
+        >
+          {#snippet icon()}<Icon svg={BellSvg} classes="icon-24" />{/snippet}
+        </EmptyState>
+      {:else if projects.length > 0}
+        {#if cards.length > 0}
+          <h3 class="section-label">Sessions</h3>
+        {/if}
+        <div class="projects-container">
+          {#each projects as project (project.id)}
+            <a href="/project?id={project.id}" class="session-card">
+              <div class="session-card-header">
+                <div>
+                  <h3 class="session-card-title">{project.name}</h3>
+                  <div class="session-card-subtitle">{project.fullPath}</div>
+                </div>
+                <Pill
+                  text="Last updated {formatRelativeTime(project.lastModified)}"
+                  classes="pill-session-time"
+                />
+              </div>
+              <div class="session-stats">
+                <span
+                  ><strong>{project.sessionCount}</strong>
+                  {project.sessionCount === 1 ? 'session' : 'sessions'}</span
+                >
+              </div>
+            </a>
+          {/each}
+        </div>
+        <InfiniteScroll {hasMore} onLoadMore={(): void => void loadMore()} />
+      {/if}
     {/if}
-  {/if}
-</main>
+  </main>
+</PullToRefresh>
 
 <style>
   .stats-bar {

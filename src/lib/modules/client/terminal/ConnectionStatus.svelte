@@ -52,23 +52,71 @@
   }
 
   .conn-dot {
+    position: relative;
     width: 8px;
     height: 8px;
     border-radius: 50%;
     flex-shrink: 0;
   }
+  /* Expanding ring, shared by the live states. */
+  .conn-dot::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: currentColor;
+    opacity: 0;
+  }
 
   .conn-dot.connected {
     background: var(--ds-green-700);
+    color: var(--ds-green-700);
+  }
+  /* A slow breathing ripple so "connected" reads as alive, not just a static dot. */
+  .conn-dot.connected::after {
+    animation: conn-ripple 2.4s ease-out infinite;
   }
 
   .conn-dot.reconnecting {
     background: var(--ds-amber-700);
-    animation: pulse-dot 1.5s ease-in-out infinite;
+    color: var(--ds-amber-700);
+    animation: conn-pulse 1.2s ease-in-out infinite;
+  }
+  /* A faster, more insistent ripple while reconnecting. */
+  .conn-dot.reconnecting::after {
+    animation: conn-ripple 1.2s ease-out infinite;
   }
 
   .conn-dot.disconnected {
     background: var(--ds-red-700);
+    color: var(--ds-red-700);
+  }
+
+  @keyframes conn-ripple {
+    0% {
+      transform: scale(1);
+      opacity: 0.55;
+    }
+    100% {
+      transform: scale(2.6);
+      opacity: 0;
+    }
+  }
+  @keyframes conn-pulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.45;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .conn-dot.connected::after,
+    .conn-dot.reconnecting::after,
+    .conn-dot.reconnecting {
+      animation: none;
+    }
   }
 
   .status-label {

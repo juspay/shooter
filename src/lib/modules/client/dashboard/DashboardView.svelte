@@ -1,6 +1,9 @@
 <script lang="ts">
   import type { DashboardCard } from '$lib/types';
 
+  import { prefersReducedMotion, resolveMotionDuration } from '$lib/modules/client/common';
+  import { flip } from 'svelte/animate';
+
   import DashboardCardComponent from './DashboardCard.svelte';
 
   const {
@@ -14,6 +17,9 @@
   const runningCards = $derived(cards.filter((c) => c.status === 'running'));
   const otherCards = $derived(cards.filter((c) => c.status !== 'running'));
 
+  // Computed once — a fixed FLIP duration, not a live media-query subscription.
+  const flipDuration = resolveMotionDuration(220, prefersReducedMotion());
+
   function handleClick(card: DashboardCard): void {
     onCardClick?.(card);
   }
@@ -23,12 +29,14 @@
   <div class="section">
     <h3 class="section-label">Active</h3>
     {#each runningCards as card (card.terminalId)}
-      <DashboardCardComponent
-        {card}
-        onclick={(): void => {
-          handleClick(card);
-        }}
-      />
+      <div class="card-flip" animate:flip={{ duration: flipDuration }}>
+        <DashboardCardComponent
+          {card}
+          onclick={(): void => {
+            handleClick(card);
+          }}
+        />
+      </div>
     {/each}
   </div>
 {/if}
@@ -37,12 +45,14 @@
   <div class="section">
     <h3 class="section-label">Recent</h3>
     {#each otherCards as card (card.terminalId)}
-      <DashboardCardComponent
-        {card}
-        onclick={(): void => {
-          handleClick(card);
-        }}
-      />
+      <div class="card-flip" animate:flip={{ duration: flipDuration }}>
+        <DashboardCardComponent
+          {card}
+          onclick={(): void => {
+            handleClick(card);
+          }}
+        />
+      </div>
     {/each}
   </div>
 {/if}

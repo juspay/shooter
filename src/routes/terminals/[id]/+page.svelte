@@ -14,7 +14,9 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
   import AlertTriangleSvg from '$lib/assets/icons/alert-triangle.svg?raw';
+  import ArrowLeftSvg from '$lib/assets/icons/arrow-left.svg?raw';
   import { AI_COMMANDS } from '$lib/modules/client/common';
+  import Glyph from '$lib/modules/client/common/Glyph.svelte';
   import ChatView from '$lib/modules/client/terminal/ChatView.svelte';
   import CommandPalette from '$lib/modules/client/terminal/CommandPalette.svelte';
   import ConnectionStatus from '$lib/modules/client/terminal/ConnectionStatus.svelte';
@@ -790,7 +792,7 @@
   <main class="main">
     <div class="session-back-row">
       <a href="/terminals" class="back-link">
-        <span class="back-arrow">&larr;</span>
+        <Glyph svg={ArrowLeftSvg} size={14} />
         Terminals
       </a>
     </div>
@@ -804,7 +806,9 @@
     <div class="term-topbar">
       <div class="term-topbar-left">
         {#if isOwner}
-          <a href="/terminals" class="term-back" aria-label="Back to terminals">&larr;</a>
+          <a href="/terminals" class="term-back" aria-label="Back to terminals"
+            ><Glyph svg={ArrowLeftSvg} size={18} /></a
+          >
         {/if}
         <span class="term-command-name">{commandName}</span>
         <Pill text={badgeLabel} classes={badgeClass} />
@@ -972,10 +976,13 @@
   .term-page {
     display: flex;
     flex-direction: column;
-    height: calc(100vh - var(--header-height) - 64px);
-    height: calc(100dvh - var(--header-height) - 64px);
+    height: calc(100vh - 64px);
+    /* Shrink by the software-keyboard overlap so the input bar + quick keys
+       ride above the on-screen keyboard on phones (see keyboard-inset store). */
+    height: calc(100dvh - 64px - var(--keyboard-inset, 0px));
     overflow: hidden;
     background: var(--ds-background-200);
+    transition: height 0.2s ease;
   }
 
   /* Top bar */
@@ -984,7 +991,9 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--space-3);
-    padding: var(--space-2) var(--space-4);
+    /* Reserve the notch/status-bar inset: this route has no NavBar, and the
+       global header (which used to reserve it) was removed. */
+    padding: calc(var(--space-2) + env(safe-area-inset-top, 0px)) var(--space-4) var(--space-2);
     background: var(--ds-background-100);
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
@@ -1006,27 +1015,31 @@
     flex-shrink: 1;
   }
 
-  /* Back button */
+  /* Back button — amber chevron to match the native NavBar (amber = action). */
   .term-back {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     width: 44px;
     height: 44px;
+    margin-left: -8px;
     border-radius: var(--radius-md);
     background: transparent;
-    color: var(--text-secondary);
+    color: var(--accent);
     text-decoration: none;
     font-size: 18px;
+    -webkit-tap-highlight-color: transparent;
     transition:
       background var(--transition-fast),
-      color var(--transition-fast);
+      transform 60ms ease;
     flex-shrink: 0;
   }
 
   .term-back:hover {
-    background: var(--ds-gray-alpha-100);
-    color: var(--text-primary);
+    background: var(--accent-dim, var(--ds-gray-alpha-100));
+  }
+  .term-back:active {
+    transform: scale(0.9);
   }
 
   /* Command name */
@@ -1214,7 +1227,8 @@
 
   @media (max-width: 768px) {
     .term-topbar {
-      padding: var(--space-2) var(--space-3);
+      /* keep reserving the notch inset — the shorthand would otherwise erase it */
+      padding: calc(var(--space-2) + env(safe-area-inset-top, 0px)) var(--space-3) var(--space-2);
       gap: var(--space-2);
     }
 
@@ -1227,7 +1241,7 @@
   @media (max-width: 480px) {
     .term-topbar {
       min-height: 44px;
-      padding: var(--space-1) var(--space-2);
+      padding: calc(var(--space-1) + env(safe-area-inset-top, 0px)) var(--space-2) var(--space-1);
     }
 
     .term-command-name {

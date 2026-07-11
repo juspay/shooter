@@ -6,6 +6,7 @@ import type {
   NotificationData,
   OptionChoice,
   ResponseKind,
+  WebPushFanOutResult,
 } from '$lib/types';
 
 import { env } from '$env/dynamic/private';
@@ -17,6 +18,11 @@ import { validateAuth } from '$lib/modules/server/auth';
 import { isFCMConfigured, sendFCMNotificationMulti } from '$lib/modules/server/fcm/fcm-service.js';
 import { deviceTokenStore } from '$lib/modules/server/push/device-token-store';
 import { toErrorMessage } from '$lib/modules/server/utils/error';
+import {
+  isWebPushConfigured,
+  sendWebPushMulti,
+} from '$lib/modules/server/webpush/web-push-service';
+import { webPushStore } from '$lib/modules/server/webpush/web-push-store';
 import { broadcastEvent } from '$lib/modules/server/ws/server';
 import { json } from '@sveltejs/kit';
 
@@ -41,6 +47,12 @@ const EMPTY_FCM_RESULT: FCMFanOutResult = {
   failureCount: 0,
   results: [],
   staleTokens: [],
+  successCount: 0,
+};
+const EMPTY_WEB_RESULT: WebPushFanOutResult = {
+  failureCount: 0,
+  results: [],
+  staleEndpoints: [],
   successCount: 0,
 };
 
@@ -530,16 +542,44 @@ export const POST: RequestHandler = async ({ request }) => {
     // stacks) the prompt on every device, and answering on one clears it.
     const collapseId = waitForResponse ? canonicalRequestId : undefined;
 
-    const [apnsResult, fcmResult] = await Promise.all([
+    // Web Push (PWA / browser) is a third channel keyed on stored subscriptions,
+    // not a device-token override. Skip it on an override send (a one-off test
+    // targeting a single native token) so it doesn't buzz every browser too.
+    const webSubs = !override && isWebPushConfigured() ? webPushStore.listActive() : [];
+
+    const [apnsResult, fcmResult, webResult] = await Promise.all([
       iosDevices.length > 0 && apnsClient.isConfigured()
         ? apnsClient.sendToMany(iosDevices, payload, collapseId)
         : Promise.resolve(EMPTY_APNS_RESULT),
       androidTokens.length > 0 && isFCMConfigured()
         ? sendFCMNotificationMulti(androidTokens, payload)
         : Promise.resolve(EMPTY_FCM_RESULT),
+      webSubs.length > 0
+        ? sendWebPushMulti(webSubs, {
+            body: message,
+            category: payload.category,
+            data: payload.data,
+            tag: collapseId,
+            title,
+            url: typeof data?.terminalId === 'string' ? `/terminals/${data.terminalId}` : '/',
+          })
+        : Promise.resolve(EMPTY_WEB_RESULT),
     ]);
 
     const summary = summarizeNotifyDelivery(apnsResult, fcmResult);
+    // Fold the web-push channel into the aggregate delivery summary.
+    summary.sent += webResult.successCount;
+    summary.failed += webResult.failureCount;
+    summary.delivered = summary.sent > 0;
+
+    // Web subscriptions prune/touch by endpoint, in their own store.
+    if (!override && webResult.staleEndpoints.length > 0) {
+      webPushStore.pruneByEndpoints(webResult.staleEndpoints);
+    }
+    const succeededWebEndpoints = webResult.results.filter((r) => r.success).map((r) => r.endpoint);
+    if (succeededWebEndpoints.length > 0) {
+      webPushStore.touchLastSeen(succeededWebEndpoints);
+    }
 
     // Lazy prune dead tokens; bump last-seen for the ones that delivered.
     // Never prune on an override send: the override token is a one-off explicit

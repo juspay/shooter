@@ -35,6 +35,7 @@ import { openCodeWatcher } from './src/lib/modules/server/terminal/opencode-watc
 import { ptySubmitSequence } from './src/lib/modules/server/terminal/pty-input.js';
 import { ptyManager } from './src/lib/modules/server/terminal/pty-manager.js';
 import { sessionWatcher } from './src/lib/modules/server/terminal/session-watcher.js';
+import { webPushStore } from './src/lib/modules/server/webpush/web-push-store.js';
 import { startKeepalive, stopKeepalive } from './src/lib/modules/server/ws/keepalive.js';
 import { setupWebSocketHandlers } from './src/lib/modules/server/ws/server.js';
 import {
@@ -270,6 +271,11 @@ server.listen(requestedPort, () => {
     deviceTokenStore.startupCleanup();
   } catch (err) {
     console.error('[device-token] startup migrate/cleanup failed:', err);
+  }
+  try {
+    webPushStore.startupCleanup();
+  } catch (err) {
+    console.error('[web-push] startup cleanup failed:', err);
   }
   startAutopilotEngine();
 });

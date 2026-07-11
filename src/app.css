@@ -70,7 +70,7 @@
   /* Font Sizes - Geist Typography Scale */
   --text-xs: 12px;
   --text-sm: 13px;
-  --text-base: 14px;
+  --text-base: 16px;
   --text-md: 15px;
   --text-lg: 16px;
   --text-xl: 20px;
@@ -106,8 +106,8 @@
   /* Border Radius */
   --radius-sm: 4px;
   --radius-md: 6px;
-  --radius-lg: 8px;
-  --radius-xl: 12px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
   --radius-full: 9999px;
 
   /* Transitions */
@@ -117,6 +117,24 @@
   /* Layout */
   --max-width: 1100px;
   --header-height: 64px;
+
+  /* Brand accent — Amber Phosphor. The ONLY hue for actions/active/selected/focus. */
+  --ds-amber-accent: #f5b14c;
+  --ds-amber-accent-hover: #ffc266;
+  --ds-amber-accent-fg: #0c0d0b;
+  --ds-amber-accent-dim: rgba(245, 177, 76, 0.14);
+  --ds-amber-accent-line: rgba(245, 177, 76, 0.32);
+  --accent: var(--ds-amber-accent);
+  --accent-hover: var(--ds-amber-accent-hover);
+  --accent-fg: var(--ds-amber-accent-fg);
+  --accent-dim: var(--ds-amber-accent-dim);
+  --accent-line: var(--ds-amber-accent-line);
+
+  /* Status — semantic and separate from accent. Never repurpose these for actions. */
+  --status-live: var(--ds-green-700);
+  --status-success: var(--ds-green-700);
+  --status-info: var(--ds-blue-700);
+  --status-danger: var(--ds-red-700);
 }
 
 /* Reset */
@@ -146,6 +164,7 @@ body {
 /* App Layout */
 .app {
   height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -153,7 +172,8 @@ body {
 
 /* Header */
 .header {
-  height: var(--header-height);
+  height: calc(var(--header-height) + env(safe-area-inset-top, 0px));
+  padding-top: env(safe-area-inset-top, 0px);
   background: var(--background);
   border-bottom: 1px solid var(--border);
   position: sticky;
@@ -244,7 +264,7 @@ body {
 .page-title {
   font-size: var(--text-2xl);
   font-weight: 600;
-  letter-spacing: var(--tracking-tighter);
+  letter-spacing: var(--tracking-tight);
   color: var(--text-primary);
   line-height: var(--leading-tight);
   margin-bottom: var(--space-2);
@@ -354,10 +374,13 @@ body {
 
 /* Cards */
 .card {
-  background: var(--component-bg);
-  border: 1px solid var(--border);
+  background: linear-gradient(135deg, rgba(20, 20, 20, 0.9) 0%, rgba(28, 28, 32, 0.9) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: var(--radius-lg);
   overflow: hidden;
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.3),
+    0 0 0 1px rgba(255, 255, 255, 0.03) inset;
 }
 
 .card-header {
@@ -478,17 +501,20 @@ body {
 
 /* List */
 .list {
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: var(--radius-lg);
   overflow: hidden;
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.3),
+    0 0 0 1px rgba(255, 255, 255, 0.03) inset;
 }
 
 .list-item {
   display: flex;
   align-items: center;
   padding: var(--space-4) var(--space-5);
-  background: var(--component-bg);
-  border-bottom: 1px solid var(--ds-gray-alpha-200);
+  background: linear-gradient(135deg, rgba(20, 20, 20, 0.9) 0%, rgba(28, 28, 32, 0.9) 100%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   transition: background var(--transition-fast);
 }
 
@@ -639,7 +665,7 @@ body {
 .btn:focus-visible,
 .input:focus-visible,
 .nav-link:focus-visible {
-  outline: 2px solid var(--ds-blue-700);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
@@ -654,10 +680,40 @@ body {
   }
 }
 
+/* Page transitions (View Transitions API) — see +layout.svelte's onNavigate
+   hook. Browsers without support (or with reduced motion requested) fall
+   through to SvelteKit's normal instant route swap. */
+@keyframes shooter-view-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes shooter-view-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  ::view-transition-old(root) {
+    animation: shooter-view-fade-out 150ms ease both;
+  }
+
+  ::view-transition-new(root) {
+    animation: shooter-view-slide-in 220ms ease both;
+  }
+}
+
 /* Selection */
 ::selection {
-  background: var(--ds-blue-700);
-  color: #fff;
+  background: var(--accent);
+  color: var(--accent-fg);
 }
 
 /* Scrollbar */
@@ -677,6 +733,22 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--ds-gray-500);
+}
+
+/* Touch devices: hide the desktop scrollbar chrome and give custom (non-library)
+   app-shell tappables an instant press-down. Library tappables get press feedback
+   via the --button-active-transform var in theme.css. */
+@media (hover: none) {
+  ::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+  }
+  .session-card:active,
+  .terminal-card:active,
+  .tab-item:active {
+    transform: scale(0.978);
+    transition: transform 60ms ease;
+  }
 }
 
 /* ============================================
@@ -850,12 +922,6 @@ body {
   color: var(--text-tertiary, #737373);
 }
 
-.session-chevron {
-  color: var(--text-tertiary, #737373);
-  font-size: 1.2rem;
-  align-self: center;
-}
-
 /* ============================================
    Session Detail Page
    ============================================ */
@@ -865,28 +931,6 @@ body {
   align-items: center;
   gap: var(--space-3, 0.75rem);
   margin-bottom: var(--space-4, 1rem);
-}
-
-.session-back-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: var(--radius-md, 8px);
-  background: var(--bg-secondary, #141414);
-  border: 1px solid var(--border, #2a2a2a);
-  color: var(--text-secondary, #a3a3a3);
-  cursor: pointer;
-  transition: all var(--transition-fast, 150ms);
-  text-decoration: none;
-  font-size: 1.1rem;
-}
-
-.session-back-btn:hover {
-  background: var(--bg-tertiary, #1a1a1a);
-  color: var(--text-primary, #fafafa);
-  border-color: var(--gray-600, #525252);
 }
 
 .session-info-bar {
