@@ -12,6 +12,7 @@
 		6688A2930C474D6F027FBE6E /* ShooterWidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74E4E8E3D19DF78BE6632FD7 /* ShooterWidgetBundle.swift */; };
 		83F5D5F3DE62B4F0BB9B9DA8 /* ShooterLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1596767D9C6A296E6DDF07DE /* ShooterLiveActivity.swift */; };
 		996FE2FDCEF01939AB52730A /* ShooterWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 513CA31DE7FB674403C08675 /* ShooterWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		A735C8F12721EC7A3349FB56 /* ShooterHomeWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = E44B06EBC651A2F667E78D6D /* ShooterHomeWidget.swift */; };
 		A7B8E1A12C5F1A3B00123456 /* ShooterApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B8E1A02C5F1A3B00123456 /* ShooterApp.swift */; };
 		A7B8E1A32C5F1A3B00123456 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B8E1A22C5F1A3B00123456 /* ContentView.swift */; };
 		A7B8E1A52C5F1A3C00123456 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A7B8E1A42C5F1A3C00123456 /* Assets.xcassets */; };
@@ -23,6 +24,8 @@
 		A7B8E1B82C5F1AAB00123456 /* QRScannerViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B8E1B72C5F1AAB00123456 /* QRScannerViewController.swift */; };
 		B4380A8B0DC470913DEEB5A3 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 386826547C4FC8536CB58FC4 /* Foundation.framework */; };
 		BCD81249CD7FBA0EEC7D5D2E /* ShooterActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68A36FE1EC09C89CA2E4CF80 /* ShooterActivityAttributes.swift */; };
+		C96CEEFF21A89822B8B6CCC8 /* WidgetSharedStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0E837258E53910626CAE61D /* WidgetSharedStore.swift */; };
+		E1F277689E54A866F6D5A655 /* WidgetSharedStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0E837258E53910626CAE61D /* WidgetSharedStore.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -68,6 +71,9 @@
 		A7B8E1B52C5F1A9B00123456 /* KeychainHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainHelper.swift; sourceTree = "<group>"; };
 		A7B8E1B72C5F1AAB00123456 /* QRScannerViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRScannerViewController.swift; sourceTree = "<group>"; };
 		AE672EB5DE4A681A39D88AFC /* LiveActivityManager.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LiveActivityManager.swift; sourceTree = "<group>"; };
+		B0E837258E53910626CAE61D /* WidgetSharedStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WidgetSharedStore.swift; sourceTree = "<group>"; };
+		E44B06EBC651A2F667E78D6D /* ShooterHomeWidget.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ShooterHomeWidget.swift; sourceTree = "<group>"; };
+		F54D62983A3015F6FFB2D6A6 /* ShooterWidget.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = ShooterWidget.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -104,6 +110,9 @@
 				1596767D9C6A296E6DDF07DE /* ShooterLiveActivity.swift */,
 				74E4E8E3D19DF78BE6632FD7 /* ShooterWidgetBundle.swift */,
 				6BF921E2E5F0934B4CC8F7E6 /* Info.plist */,
+				B0E837258E53910626CAE61D /* WidgetSharedStore.swift */,
+				E44B06EBC651A2F667E78D6D /* ShooterHomeWidget.swift */,
+				F54D62983A3015F6FFB2D6A6 /* ShooterWidget.entitlements */,
 			);
 			name = ShooterWidget;
 			path = ShooterWidget;
@@ -268,6 +277,7 @@
 				A7B8E1B82C5F1AAB00123456 /* QRScannerViewController.swift in Sources */,
 				009D7D9F5F305CDE8B905422 /* LiveActivityManager.swift in Sources */,
 				BCD81249CD7FBA0EEC7D5D2E /* ShooterActivityAttributes.swift in Sources */,
+				E1F277689E54A866F6D5A655 /* WidgetSharedStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -278,6 +288,8 @@
 				2921B131D8453A0D42B36B53 /* ShooterActivityAttributes.swift in Sources */,
 				83F5D5F3DE62B4F0BB9B9DA8 /* ShooterLiveActivity.swift in Sources */,
 				6688A2930C474D6F027FBE6E /* ShooterWidgetBundle.swift in Sources */,
+				C96CEEFF21A89822B8B6CCC8 /* WidgetSharedStore.swift in Sources */,
+				A735C8F12721EC7A3349FB56 /* ShooterHomeWidget.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -486,6 +498,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = ShooterWidget/ShooterWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = YM9U73Z2JM;
@@ -512,6 +525,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = ShooterWidget/ShooterWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = YM9U73Z2JM;
