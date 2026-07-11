@@ -2,12 +2,16 @@
   import type { ShooterConfig, SuperSession } from '$lib/types';
 
   import { goto } from '$app/navigation';
+  import NavBar from '$lib/modules/client/nav/NavBar.svelte';
+  import PullToRefresh from '$lib/modules/client/nav/PullToRefresh.svelte';
   import { Banner, Button, EmptyState, Input, Pill } from '@juspay/svelte-ui-components';
   import { onMount } from 'svelte';
 
   let sessions = $state<SuperSession[]>([]);
   let loading = $state(true);
-  let error = $state('');
+  let loadError = $state(''); // list-load failures (owned by loadSessions)
+  let error = $state(''); // create failures (owned by create) — kept separate so a
+  // successful pull-to-refresh never wipes a still-relevant create error
   let newLabel = $state('');
   let creating = $state(false);
 
@@ -23,7 +27,7 @@
   async function loadSessions(): Promise<void> {
     const config = getConfig();
     if (!config) {
-      error = 'No configuration found. Open Settings first.';
+      loadError = 'No configuration found. Open Settings first.';
       loading = false;
       return;
     }
@@ -32,13 +36,14 @@
         headers: { Authorization: `Bearer ${config.apiKey}` },
       });
       if (!res.ok) {
-        error = `Failed to load (${res.status})`;
+        loadError = `Failed to load (${res.status})`;
         return;
       }
       const data = (await res.json()) as { superSessions: SuperSession[] };
       sessions = data.superSessions ?? [];
+      loadError = ''; // clear only the load error once a refresh succeeds
     } catch {
-      error = 'Network error — is the server running?';
+      loadError = 'Network error — is the server running?';
     } finally {
       loading = false;
     }
@@ -77,57 +82,63 @@
 
 <svelte:head><title>Session Over Sessions - Shooter</title></svelte:head>
 
-<main class="main sos-list">
-  <div class="page-head">
-    <div>
-      <h1>Session Over Sessions</h1>
-      <p class="subtitle">Coordinate multiple running agents as one super-session.</p>
+<NavBar variant="root" title="Session Over Sessions" />
+
+<PullToRefresh onRefresh={loadSessions}>
+  <main class="main sos-list">
+    <p class="subtitle">Coordinate multiple running agents as one super-session.</p>
+
+    <div class="create-row">
+      <Input
+        bind:value={newLabel}
+        dataType="text"
+        placeholder="New super-session label…"
+        classes="sos-create-input"
+      />
+      <Button
+        text={creating ? 'Creating…' : 'Create'}
+        disabled={creating || !newLabel.trim()}
+        onclick={create}
+        classes="btn-create"
+      />
     </div>
-  </div>
 
-  <div class="create-row">
-    <Input
-      bind:value={newLabel}
-      dataType="text"
-      placeholder="New super-session label…"
-      classes="sos-create-input"
-    />
-    <Button
-      text={creating ? 'Creating…' : 'Create'}
-      disabled={creating || !newLabel.trim()}
-      onclick={create}
-      classes="btn-create"
-    />
-  </div>
+    {#if error || loadError}
+      <div class="sos-banners">
+        {#if error}
+          <Banner text={error} classes="banner-error" />
+        {/if}
+        {#if loadError}
+          <Banner text={loadError} classes="banner-error" />
+        {/if}
+      </div>
+    {/if}
 
-  {#if error}
-    <Banner text={error} classes="banner-error" />
-  {/if}
-
-  {#if loading}
-    <p class="muted">Loading…</p>
-  {:else if sessions.length === 0}
-    <EmptyState
-      title="No super-sessions yet"
-      description="Create one above, then add running agent sessions as members."
-    />
-  {:else}
-    <div class="ss-grid">
-      {#each sessions as ss (ss.id)}
-        <a class="ss-card" href={`/sos/${ss.id}`}>
-          <div class="ss-card-head">
-            <span class="ss-label">{ss.label}</span>
-            <Pill text={ss.status} classes="pill-status-unknown" />
-          </div>
-          <div class="ss-meta">
-            <span>{ss.members.length} member{ss.members.length === 1 ? '' : 's'}</span>
-            <span>{ss.routingRules.length} rule{ss.routingRules.length === 1 ? '' : 's'}</span>
-          </div>
-        </a>
-      {/each}
-    </div>
-  {/if}
-</main>
+    {#if loading}
+      <p class="muted">Loading…</p>
+    {:else if sessions.length === 0}
+      <EmptyState
+        title="No super-sessions yet"
+        description="Create one above, then add running agent sessions as members."
+      />
+    {:else}
+      <div class="ss-grid">
+        {#each sessions as ss (ss.id)}
+          <a class="ss-card" href={`/sos/${ss.id}`}>
+            <div class="ss-card-head">
+              <span class="ss-label">{ss.label}</span>
+              <Pill text={ss.status} classes="pill-status-unknown" />
+            </div>
+            <div class="ss-meta">
+              <span>{ss.members.length} member{ss.members.length === 1 ? '' : 's'}</span>
+              <span>{ss.routingRules.length} rule{ss.routingRules.length === 1 ? '' : 's'}</span>
+            </div>
+          </a>
+        {/each}
+      </div>
+    {/if}
+  </main>
+</PullToRefresh>
 
 <style>
   .sos-list {
@@ -135,11 +146,11 @@
     margin: 0 auto;
     padding: var(--space-5) var(--space-4);
   }
-  .page-head h1 {
-    font-size: var(--text-2xl);
-    font-weight: 600;
-    color: var(--text-primary);
-    margin: 0;
+  /* Stack of error banners (create vs load) — keep them visually separated. */
+  .sos-banners {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
   }
   .subtitle {
     color: var(--text-secondary);

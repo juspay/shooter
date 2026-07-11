@@ -12,6 +12,12 @@
     isShooterConfig,
     setCache,
   } from '$lib/modules/client/common';
+  import Glyph from '$lib/modules/client/common/Glyph.svelte';
+  import SkeletonCard from '$lib/modules/client/common/SkeletonCard.svelte';
+  import Fab from '$lib/modules/client/nav/Fab.svelte';
+  import NavBar from '$lib/modules/client/nav/NavBar.svelte';
+  import PullToRefresh from '$lib/modules/client/nav/PullToRefresh.svelte';
+  import SwipeToDelete from '$lib/modules/client/nav/SwipeToDelete.svelte';
   import LaunchSheet from '$lib/modules/client/terminal/LaunchSheet.svelte';
   import {
     Banner,
@@ -20,7 +26,6 @@
     Icon,
     Pill,
     RelativeTime,
-    Shimmer,
     Tooltip,
   } from '@juspay/svelte-ui-components';
   import { onDestroy, onMount } from 'svelte';
@@ -214,10 +219,7 @@
     return command.split('/').pop() || command;
   }
 
-  async function removeTerminal(event: MouseEvent, id: string): Promise<void> {
-    event.preventDefault();
-    event.stopPropagation();
-
+  async function deleteTerminalById(id: string): Promise<void> {
     if (!config?.apiKey) {
       return;
     }
@@ -238,6 +240,12 @@
       console.error('Failed to remove terminal:', err);
     }
   }
+
+  async function removeTerminal(event: MouseEvent, id: string): Promise<void> {
+    event.preventDefault();
+    event.stopPropagation();
+    await deleteTerminalById(id);
+  }
 </script>
 
 <svelte:head>
@@ -245,135 +253,129 @@
   <meta name="description" content="Active terminal sessions on this machine" />
 </svelte:head>
 
-<main class="main">
-  <div class="page-header">
-    <div class="page-header-content">
-      <div>
-        <h1 class="page-title">Terminals</h1>
-        <p class="page-description">Active terminal sessions on this machine</p>
+<NavBar variant="root" title="Terminals">
+  {#snippet trailing()}
+    <Button classes="btn-secondary" onclick={forceRefresh} disabled={loading} ariaLabel="Refresh">
+      <Glyph svg={RefreshSvg} size={14} />
+    </Button>
+  {/snippet}
+</NavBar>
+
+<PullToRefresh onRefresh={forceRefresh}>
+  <main class="main">
+    {#if fetchError}
+      <Banner text={fetchError} classes="banner-error" />
+    {/if}
+
+    {#if loading && terminals.length === 0}
+      <div class="loading-container">
+        {#each Array(4) as _, i (i)}
+          <SkeletonCard lines={1} />
+        {/each}
       </div>
-      <div class="page-actions">
-        <Button classes="btn-secondary" onclick={forceRefresh} disabled={loading}>
-          <Icon svg={RefreshSvg} classes="icon-14" />
-          Refresh
-        </Button>
+    {:else if !config?.apiKey}
+      <EmptyState
+        title="Configuration Required"
+        description="Set up your API credentials to view terminal sessions"
+      >
+        {#snippet icon()}<Icon svg={SettingsSvg} classes="icon-24" />{/snippet}
+        <Button classes="btn-primary" onclick={navigateToConfig} text="Configure Settings" />
+      </EmptyState>
+    {:else if terminals.length === 0}
+      <EmptyState
+        title="No terminals"
+        description="Launch a new terminal session to get started. Terminal sessions will appear here once created."
+      >
+        {#snippet icon()}<Icon svg={TerminalSvg} classes="icon-24" />{/snippet}
         <Button classes="btn-primary" onclick={handleNewTerminal}>
           <span class="plus-icon">+</span>
           New Terminal
         </Button>
-      </div>
-    </div>
-  </div>
-
-  {#if fetchError}
-    <Banner text={fetchError} classes="banner-error" />
-  {/if}
-
-  {#if loading && terminals.length === 0}
-    <div class="loading-container">
-      {#each Array(4) as _, i (i)}
-        <Shimmer classes="shimmer-card" />
-      {/each}
-    </div>
-  {:else if !config?.apiKey}
-    <EmptyState
-      title="Configuration Required"
-      description="Set up your API credentials to view terminal sessions"
-    >
-      {#snippet icon()}<Icon svg={SettingsSvg} classes="icon-24" />{/snippet}
-      <Button classes="btn-primary" onclick={navigateToConfig} text="Configure Settings" />
-    </EmptyState>
-  {:else if terminals.length === 0}
-    <EmptyState
-      title="No terminals"
-      description="Launch a new terminal session to get started. Terminal sessions will appear here once created."
-    >
-      {#snippet icon()}<Icon svg={TerminalSvg} classes="icon-24" />{/snippet}
-      <Button classes="btn-primary" onclick={handleNewTerminal}>
-        <span class="plus-icon">+</span>
-        New Terminal
-      </Button>
-    </EmptyState>
-  {:else}
-    <div class="terminals-container">
-      <!-- Running terminals first -->
-      {#each runningTerminals as terminal (terminal.id)}
-        {@const badge = getBadgeInfo(terminal)}
-        <a href="/terminals/{terminal.id}" class="terminal-card">
-          <div class="terminal-card-header">
-            <div class="terminal-card-left">
-              <span class="status-indicator status-running">
-                <span class={terminal.isActive ? 'status-dot-active' : 'status-dot-idle'}></span>
-              </span>
-              <span class="terminal-command">{getCommandName(terminal.command)}</span>
-              <Pill text={badge.label} classes={badge.class} />
+      </EmptyState>
+    {:else}
+      <div class="terminals-container">
+        <!-- Running terminals first -->
+        {#each runningTerminals as terminal (terminal.id)}
+          {@const badge = getBadgeInfo(terminal)}
+          <a href="/terminals/{terminal.id}" class="terminal-card">
+            <div class="terminal-card-header">
+              <div class="terminal-card-left">
+                <span class="status-indicator status-running">
+                  <span class={terminal.isActive ? 'status-dot-active' : 'status-dot-idle'}></span>
+                </span>
+                <span class="terminal-command">{getCommandName(terminal.command)}</span>
+                <Pill text={badge.label} classes={badge.class} />
+              </div>
+              <RelativeTime date={terminal.createdAt} format="narrow" classes="terminal-time" />
             </div>
-            <RelativeTime date={terminal.createdAt} format="narrow" classes="terminal-time" />
-          </div>
 
-          <div class="terminal-card-meta">
-            <Tooltip text={terminal.currentCwd || terminal.cwd} position="bottom">
-              <span class="terminal-cwd">{truncatePath(terminal.currentCwd || terminal.cwd)}</span>
-            </Tooltip>
-            <span class="terminal-pid">PID {terminal.pid}</span>
-          </div>
-
-          {#if terminal.lastOutput}
-            <div class="terminal-preview">
-              <span class="terminal-preview-text">{truncateOutput(terminal.lastOutput)}</span>
+            <div class="terminal-card-meta">
+              <Tooltip text={terminal.currentCwd || terminal.cwd} position="bottom">
+                <span class="terminal-cwd">{truncatePath(terminal.currentCwd || terminal.cwd)}</span
+                >
+              </Tooltip>
+              <span class="terminal-pid">PID {terminal.pid}</span>
             </div>
-          {/if}
-        </a>
-      {/each}
 
-      <!-- Exited terminals at lower opacity -->
-      {#each exitedTerminals as terminal (terminal.id)}
-        {@const badge = getBadgeInfo(terminal)}
-        <a href="/terminals/{terminal.id}" class="terminal-card terminal-card-exited">
-          <div class="terminal-card-header">
-            <div class="terminal-card-left">
-              <span class="status-indicator status-exited">
-                <span class="status-dot-static"></span>
-              </span>
-              <span class="terminal-command">{getCommandName(terminal.command)}</span>
-              <Pill text={badge.label} classes={badge.class} />
-              {#if terminal.exitCode !== null}
-                <Pill
-                  text="exit {terminal.exitCode}"
-                  classes={terminal.exitCode !== 0 ? 'pill-exit-error' : 'pill-exit-ok'}
-                />
+            {#if terminal.lastOutput}
+              <div class="terminal-preview">
+                <span class="terminal-preview-text">{truncateOutput(terminal.lastOutput)}</span>
+              </div>
+            {/if}
+          </a>
+        {/each}
+
+        <!-- Exited terminals at lower opacity — swipe-to-delete on touch -->
+        {#each exitedTerminals as terminal (terminal.id)}
+          {@const badge = getBadgeInfo(terminal)}
+          <SwipeToDelete onDelete={(): void => void deleteTerminalById(terminal.id)}>
+            <a href="/terminals/{terminal.id}" class="terminal-card terminal-card-exited">
+              <div class="terminal-card-header">
+                <div class="terminal-card-left">
+                  <span class="status-indicator status-exited">
+                    <span class="status-dot-static"></span>
+                  </span>
+                  <span class="terminal-command">{getCommandName(terminal.command)}</span>
+                  <Pill text={badge.label} classes={badge.class} />
+                  {#if terminal.exitCode !== null}
+                    <Pill
+                      text="exit {terminal.exitCode}"
+                      classes={terminal.exitCode !== 0 ? 'pill-exit-error' : 'pill-exit-ok'}
+                    />
+                  {/if}
+                </div>
+                <div class="terminal-card-right">
+                  <RelativeTime
+                    date={terminal.exitedAt || terminal.createdAt}
+                    format="narrow"
+                    classes="terminal-time"
+                  />
+                  <Button
+                    classes="btn-ghost btn-sm btn-remove"
+                    onclick={(e: MouseEvent): void => void removeTerminal(e, terminal.id)}
+                    text="&times;"
+                  />
+                </div>
+              </div>
+
+              <div class="terminal-card-meta">
+                <Tooltip text={terminal.cwd} position="bottom">
+                  <span class="terminal-cwd">{truncatePath(terminal.cwd)}</span>
+                </Tooltip>
+              </div>
+
+              {#if terminal.lastOutput}
+                <div class="terminal-preview">
+                  <span class="terminal-preview-text">{truncateOutput(terminal.lastOutput)}</span>
+                </div>
               {/if}
-            </div>
-            <div class="terminal-card-right">
-              <RelativeTime
-                date={terminal.exitedAt || terminal.createdAt}
-                format="narrow"
-                classes="terminal-time"
-              />
-              <Button
-                classes="btn-ghost btn-sm btn-remove"
-                onclick={(e: MouseEvent): void => void removeTerminal(e, terminal.id)}
-                text="&times;"
-              />
-            </div>
-          </div>
-
-          <div class="terminal-card-meta">
-            <Tooltip text={terminal.cwd} position="bottom">
-              <span class="terminal-cwd">{truncatePath(terminal.cwd)}</span>
-            </Tooltip>
-          </div>
-
-          {#if terminal.lastOutput}
-            <div class="terminal-preview">
-              <span class="terminal-preview-text">{truncateOutput(terminal.lastOutput)}</span>
-            </div>
-          {/if}
-        </a>
-      {/each}
-    </div>
-  {/if}
-</main>
+            </a>
+          </SwipeToDelete>
+        {/each}
+      </div>
+    {/if}
+  </main>
+</PullToRefresh>
 
 {#if config?.apiKey}
   <LaunchSheet
@@ -382,6 +384,7 @@
     onClose={handleLaunchClose}
     onLaunch={handleLaunchComplete}
   />
+  <Fab onclick={handleNewTerminal} ariaLabel="New terminal" />
 {/if}
 
 <style>

@@ -4,6 +4,7 @@ import type {
   APNsSendResult,
   AppEnv,
   DeviceRecord,
+  LiveActivityPushInput,
   NotificationPayload,
 } from '$lib/types';
 
@@ -14,6 +15,7 @@ import { promisify } from 'util';
 
 import { toErrorMessage } from '../utils/error';
 import { summarizeApnsFanOut } from './apns-classify.js';
+import { buildLiveActivityBody, liveActivityTopic } from './apns-liveactivity.js';
 import { fitApnsPayload } from './apns-payload.js';
 
 // APNs delivery via curl. Replaces @parse/node-apn (which times out on Node 24
@@ -89,6 +91,34 @@ export class LibraryAPNsService {
     return this.configured;
   }
 
+  /**
+   * Push a Live Activity (ActivityKit) update to a single activity push token.
+   * These tokens come from the iOS app (`Activity.pushToken`), are distinct from
+   * the device token, and target the `<bundleId>.push-type.liveactivity` topic
+   * with `apns-push-type: liveactivity`. `nowSec` is injected for deterministic
+   * tests. An 'end' event tears the activity down (optionally at dismissalDate).
+   */
+  async sendLiveActivity(
+    activityPushToken: string,
+    input: LiveActivityPushInput,
+    nowSec: number = Math.floor(Date.now() / 1000)
+  ): Promise<APNsSendResult> {
+    if (!this.configured) {
+      throw new Error('APNs service not configured properly');
+    }
+    if (!activityPushToken) {
+      throw new Error('Live Activity push token is required');
+    }
+    // Updates are user-visible and timely → priority 10.
+    return this.deliver(
+      activityPushToken,
+      buildLiveActivityBody(input, nowSec),
+      'liveactivity',
+      '10',
+      liveActivityTopic(this.bundleId ?? '')
+    );
+  }
+
   async sendNotification(
     deviceToken: string,
     payload: NotificationPayload
@@ -160,7 +190,9 @@ export class LibraryAPNsService {
           'alert',
           '10',
           jwtToken,
-          collapseId
+          {
+            collapseId,
+          }
         );
         return {
           appEnv: device.appEnv,
@@ -213,13 +245,16 @@ export class LibraryAPNsService {
   private async deliver(
     deviceToken: string,
     body: Record<string, unknown>,
-    pushType: 'alert' | 'background',
-    priority: '5' | '10'
+    pushType: 'alert' | 'background' | 'liveactivity',
+    priority: '5' | '10',
+    topic?: string
   ): Promise<APNsSendResult> {
     // Cap the payload to APNs' size limit. A long agent message in alert.body otherwise blows
     // past ~4 KB → APNs 413 PayloadTooLarge (or curl E2BIG), so the notification never arrives.
     const bodyJson = JSON.stringify(fitApnsPayload(body));
-    return this.deliverPreSerialized(deviceToken, bodyJson, pushType, priority, this.getJwt());
+    return this.deliverPreSerialized(deviceToken, bodyJson, pushType, priority, this.getJwt(), {
+      topic,
+    });
   }
 
   /**
@@ -230,11 +265,12 @@ export class LibraryAPNsService {
   private async deliverPreSerialized(
     deviceToken: string,
     bodyJson: string,
-    pushType: 'alert' | 'background',
+    pushType: 'alert' | 'background' | 'liveactivity',
     priority: '5' | '10',
     jwtToken: string,
-    collapseId?: string
+    opts: { collapseId?: string; topic?: string } = {}
   ): Promise<APNsSendResult> {
+    const { collapseId, topic } = opts;
     const url = `https://${this.host}/3/device/${deviceToken}`;
 
     // collapseId can originate from caller-supplied data (data.requestId on
@@ -257,7 +293,7 @@ export class LibraryAPNsService {
       '-H',
       'content-type: application/json',
       '-H',
-      `apns-topic: ${this.bundleId}`,
+      `apns-topic: ${topic ?? this.bundleId}`,
       '-H',
       `authorization: bearer ${jwtToken}`,
       '-H',

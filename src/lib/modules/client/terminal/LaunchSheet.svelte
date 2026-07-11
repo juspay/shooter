@@ -259,10 +259,10 @@
   }
 
   :global(.btn-launch) {
-    --button-color: var(--ds-green-700);
-    --button-text-color: #fff;
-    --button-hover-color: var(--ds-green-900);
-    --button-hover-text-color: #fff;
+    --button-color: var(--accent);
+    --button-text-color: var(--accent-fg);
+    --button-hover-color: var(--accent-hover);
+    --button-hover-text-color: var(--accent-fg);
     --button-border-radius: var(--radius-lg);
     --button-height: 48px;
     --button-width: 100%;

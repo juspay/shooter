@@ -323,7 +323,6 @@
     --input-font-family: var(--font-mono);
     --input-background: var(--component-bg);
     --input-border: 1px solid var(--border-hover);
-    --input-focus-border: 1px solid var(--ds-blue-700);
     --input-container-margin: 0;
   }
 </style>

@@ -4,6 +4,8 @@ import android.annotation.SuppressLint
 import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
+import android.os.VibrationEffect
+import android.os.Vibrator
 import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
@@ -335,6 +337,25 @@ class MainActivity : AppCompatActivity() {
         fun getPlatform(): String {
             android.util.Log.d(TAG, "ShooterBridge.getPlatform() → android")
             return "android"
+        }
+
+        @JavascriptInterface
+        fun haptic(kind: String) {
+            this@MainActivity.runOnUiThread {
+                val vibrator = this@MainActivity.getSystemService(Vibrator::class.java) ?: return@runOnUiThread
+                if (!vibrator.hasVibrator()) return@runOnUiThread
+                val durationMs = when (kind) {
+                    "light" -> 10L
+                    "medium" -> 20L
+                    "heavy" -> 30L
+                    "success" -> 15L
+                    "warning" -> 25L
+                    "error" -> 40L
+                    "selection" -> 5L
+                    else -> 10L
+                }
+                vibrator.vibrate(VibrationEffect.createOneShot(durationMs, VibrationEffect.DEFAULT_AMPLITUDE))
+            }
         }
     }
 

@@ -9,6 +9,7 @@ declare global {
     getEnvironment?: () => string;
     getFcmToken?: () => string;
     getPlatform?: () => string;
+    haptic?: (kind: string) => void;
     saveConfig?: (config: string) => void;
     scanner?: ShooterBridgeScanner;
   }

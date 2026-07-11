@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { QuickKey, QuickKeysProps } from '$lib/types';
 
+  import { haptic } from '$lib/modules/client/common';
   import { Button } from '@juspay/svelte-ui-components';
 
   const { onKey }: QuickKeysProps = $props();
@@ -21,6 +22,7 @@
     <Button
       classes="btn-quick-key"
       onclick={(): void => {
+        haptic('light');
         onKey(k.escape);
       }}
       text={k.label}

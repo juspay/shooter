@@ -12,7 +12,15 @@
   import PlaySvg from '$lib/assets/icons/play.svg?raw';
   import XCircleSvg from '$lib/assets/icons/x-circle.svg?raw';
   import { hasScanner, isShooterConfig, scanQR, toErrorMessage } from '$lib/modules/client/common';
+  import NavBar from '$lib/modules/client/nav/NavBar.svelte';
   import { PROVIDERS } from '$lib/modules/client/neurolink/provider-config';
+  import {
+    disableWebPush,
+    enableWebPush,
+    getWebPushPermission,
+    isWebPushSubscribed,
+    isWebPushSupported,
+  } from '$lib/modules/client/push/web-push';
   import { Banner, Button, Card, Icon, Input, Stepper } from '@juspay/svelte-ui-components';
   import { onMount } from 'svelte';
 
@@ -35,6 +43,15 @@
   let _bridgeCheckDone = $state(false);
   let bridgeHydrated = false;
   let scanLoading = $state(false);
+
+  // Browser (Web Push) notifications — PWA/Safari/Chrome push, separate from the
+  // native iOS/Android device tokens shown under "Registered Devices".
+  let webPushSupported = $state(false);
+  let webPushPermission = $state<'default' | 'denied' | 'granted' | 'unsupported'>('default');
+  let webPushSubscribed = $state(false);
+  let webPushBusy = $state(false);
+  let webPushMsg = $state('');
+  let webPushTesting = $state(false);
 
   async function fetchQrCode(): Promise<void> {
     if (!apiKey.trim()) {
@@ -219,6 +236,7 @@
       }
       _bridgeCheckDone = true;
       void loadDevices();
+      void refreshWebPushState();
 
       // The native bridge may be injected after SvelteKit hydration.
       // Re-check periodically for a short window to catch late injection.
@@ -353,6 +371,80 @@
     }
   }
 
+  /** Read current Web Push support / permission / subscription state. */
+  async function refreshWebPushState(): Promise<void> {
+    webPushSupported = isWebPushSupported();
+    webPushPermission = getWebPushPermission();
+    webPushSubscribed = await isWebPushSubscribed();
+  }
+
+  /** Rehearse + request browser notification permission, then subscribe. */
+  async function enableBrowserPush(): Promise<void> {
+    if (!apiKey.trim()) {
+      webPushMsg = 'Save an API key first.';
+      return;
+    }
+    webPushBusy = true;
+    webPushMsg = '';
+    try {
+      const status = await enableWebPush(apiKey.trim());
+      if (status === 'granted') {
+        webPushMsg = 'Browser notifications enabled on this device.';
+      } else if (status === 'denied') {
+        webPushMsg =
+          'Notifications are blocked. Allow them for this site in your browser settings, then try again.';
+      } else if (status === 'unsupported') {
+        webPushMsg = 'This browser cannot receive push notifications.';
+      } else {
+        webPushMsg = 'Could not enable notifications. Please try again.';
+      }
+      await refreshWebPushState();
+    } finally {
+      webPushBusy = false;
+    }
+  }
+
+  /** Unsubscribe this browser from Web Push. */
+  async function disableBrowserPush(): Promise<void> {
+    webPushBusy = true;
+    webPushMsg = '';
+    try {
+      await disableWebPush(apiKey.trim());
+      webPushMsg = 'Browser notifications turned off on this device.';
+      await refreshWebPushState();
+    } finally {
+      webPushBusy = false;
+    }
+  }
+
+  /** Fire a real push through the server so the user sees it land. */
+  async function sendTestPush(): Promise<void> {
+    if (!apiKey.trim()) {
+      return;
+    }
+    webPushTesting = true;
+    webPushMsg = '';
+    try {
+      const res = await fetch('/api/notify', {
+        body: JSON.stringify({
+          data: { category: 'test', source: 'shooter-config' },
+          message: 'If you can see this, browser push is working. 🎯',
+          title: 'Shooter test push',
+        }),
+        headers: { Authorization: `Bearer ${apiKey.trim()}`, 'Content-Type': 'application/json' },
+        method: 'POST',
+      });
+      const body = (await res.json().catch(() => ({}))) as { sent?: number; success?: boolean };
+      webPushMsg = body.success
+        ? 'Test push sent — it should appear shortly.'
+        : 'Server accepted the request but no device received it. Enable notifications above first.';
+    } catch (error) {
+      webPushMsg = `Could not send test push: ${toErrorMessage(error)}`;
+    } finally {
+      webPushTesting = false;
+    }
+  }
+
   /** Load the registered-devices list from the server registry. */
   async function loadDevices(): Promise<void> {
     if (!apiKey.trim()) {
@@ -415,80 +507,144 @@
   <meta name="description" content="Configure notification system settings" />
 </svelte:head>
 
+<NavBar variant="drilldown" title="Settings" backHref="/" />
+
 <main class="main">
   <div class="settings-container">
-    <div style="margin-bottom: var(--space-4);">
-      <a href="/" class="back-link">← Back to Projects</a>
-    </div>
-    <div class="page-header">
-      <h1 class="page-title">Settings</h1>
-      <p class="page-description">Configure your API credentials and notification preferences</p>
-    </div>
-
     <div class="settings-grid">
       <section class="settings-section">
-        <Card
-          title="Server Configuration"
-          description="Configure server connection and credentials"
-        >
-          <Input
-            name="serverUrl"
-            label="Server URL"
-            bind:value={serverUrl}
-            dataType="text"
-            placeholder="https://shooter.breezehq.dev"
-            infoMessage="Base URL of your Shooter server. Apps will reload with this URL on next launch."
-          />
+        <div class="settings-group">
+          <span class="settings-caption">Server Configuration</span>
+          <span class="settings-footnote">Configure server connection and credentials</span>
+          <Card>
+            <Input
+              name="serverUrl"
+              label="Server URL"
+              bind:value={serverUrl}
+              dataType="text"
+              placeholder="https://shooter.breezehq.dev"
+              infoMessage="Base URL of your Shooter server. Apps will reload with this URL on next launch."
+            />
 
-          <Input
-            name="apiKey"
-            label="API Key"
-            bind:value={apiKey}
-            dataType="password"
-            placeholder="Enter your API key"
-            infoMessage="Required for sending notifications"
-          />
-          <p class="input-help">
-            Find this in your <code>~/.shooter/.env</code> file. Run <code>shooter setup</code> to generate
-            one.
-          </p>
-        </Card>
-
-        <Card title="Registered Devices" description="Phones that receive push notifications">
-          {#if loadingDevices}
-            <p class="input-help">Loading…</p>
-          {:else if loadDevicesError}
-            <p class="input-help" style="color: var(--color-error, #f87171);">{loadDevicesError}</p>
-          {:else if registeredDevices.length === 0}
+            <Input
+              name="apiKey"
+              label="API Key"
+              bind:value={apiKey}
+              dataType="password"
+              placeholder="Enter your API key"
+              infoMessage="Required for sending notifications"
+            />
             <p class="input-help">
-              No devices registered yet. Open the Shooter app on your phone with this server's URL +
-              API key — it registers automatically. Every notification fans out to all devices here.
+              Find this in your <code>~/.shooter/.env</code> file. Run <code>shooter setup</code> to generate
+              one.
             </p>
-          {:else}
-            <ul class="device-list">
-              {#each registeredDevices as device (device.id)}
-                <li class="device-row">
-                  <div class="device-meta">
-                    <span class="device-name">
-                      {device.friendlyName || device.deviceId || 'Unknown device'}
-                      {#if device.deviceId && device.deviceId === thisDeviceId}
-                        <span class="device-badge">this device</span>
-                      {/if}
-                    </span>
-                    <span class="device-sub"
-                      >{device.platform} · {device.appEnv} · {device.tokenMasked}</span
-                    >
-                  </div>
+          </Card>
+        </div>
+
+        <div class="settings-group">
+          <span class="settings-caption">Registered Devices</span>
+          <span class="settings-footnote">Phones that receive push notifications</span>
+          <Card>
+            {#if loadingDevices}
+              <p class="input-help">Loading…</p>
+            {:else if loadDevicesError}
+              <p class="input-help" style="color: var(--color-error, #f87171);">
+                {loadDevicesError}
+              </p>
+            {:else if registeredDevices.length === 0}
+              <p class="input-help">
+                No devices registered yet. Open the Shooter app on your phone with this server's URL
+                + API key — it registers automatically. Every notification fans out to all devices
+                here.
+              </p>
+            {:else}
+              <ul class="device-list">
+                {#each registeredDevices as device (device.id)}
+                  <li class="device-row">
+                    <div class="device-meta">
+                      <span class="device-name">
+                        {device.friendlyName || device.deviceId || 'Unknown device'}
+                        {#if device.deviceId && device.deviceId === thisDeviceId}
+                          <span class="device-badge">this device</span>
+                        {/if}
+                      </span>
+                      <span class="device-sub"
+                        >{device.platform} · {device.appEnv} · {device.tokenMasked}</span
+                      >
+                    </div>
+                    <Button
+                      classes="btn-secondary"
+                      onclick={(): void => void removeDevice(device.id)}
+                      text="Remove"
+                    />
+                  </li>
+                {/each}
+              </ul>
+            {/if}
+          </Card>
+        </div>
+
+        <div class="settings-group">
+          <span class="settings-caption">Browser Notifications</span>
+          <span class="settings-footnote">
+            Push notifications to this browser or installed PWA — no app store needed
+          </span>
+          <Card>
+            {#if !webPushSupported}
+              <p class="input-help">
+                This browser doesn't support push notifications. On iOS, add Shooter to your Home
+                Screen first, then enable them from the installed app.
+              </p>
+            {:else}
+              <div class="webpush-row">
+                <div class="webpush-status">
+                  <span
+                    class="webpush-dot"
+                    class:on={webPushSubscribed && webPushPermission === 'granted'}
+                    class:blocked={webPushPermission === 'denied'}
+                  ></span>
+                  <span class="webpush-state">
+                    {#if webPushPermission === 'denied'}
+                      Blocked in browser settings
+                    {:else if webPushSubscribed && webPushPermission === 'granted'}
+                      Enabled on this device
+                    {:else}
+                      Not enabled on this device
+                    {/if}
+                  </span>
+                </div>
+                {#if webPushSubscribed && webPushPermission === 'granted'}
                   <Button
                     classes="btn-secondary"
-                    onclick={(): void => void removeDevice(device.id)}
-                    text="Remove"
+                    onclick={disableBrowserPush}
+                    disabled={webPushBusy}
+                    text="Turn off"
                   />
-                </li>
-              {/each}
-            </ul>
-          {/if}
-        </Card>
+                {:else}
+                  <Button
+                    classes="btn-primary"
+                    onclick={enableBrowserPush}
+                    disabled={webPushBusy || webPushPermission === 'denied' || !apiKey.trim()}
+                    showLoader={webPushBusy}
+                    text="Enable"
+                  />
+                {/if}
+              </div>
+              {#if webPushSubscribed && webPushPermission === 'granted'}
+                <Button
+                  classes="btn-secondary btn-block"
+                  onclick={sendTestPush}
+                  disabled={webPushTesting}
+                  showLoader={webPushTesting}
+                  text="Send test push"
+                />
+              {/if}
+              {#if webPushMsg}
+                <p class="input-help webpush-msg">{webPushMsg}</p>
+              {/if}
+            {/if}
+          </Card>
+        </div>
 
         {#if result}
           {@const bannerSvg =
@@ -526,110 +682,123 @@
       </section>
 
       <aside class="settings-sidebar">
-        <Card title="Setup Guide">
-          <Stepper
-            steps={[
-              { label: 'Get API Key' },
-              { label: 'Register a Device' },
-              { label: 'Test Connection' },
-            ]}
-            currentStepIndex={apiKey.trim() && registeredDevices.length > 0
-              ? 2
-              : apiKey.trim()
-                ? 1
-                : 0}
-            classes="setup-stepper"
-          />
-        </Card>
+        <div class="settings-group">
+          <span class="settings-caption">Setup Guide</span>
+          <Card>
+            <Stepper
+              steps={[
+                { label: 'Get API Key' },
+                { label: 'Register a Device' },
+                { label: 'Test Connection' },
+              ]}
+              currentStepIndex={apiKey.trim() && registeredDevices.length > 0
+                ? 2
+                : apiKey.trim()
+                  ? 1
+                  : 0}
+              classes="setup-stepper"
+            />
+          </Card>
+        </div>
 
-        <Card
-          title="Mobile App Setup"
-          description={canScan ? 'Scan a QR code to connect' : 'Scan to connect your mobile app'}
-        >
-          <div class="qr-section">
-            {#if canScan}
-              <p class="qr-description">
-                Scan the QR code shown on your server's settings page to auto-configure the
-                connection.
-              </p>
-              <Button
-                classes="btn-secondary btn-sm"
-                onclick={handleScanQR}
-                disabled={scanLoading}
-                text={scanLoading ? 'Scanning...' : 'Scan QR Code'}
-              />
-            {:else}
-              {#if qrDataUrl}
-                <div class="qr-container">
-                  <img src={qrDataUrl} alt="QR code for mobile app pairing" class="qr-image" />
-                </div>
-                <p class="qr-hint">
-                  Scan this QR code with the Shooter iOS or Android app to connect.
+        <div class="settings-group">
+          <span class="settings-caption">Mobile App Setup</span>
+          <span class="settings-footnote"
+            >{canScan ? 'Scan a QR code to connect' : 'Scan to connect your mobile app'}</span
+          >
+          <Card>
+            <div class="qr-section">
+              {#if canScan}
+                <p class="qr-description">
+                  Scan the QR code shown on your server's settings page to auto-configure the
+                  connection.
                 </p>
-                {#if qrServerUrl}
-                  <p class="qr-server-url">
-                    Server: <code>{qrServerUrl}</code>
+                <Button
+                  classes="btn-secondary btn-sm"
+                  onclick={handleScanQR}
+                  disabled={scanLoading}
+                  text={scanLoading ? 'Scanning...' : 'Scan QR Code'}
+                />
+              {:else}
+                {#if qrDataUrl}
+                  <div class="qr-container">
+                    <img src={qrDataUrl} alt="QR code for mobile app pairing" class="qr-image" />
+                  </div>
+                  <p class="qr-hint">
+                    Scan this QR code with the Shooter iOS or Android app to connect.
+                  </p>
+                  {#if qrServerUrl}
+                    <p class="qr-server-url">
+                      Server: <code>{qrServerUrl}</code>
+                    </p>
+                  {/if}
+                {:else if qrLoading}
+                  <div class="qr-placeholder">
+                    <p class="qr-loading-text">Generating QR code...</p>
+                  </div>
+                {:else if qrError}
+                  <p class="qr-error">{qrError}</p>
+                {:else}
+                  <p class="qr-description">
+                    Generate a QR code containing your server URL and API key. Your mobile app can
+                    scan it to auto-configure the connection.
                   </p>
                 {/if}
-              {:else if qrLoading}
-                <div class="qr-placeholder">
-                  <p class="qr-loading-text">Generating QR code...</p>
+                <Button
+                  classes="btn-secondary btn-sm"
+                  onclick={fetchQrCode}
+                  disabled={qrLoading || !apiKey.trim()}
+                  text={qrDataUrl ? 'Regenerate QR Code' : 'Generate QR Code'}
+                />
+              {/if}
+            </div>
+          </Card>
+        </div>
+
+        <div class="settings-group">
+          <span class="settings-caption">AI Providers</span>
+          <span class="settings-footnote">NeuroLink-powered summaries and AI features</span>
+          <Card>
+            <div class="ai-providers">
+              {#each PROVIDERS as provider (provider.id)}
+                <div class="provider-row">
+                  <Icon
+                    svg={data.aiProviders[provider.id] ? CheckCircleSvg : XCircleSvg}
+                    classes="icon-14"
+                  />
+                  <span class="provider-label">{provider.label}</span>
+                  <span class="provider-status" class:configured={data.aiProviders[provider.id]}>
+                    {data.aiProviders[provider.id] ? 'configured' : 'not configured'}
+                  </span>
                 </div>
-              {:else if qrError}
-                <p class="qr-error">{qrError}</p>
+              {/each}
+
+              {#if data.activeProvider}
+                <div class="active-provider">
+                  Active: <strong>{data.activeProvider}</strong>
+                </div>
+              {:else if Object.values(data.aiProviders).some(Boolean)}
+                <div class="active-provider">Auto-detected from configured keys</div>
               {:else}
-                <p class="qr-description">
-                  Generate a QR code containing your server URL and API key. Your mobile app can
-                  scan it to auto-configure the connection.
+                <p class="ai-help">
+                  Run <code>shooter setup</code> to configure AI providers for summaries.
                 </p>
               {/if}
-              <Button
-                classes="btn-secondary btn-sm"
-                onclick={fetchQrCode}
-                disabled={qrLoading || !apiKey.trim()}
-                text={qrDataUrl ? 'Regenerate QR Code' : 'Generate QR Code'}
-              />
-            {/if}
-          </div>
-        </Card>
+            </div>
+          </Card>
+        </div>
 
-        <Card title="AI Providers" description="NeuroLink-powered summaries and AI features">
-          <div class="ai-providers">
-            {#each PROVIDERS as provider (provider.id)}
-              <div class="provider-row">
-                <Icon
-                  svg={data.aiProviders[provider.id] ? CheckCircleSvg : XCircleSvg}
-                  classes="icon-14"
-                />
-                <span class="provider-label">{provider.label}</span>
-                <span class="provider-status" class:configured={data.aiProviders[provider.id]}>
-                  {data.aiProviders[provider.id] ? 'configured' : 'not configured'}
-                </span>
-              </div>
-            {/each}
-
-            {#if data.activeProvider}
-              <div class="active-provider">
-                Active: <strong>{data.activeProvider}</strong>
-              </div>
-            {:else if Object.values(data.aiProviders).some(Boolean)}
-              <div class="active-provider">Auto-detected from configured keys</div>
-            {:else}
-              <p class="ai-help">
-                Run <code>shooter setup</code> to configure AI providers for summaries.
-              </p>
-            {/if}
-          </div>
-        </Card>
-
-        <Card title="Danger Zone">
-          <p class="danger-description">Clear all saved configuration data from this device.</p>
-          <Button
-            classes="btn-danger btn-sm"
-            onclick={clearConfiguration}
-            text="Clear Configuration"
-          />
-        </Card>
+        <div class="settings-group settings-danger">
+          <span class="settings-caption">Danger Zone</span>
+          <Card>
+            <p class="danger-description">Clear all saved configuration data from this device.</p>
+            <Button
+              classes="btn-danger btn-sm"
+              onclick={clearConfiguration}
+              text="Clear Configuration"
+            />
+          </Card>
+        </div>
       </aside>
     </div>
   </div>
@@ -659,6 +828,29 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-4);
+  }
+
+  /* iOS-style grouped inset list: a short uppercase caption + muted footnote
+     sit above each content-only card (the rounded inset container). */
+  .settings-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+  .settings-caption {
+    font-size: var(--text-xs, 12px);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    padding-left: var(--space-3);
+  }
+  .settings-footnote {
+    font-size: var(--text-xs, 12px);
+    color: var(--text-tertiary);
+    line-height: var(--leading-relaxed, 1.5);
+    padding-left: var(--space-3);
+    margin-top: calc(-1 * var(--space-1));
   }
 
   .button-group {
@@ -761,7 +953,7 @@
     line-height: var(--leading-relaxed);
   }
 
-  .settings-sidebar :global(.card):last-child {
+  .settings-danger :global(.card) {
     border-color: color-mix(in srgb, var(--ds-red-700) 30%, transparent);
   }
 
@@ -871,6 +1063,48 @@
     font-size: var(--text-xs);
     color: var(--text-tertiary);
     font-family: var(--font-mono);
+  }
+
+  .webpush-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+  }
+  .webpush-status {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+  .webpush-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--text-tertiary);
+    flex-shrink: 0;
+  }
+  .webpush-dot.on {
+    background: var(--status-live, var(--ds-green-700));
+    box-shadow: 0 0 6px var(--status-live, var(--ds-green-700));
+  }
+  .webpush-dot.blocked {
+    background: var(--status-danger, var(--ds-red-700));
+  }
+  .webpush-state {
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+  }
+  .webpush-msg {
+    margin-top: var(--space-3);
+  }
+  :global(.btn-block) {
+    width: 100%;
+    margin-top: var(--space-3);
+  }
+  :global(.btn-block .button-container),
+  :global(.btn-block button) {
+    width: 100%;
   }
 
   @media (max-width: 768px) {

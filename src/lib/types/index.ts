@@ -12,10 +12,11 @@ export * from './decision';
 export * from './device';
 export type * from './gemini';
 export * from './generated';
+export type * from './haptics';
+export type * from './live-activity';
 export type * from './neurolink';
 export type * from './server';
 export type * from './sessions';
-
 // Explicit re-exports to resolve conflicts between generated types and the
 // hand-written sessions.ts versions. The generated Sessions module exports
 // wrapper-class variants (CMessagePartTextPart, etc.) with `type: string`
@@ -29,6 +30,9 @@ export type {
   ToolResultPart,
   ToolUsePart,
 } from './sessions';
+
 export type * from './sos';
+export type * from './system-status';
 export type * from './terminal-client';
+export * from './webpush';
 export type * from './ws';

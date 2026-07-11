@@ -11,6 +11,8 @@
   import { browser } from '$app/environment';
   import { page } from '$app/state';
   import { getCached, setCache, sourceToCommand } from '$lib/modules/client/common';
+  import EdgeSwipeBack from '$lib/modules/client/nav/EdgeSwipeBack.svelte';
+  import NavBar from '$lib/modules/client/nav/NavBar.svelte';
   import ChatView from '$lib/modules/client/terminal/ChatView.svelte';
   import { Button } from '@juspay/svelte-ui-components';
   import { onMount } from 'svelte';
@@ -558,64 +560,67 @@
   <meta name="description" content="Session conversation view" />
 </svelte:head>
 
-<main class="main session-page-main">
-  {#if loading && messages.length === 0}
-    <div class="loading-container" aria-live="polite" aria-busy="true">
-      <div class="shimmer shimmer-header" aria-hidden="true"></div>
-      <div class="chat-container">
-        <div class="shimmer shimmer-bubble shimmer-bubble-user" aria-hidden="true"></div>
-        <div class="shimmer shimmer-bubble shimmer-bubble-assistant" aria-hidden="true"></div>
-        <div class="shimmer shimmer-bubble shimmer-bubble-user-short" aria-hidden="true"></div>
-        <div class="shimmer shimmer-bubble shimmer-bubble-assistant-wide" aria-hidden="true"></div>
-      </div>
-    </div>
-  {:else if error}
-    <div class="session-back-row">
-      <a href={projectId ? `/project?id=${projectId}` : '/'} class="back-link">← Back</a>
-    </div>
-    <p class="error-text">{error}</p>
-  {:else if session}
-    <!-- Compact header -->
-    <div class="session-header">
-      <div class="session-header-row">
-        <a href={projectId ? `/project?id=${projectId}` : '/'} class="back-link">← Back</a>
-        {#if sendStatus === 'connecting'}
-          <span class="resume-status">Connecting...</span>
-        {:else if sendStatus === 'resuming'}
-          <span class="resume-status">Resuming session...</span>
-        {:else if chatConnectionState === 'connected'}
-          <span class="connection-dot connected"></span>
-        {:else if chatConnectionState === 'reconnecting'}
-          <span class="connection-dot reconnecting"></span>
-        {/if}
-      </div>
-      <h1 class="session-title">{session.title}</h1>
-    </div>
-
-    <!-- Chat -->
-    <div class="session-chat-container">
-      {#if hasMoreMessages}
-        <div class="load-earlier-row">
-          <Button
-            text={loadingMore ? 'Loading...' : 'Load earlier messages'}
-            classes="btn-ghost btn-sm"
-            disabled={loadingMore}
-            onclick={loadEarlierMessages}
-          />
-        </div>
+<EdgeSwipeBack backHref={projectId ? `/project?id=${projectId}` : '/'}>
+  <NavBar
+    variant="drilldown"
+    title={session?.title ?? 'Session'}
+    backHref={projectId ? `/project?id=${projectId}` : '/'}
+  >
+    {#snippet trailing()}
+      {#if sendStatus === 'connecting'}
+        <span class="resume-status">Connecting...</span>
+      {:else if sendStatus === 'resuming'}
+        <span class="resume-status">Resuming session...</span>
+      {:else if chatConnectionState === 'connected'}
+        <span class="connection-dot connected"></span>
+      {:else if chatConnectionState === 'reconnecting'}
+        <span class="connection-dot reconnecting"></span>
       {/if}
-      <ChatView
-        messages={[...messages].reverse()}
-        newestFirst={true}
-        connectionState={chatConnectionState}
-        showInput={true}
-        {sendDisabled}
-        onSendInput={sendMessage}
-        sessionEnded={false}
-      />
-    </div>
-  {/if}
-</main>
+    {/snippet}
+  </NavBar>
+
+  <main class="main session-page-main">
+    {#if loading && messages.length === 0}
+      <div class="loading-container" aria-live="polite" aria-busy="true">
+        <div class="shimmer shimmer-header" aria-hidden="true"></div>
+        <div class="chat-container">
+          <div class="shimmer shimmer-bubble shimmer-bubble-user" aria-hidden="true"></div>
+          <div class="shimmer shimmer-bubble shimmer-bubble-assistant" aria-hidden="true"></div>
+          <div class="shimmer shimmer-bubble shimmer-bubble-user-short" aria-hidden="true"></div>
+          <div
+            class="shimmer shimmer-bubble shimmer-bubble-assistant-wide"
+            aria-hidden="true"
+          ></div>
+        </div>
+      </div>
+    {:else if error}
+      <p class="error-text">{error}</p>
+    {:else if session}
+      <!-- Chat -->
+      <div class="session-chat-container">
+        {#if hasMoreMessages}
+          <div class="load-earlier-row">
+            <Button
+              text={loadingMore ? 'Loading...' : 'Load earlier messages'}
+              classes="btn-ghost btn-sm"
+              disabled={loadingMore}
+              onclick={loadEarlierMessages}
+            />
+          </div>
+        {/if}
+        <ChatView
+          messages={[...messages].reverse()}
+          newestFirst={true}
+          connectionState={chatConnectionState}
+          showInput={true}
+          {sendDisabled}
+          onSendInput={sendMessage}
+          sessionEnded={false}
+        />
+      </div>
+    {/if}
+  </main>
+</EdgeSwipeBack>
 
 <style>
   .session-page-main {
@@ -624,37 +629,9 @@
     overflow: hidden;
   }
 
-  .session-back-row {
-    margin-bottom: var(--space-5);
-  }
-
   .error-text {
     color: var(--text-secondary);
     padding: var(--space-4);
-  }
-
-  /* Compact header */
-  .session-header {
-    padding: var(--space-3) var(--space-4);
-    border-bottom: 1px solid var(--border);
-    flex-shrink: 0;
-  }
-
-  .session-header-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: var(--space-1);
-  }
-
-  .session-title {
-    font-size: var(--text-base);
-    font-weight: 600;
-    color: var(--text-primary);
-    margin: 0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
   }
 
   .resume-status {
