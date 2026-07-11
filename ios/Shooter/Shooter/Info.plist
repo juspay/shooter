@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Partial Info.plist: GENERATE_INFOPLIST_FILE=YES merges the standard
+	     generated keys (bundle name/version, launch screen, orientations, and the
+	     INFOPLIST_KEY_* build settings) on top of this. Only the keys that can't be
+	     expressed as flat INFOPLIST_KEY_* build settings live here — the custom URL
+	     scheme used by widget / Live Activity deep links. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>in.juspay.shooter</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>shooter</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

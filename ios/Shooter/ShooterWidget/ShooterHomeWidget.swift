@@ -72,6 +72,14 @@ struct ShooterHomeWidgetView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .padding()
         .widgetBackground(Color.black.opacity(0.9))
+        .widgetURL(deepLink)
+    }
+
+    /// Tapping the widget opens the session it shows (nil when empty → opens the app).
+    private var deepLink: URL? {
+        entry.snapshot.sessionId.isEmpty
+            ? nil
+            : URL(string: "shooter://session/\(entry.snapshot.sessionId)")
     }
 }
 

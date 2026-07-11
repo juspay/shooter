@@ -35,6 +35,8 @@ struct ShooterLiveActivity: Widget {
             .padding()
             .activityBackgroundTint(Color.black.opacity(0.85))
             .activitySystemActionForegroundColor(amber)
+            // Tapping the Lock Screen activity opens its session in the app.
+            .widgetURL(URL(string: "shooter://session/\(context.attributes.sessionId)"))
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
