@@ -57,10 +57,13 @@ final class LiveActivityManager {
         }
     }
 
-    /// POST the activity push token to the Shooter server. Server config (base URL
-    /// + API key) comes from the app's existing Config store.
+    /// POST the activity push token to the Shooter server. Server URL + API key
+    /// come from the same runtime stores the rest of the app uses (UserDefaults +
+    /// Keychain), not the AppConfig constants.
     private func registerToken(_ token: String, sessionId: String) async {
-        guard let baseURL = Config.serverURL, let apiKey = Config.apiKey,
+        let baseURL = UserDefaults.standard.string(forKey: "serverUrl") ?? AppConfig.defaultServerURL
+        let apiKey = KeychainHelper.read(key: "apiKey") ?? ""
+        guard !apiKey.isEmpty,
               let url = URL(string: "\(baseURL)/api/live-activity/register") else { return }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
