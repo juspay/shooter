@@ -1,3 +1,9 @@
+## [1.30.0](https://github.com/juspay/shooter/compare/v1.29.0...v1.30.0) (2026-07-11)
+
+### Features
+
+* **(ios):**  home-screen widget (latest session status) via App Group + review fixes ([58de0e4](https://github.com/juspay/shooter/commit/58de0e4268dabd0aa2531961a35ff6a992980730)), closes [#119](https://github.com/juspay/shooter/issues/119)
+
 ## [1.29.0](https://github.com/juspay/shooter/compare/v1.28.0...v1.29.0) (2026-07-11)
 
 ### Features
