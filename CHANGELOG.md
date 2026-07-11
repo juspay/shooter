@@ -1,3 +1,9 @@
+## [1.27.0](https://github.com/juspay/shooter/compare/v1.26.0...v1.27.0) (2026-07-11)
+
+### Features
+
+*  make Shooter feel native — 6-slice program ([c78e893](https://github.com/juspay/shooter/commit/c78e8933e23824a95bc3ca575c6fc30b1c9031a2)), closes [#F5B14C](https://github.com/juspay/shooter/issues/F5B14C)
+
 ## [1.26.0](https://github.com/juspay/shooter/compare/v1.25.0...v1.26.0) (2026-07-04)
 
 ### Features
