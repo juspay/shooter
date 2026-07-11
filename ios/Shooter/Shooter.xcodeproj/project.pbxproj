@@ -7,6 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		009D7D9F5F305CDE8B905422 /* LiveActivityManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE672EB5DE4A681A39D88AFC /* LiveActivityManager.swift */; };
+		2921B131D8453A0D42B36B53 /* ShooterActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68A36FE1EC09C89CA2E4CF80 /* ShooterActivityAttributes.swift */; };
+		6688A2930C474D6F027FBE6E /* ShooterWidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74E4E8E3D19DF78BE6632FD7 /* ShooterWidgetBundle.swift */; };
+		83F5D5F3DE62B4F0BB9B9DA8 /* ShooterLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1596767D9C6A296E6DDF07DE /* ShooterLiveActivity.swift */; };
+		996FE2FDCEF01939AB52730A /* ShooterWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 513CA31DE7FB674403C08675 /* ShooterWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		A7B8E1A12C5F1A3B00123456 /* ShooterApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B8E1A02C5F1A3B00123456 /* ShooterApp.swift */; };
 		A7B8E1A32C5F1A3B00123456 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B8E1A22C5F1A3B00123456 /* ContentView.swift */; };
 		A7B8E1A52C5F1A3C00123456 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A7B8E1A42C5F1A3C00123456 /* Assets.xcassets */; };
@@ -16,9 +21,41 @@
 		A7B8E1B42C5F1A8B00123456 /* Config.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B8E1B32C5F1A8B00123456 /* Config.swift */; };
 		A7B8E1B62C5F1A9B00123456 /* KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B8E1B52C5F1A9B00123456 /* KeychainHelper.swift */; };
 		A7B8E1B82C5F1AAB00123456 /* QRScannerViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B8E1B72C5F1AAB00123456 /* QRScannerViewController.swift */; };
+		B4380A8B0DC470913DEEB5A3 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 386826547C4FC8536CB58FC4 /* Foundation.framework */; };
+		BCD81249CD7FBA0EEC7D5D2E /* ShooterActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68A36FE1EC09C89CA2E4CF80 /* ShooterActivityAttributes.swift */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		C8EDB1C94CA57D9B011BCB76 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A7B8E1952C5F1A3B00123456 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = D4E9550336A50F3BC092A146;
+			remoteInfo = ShooterWidget;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		072A0431DA778A493CFAF26D /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				996FE2FDCEF01939AB52730A /* ShooterWidget.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		1596767D9C6A296E6DDF07DE /* ShooterLiveActivity.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ShooterLiveActivity.swift; sourceTree = "<group>"; };
+		386826547C4FC8536CB58FC4 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
+		513CA31DE7FB674403C08675 /* ShooterWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ShooterWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		68A36FE1EC09C89CA2E4CF80 /* ShooterActivityAttributes.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ShooterActivityAttributes.swift; sourceTree = "<group>"; };
+		6BF921E2E5F0934B4CC8F7E6 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		74E4E8E3D19DF78BE6632FD7 /* ShooterWidgetBundle.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ShooterWidgetBundle.swift; sourceTree = "<group>"; };
 		A7B8E19D2C5F1A3B00123456 /* Shooter.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Shooter.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A7B8E1A02C5F1A3B00123456 /* ShooterApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShooterApp.swift; sourceTree = "<group>"; };
 		A7B8E1A22C5F1A3B00123456 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -30,9 +67,18 @@
 		A7B8E1B32C5F1A8B00123456 /* Config.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Config.swift; sourceTree = "<group>"; };
 		A7B8E1B52C5F1A9B00123456 /* KeychainHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainHelper.swift; sourceTree = "<group>"; };
 		A7B8E1B72C5F1AAB00123456 /* QRScannerViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRScannerViewController.swift; sourceTree = "<group>"; };
+		AE672EB5DE4A681A39D88AFC /* LiveActivityManager.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LiveActivityManager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		1103B98B9FC7F35E1FFDABF3 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B4380A8B0DC470913DEEB5A3 /* Foundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		A7B8E19A2C5F1A3B00123456 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -43,11 +89,33 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		124EA27321AA2248889560F8 /* iOS */ = {
+			isa = PBXGroup;
+			children = (
+				386826547C4FC8536CB58FC4 /* Foundation.framework */,
+			);
+			name = iOS;
+			sourceTree = "<group>";
+		};
+		295977B73D99EC0025D3A7DB /* ShooterWidget */ = {
+			isa = PBXGroup;
+			children = (
+				68A36FE1EC09C89CA2E4CF80 /* ShooterActivityAttributes.swift */,
+				1596767D9C6A296E6DDF07DE /* ShooterLiveActivity.swift */,
+				74E4E8E3D19DF78BE6632FD7 /* ShooterWidgetBundle.swift */,
+				6BF921E2E5F0934B4CC8F7E6 /* Info.plist */,
+			);
+			name = ShooterWidget;
+			path = ShooterWidget;
+			sourceTree = "<group>";
+		};
 		A7B8E1942C5F1A3B00123456 = {
 			isa = PBXGroup;
 			children = (
 				A7B8E19F2C5F1A3B00123456 /* Shooter */,
 				A7B8E19E2C5F1A3B00123456 /* Products */,
+				FEB5D35E06ED971AFAA01A99 /* Frameworks */,
+				295977B73D99EC0025D3A7DB /* ShooterWidget */,
 			);
 			sourceTree = "<group>";
 		};
@@ -55,6 +123,7 @@
 			isa = PBXGroup;
 			children = (
 				A7B8E19D2C5F1A3B00123456 /* Shooter.app */,
+				513CA31DE7FB674403C08675 /* ShooterWidget.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -66,12 +135,13 @@
 				A7B8E1A02C5F1A3B00123456 /* ShooterApp.swift */,
 				A7B8E1B12C5F1A7B00123456 /* AppDelegate.swift */,
 				A7B8E1A22C5F1A3B00123456 /* ContentView.swift */,
-					A7B8E1AE2C5F1A5B00123456 /* NotificationManager.swift */,
+				A7B8E1AE2C5F1A5B00123456 /* NotificationManager.swift */,
 				A7B8E1B32C5F1A8B00123456 /* Config.swift */,
 				A7B8E1B52C5F1A9B00123456 /* KeychainHelper.swift */,
 				A7B8E1B72C5F1AAB00123456 /* QRScannerViewController.swift */,
 				A7B8E1A42C5F1A3C00123456 /* Assets.xcassets */,
 				A7B8E1A62C5F1A3C00123456 /* Preview Content */,
+				AE672EB5DE4A681A39D88AFC /* LiveActivityManager.swift */,
 			);
 			path = Shooter;
 			sourceTree = "<group>";
@@ -84,6 +154,14 @@
 			path = "Preview Content";
 			sourceTree = "<group>";
 		};
+		FEB5D35E06ED971AFAA01A99 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				124EA27321AA2248889560F8 /* iOS */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -94,15 +172,34 @@
 				A7B8E1992C5F1A3B00123456 /* Sources */,
 				A7B8E19A2C5F1A3B00123456 /* Frameworks */,
 				A7B8E19B2C5F1A3B00123456 /* Resources */,
+				072A0431DA778A493CFAF26D /* Embed App Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				3148503536472AF5CF7415C5 /* PBXTargetDependency */,
 			);
 			name = Shooter;
 			productName = Shooter;
 			productReference = A7B8E19D2C5F1A3B00123456 /* Shooter.app */;
 			productType = "com.apple.product-type.application";
+		};
+		D4E9550336A50F3BC092A146 /* ShooterWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A260E20737644F31CF9C6582 /* Build configuration list for PBXNativeTarget "ShooterWidget" */;
+			buildPhases = (
+				C551F32DE19CAE2F763ACD80 /* Sources */,
+				1103B98B9FC7F35E1FFDABF3 /* Frameworks */,
+				F086F5B5AD061CAFA08D6ED5 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = ShooterWidget;
+			productName = ShooterWidget;
+			productReference = 513CA31DE7FB674403C08675 /* ShooterWidget.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -133,6 +230,7 @@
 			projectRoot = "";
 			targets = (
 				A7B8E19C2C5F1A3B00123456 /* Shooter */,
+				D4E9550336A50F3BC092A146 /* ShooterWidget */,
 			);
 		};
 /* End PBXProject section */
@@ -144,6 +242,13 @@
 			files = (
 				A7B8E1A82C5F1A3C00123456 /* Preview Assets.xcassets in Resources */,
 				A7B8E1A52C5F1A3C00123456 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F086F5B5AD061CAFA08D6ED5 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -161,10 +266,31 @@
 				A7B8E1A12C5F1A3B00123456 /* ShooterApp.swift in Sources */,
 				A7B8E1B62C5F1A9B00123456 /* KeychainHelper.swift in Sources */,
 				A7B8E1B82C5F1AAB00123456 /* QRScannerViewController.swift in Sources */,
-				);
+				009D7D9F5F305CDE8B905422 /* LiveActivityManager.swift in Sources */,
+				BCD81249CD7FBA0EEC7D5D2E /* ShooterActivityAttributes.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C551F32DE19CAE2F763ACD80 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2921B131D8453A0D42B36B53 /* ShooterActivityAttributes.swift in Sources */,
+				83F5D5F3DE62B4F0BB9B9DA8 /* ShooterLiveActivity.swift in Sources */,
+				6688A2930C474D6F027FBE6E /* ShooterWidgetBundle.swift in Sources */,
+			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		3148503536472AF5CF7415C5 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = ShooterWidget;
+			target = D4E9550336A50F3BC092A146 /* ShooterWidget */;
+			targetProxy = C8EDB1C94CA57D9B011BCB76 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		A7B8E1A92C5F1A3C00123456 /* Debug */ = {
@@ -300,9 +426,10 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Camera access is needed to scan QR codes for server configuration";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UIBackgroundModes = "remote-notification";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UIBackgroundModes = "remote-notification";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -334,9 +461,10 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Camera access is needed to scan QR codes for server configuration";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UIBackgroundModes = "remote-notification";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UIBackgroundModes = "remote-notification";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -354,9 +482,71 @@
 			};
 			name = Release;
 		};
+		B05E6D1766ED4CF4BE3B1663 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = YM9U73Z2JM;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = ShooterWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = in.juspay.shooter.ShooterWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		CB8DDE0FE603DCFA152D7243 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = YM9U73Z2JM;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = ShooterWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = in.juspay.shooter.ShooterWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		A260E20737644F31CF9C6582 /* Build configuration list for PBXNativeTarget "ShooterWidget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CB8DDE0FE603DCFA152D7243 /* Release */,
+				B05E6D1766ED4CF4BE3B1663 /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		A7B8E1982C5F1A3B00123456 /* Build configuration list for PBXProject "Shooter" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
