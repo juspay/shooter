@@ -2,7 +2,6 @@
   import type { ShooterConfig, TerminalListItem } from '$lib/types';
 
   import { goto } from '$app/navigation';
-  import RefreshSvg from '$lib/assets/icons/refresh.svg?raw';
   import SettingsSvg from '$lib/assets/icons/settings.svg?raw';
   import TerminalSvg from '$lib/assets/icons/terminal.svg?raw';
   import {
@@ -12,7 +11,6 @@
     isShooterConfig,
     setCache,
   } from '$lib/modules/client/common';
-  import Glyph from '$lib/modules/client/common/Glyph.svelte';
   import SkeletonCard from '$lib/modules/client/common/SkeletonCard.svelte';
   import Fab from '$lib/modules/client/nav/Fab.svelte';
   import NavBar from '$lib/modules/client/nav/NavBar.svelte';
@@ -253,13 +251,7 @@
   <meta name="description" content="Active terminal sessions on this machine" />
 </svelte:head>
 
-<NavBar variant="root" title="Terminals">
-  {#snippet trailing()}
-    <Button classes="btn-secondary" onclick={forceRefresh} disabled={loading} ariaLabel="Refresh">
-      <Glyph svg={RefreshSvg} size={14} />
-    </Button>
-  {/snippet}
-</NavBar>
+<NavBar variant="root" title="Terminals" />
 
 <PullToRefresh onRefresh={forceRefresh}>
   <main class="main">

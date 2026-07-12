@@ -3,7 +3,6 @@
 
   import { goto } from '$app/navigation';
   import BellSvg from '$lib/assets/icons/bell.svg?raw';
-  import RefreshSvg from '$lib/assets/icons/refresh.svg?raw';
   import SettingsSvg from '$lib/assets/icons/settings.svg?raw';
   import {
     clearCache,
@@ -12,7 +11,6 @@
     isShooterConfig,
     setCache,
   } from '$lib/modules/client/common';
-  import Glyph from '$lib/modules/client/common/Glyph.svelte';
   import SkeletonCard from '$lib/modules/client/common/SkeletonCard.svelte';
   import {
     AutopilotPanel,
@@ -161,13 +159,7 @@
   <meta name="description" content="Active terminals and Claude Code sessions" />
 </svelte:head>
 
-<NavBar variant="root" title="Dashboard">
-  {#snippet trailing()}
-    <Button classes="btn-secondary" onclick={forceRefresh} disabled={loading} ariaLabel="Refresh">
-      <Glyph svg={RefreshSvg} size={14} />
-    </Button>
-  {/snippet}
-</NavBar>
+<NavBar variant="root" title="Dashboard" />
 
 <PullToRefresh onRefresh={forceRefresh}>
   <main class="main">

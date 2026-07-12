@@ -5,7 +5,6 @@
   import { page } from '$app/state';
   import AlertTriangleSvg from '$lib/assets/icons/alert-triangle.svg?raw';
   import BellSvg from '$lib/assets/icons/bell.svg?raw';
-  import RefreshSvg from '$lib/assets/icons/refresh.svg?raw';
   import {
     clearCache,
     formatRelativeTime,
@@ -15,7 +14,6 @@
     sourceLabel,
     sourceToCommand,
   } from '$lib/modules/client/common';
-  import Glyph from '$lib/modules/client/common/Glyph.svelte';
   import SkeletonCard from '$lib/modules/client/common/SkeletonCard.svelte';
   import EdgeSwipeBack from '$lib/modules/client/nav/EdgeSwipeBack.svelte';
   import InfiniteScroll from '$lib/modules/client/nav/InfiniteScroll.svelte';
@@ -236,20 +234,7 @@
 </svelte:head>
 
 <EdgeSwipeBack backHref="/">
-  <NavBar variant="drilldown" title={project?.name ?? 'Project'} backHref="/">
-    {#snippet trailing()}
-      {#if project}
-        <Button
-          classes="btn-secondary"
-          onclick={forceRefresh}
-          disabled={loading}
-          ariaLabel="Refresh"
-        >
-          <Glyph svg={RefreshSvg} size={14} />
-        </Button>
-      {/if}
-    {/snippet}
-  </NavBar>
+  <NavBar variant="drilldown" title={project?.name ?? 'Project'} backHref="/" />
 
   <PullToRefresh onRefresh={forceRefresh}>
     <main class="main">
