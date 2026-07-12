@@ -150,6 +150,11 @@ html {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+  /* iOS WKWebView auto-inflates text (Text Autosizing) even with a
+     width=device-width viewport, unlike Chrome — pin it so the app renders at the
+     CSS-specified sizes and layouts don't overflow/truncate on iOS. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 body {
@@ -1045,6 +1050,14 @@ body {
   .session-card-header {
     flex-direction: column;
     gap: var(--space-2, 0.5rem);
+  }
+
+  /* In the stacked (column) layout the title wrapper is no longer flex-shrunk
+     against a sibling, so it sizes to its content and a long title overflows
+     the card without an ellipsis. Pin it to the header width so the title's
+     own text-overflow: ellipsis takes effect. */
+  .session-card-header > div:first-child {
+    width: 100%;
   }
 
   .session-badge {
