@@ -1,3 +1,9 @@
+## [1.31.1](https://github.com/juspay/shooter/compare/v1.31.0...v1.31.1) (2026-07-14)
+
+### Bug Fixes
+
+* **(ios):**  repair nav-bar title truncation + UI cosmetics from verification ([b8851d7](https://github.com/juspay/shooter/commit/b8851d7e903048cf782ce50f8aced9ebb309813e))
+
 ## [1.31.0](https://github.com/juspay/shooter/compare/v1.30.0...v1.31.0) (2026-07-11)
 
 ### Features
