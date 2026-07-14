@@ -82,7 +82,7 @@
 
 <svelte:head><title>Session Over Sessions - Shooter</title></svelte:head>
 
-<NavBar variant="root" title="Session Over Sessions" />
+<NavBar variant="root" title="SoS" />
 
 <PullToRefresh onRefresh={loadSessions}>
   <main class="main sos-list">
