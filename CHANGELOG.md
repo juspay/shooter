@@ -1,3 +1,9 @@
+## [1.31.2](https://github.com/juspay/shooter/compare/v1.31.1...v1.31.2) (2026-07-15)
+
+### Bug Fixes
+
+* **(ios):**  shorten SoS nav title to 'SoS' so it fits on iOS ([e261caf](https://github.com/juspay/shooter/commit/e261caf19ae7bf8827d4f2769151d9c1847f8909))
+
 ## [1.31.1](https://github.com/juspay/shooter/compare/v1.31.0...v1.31.1) (2026-07-14)
 
 ### Bug Fixes
