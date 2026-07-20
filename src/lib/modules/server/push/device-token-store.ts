@@ -13,9 +13,14 @@
  * startup in a later PR), not constructor side effects, so importing the module
  * never touches the registry.
  *
- * Deferred to PR 3 (added where first used, inside APNs sendToMany): a
- * `getAppEnv(token)` accessor and `failure_count` accumulation. `pruneByTokens`
- * here only soft-deactivates; the failure-count threshold lives with PR 3.
+ * Stale-token handling: `pruneByTokens` soft-deactivates a token the first time
+ * APNs returns an unambiguous dead-token signal (BadDeviceToken on a matching
+ * gateway, or Unregistered — see apns-classify.ts). There is intentionally no
+ * "tolerate N failures" threshold: those signals are definitive, and counting up
+ * to a threshold would only delay removing a token that is already known dead
+ * (and, for a BadDeviceToken on a mismatched gateway, the env-mismatch exemption
+ * already keeps a live token). The `failure_count` column is reserved for future
+ * per-token diagnostics and is not currently used as a prune gate.
  */
 
 import type { AppEnv, DevicePlatform, DeviceRecord, DeviceUpsertInput } from '$lib/types';

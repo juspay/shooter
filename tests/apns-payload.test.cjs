@@ -15,9 +15,22 @@ const { fitApnsPayload, APNS_MAX_BYTES } = require(
   path.join(__dirname, '..', 'src', 'lib', 'modules', 'server', 'apn', 'apns-payload.ts')
 );
 
-let passed = 0, failed = 0;
-function runTest(name, fn) { try { fn(); console.log(`  PASS  ${name}`); passed++; } catch (e) { console.log(`  FAIL  ${name}`); console.log(`        ${e.message}`); failed++; } }
-function assert(c, l) { if (!c) throw new Error(l || 'assertion failed'); }
+let passed = 0,
+  failed = 0;
+function runTest(name, fn) {
+  try {
+    fn();
+    console.log(`  PASS  ${name}`);
+    passed++;
+  } catch (e) {
+    console.log(`  FAIL  ${name}`);
+    console.log(`        ${e.message}`);
+    failed++;
+  }
+}
+function assert(c, l) {
+  if (!c) throw new Error(l || 'assertion failed');
+}
 const blen = (s) => Buffer.byteLength(s, 'utf8');
 const size = (b) => blen(JSON.stringify(b));
 
@@ -39,7 +52,12 @@ runTest('a long body is truncated so the payload fits under the cap', () => {
 });
 
 runTest('title and custom data survive body truncation', () => {
-  const body = { aps: { alert: { title: 'orders · Waiting', body: 'y'.repeat(9000) }, badge: 1 }, category: 'idle_input', sessionId: 'abc123', source: 'modern-apns-api' };
+  const body = {
+    aps: { alert: { title: 'orders · Waiting', body: 'y'.repeat(9000) }, badge: 1 },
+    category: 'idle_input',
+    sessionId: 'abc123',
+    source: 'modern-apns-api',
+  };
   const out = fitApnsPayload(body, 800);
   assert(size(out) <= 800, `fits: got ${size(out)}`);
   assert(out.aps.alert.title === 'orders · Waiting', 'title preserved');
@@ -47,26 +65,61 @@ runTest('title and custom data survive body truncation', () => {
 });
 
 runTest('subtitle is trimmed too when body alone is not enough', () => {
-  const body = { aps: { alert: { title: 'T', body: 'b'.repeat(2000), subtitle: 'Goal: ' + 'g'.repeat(2000) }, badge: 1 } };
+  const body = {
+    aps: {
+      alert: { title: 'T', body: 'b'.repeat(2000), subtitle: 'Goal: ' + 'g'.repeat(2000) },
+      badge: 1,
+    },
+  };
   const out = fitApnsPayload(body, 600);
   assert(size(out) <= 600, `fits: got ${size(out)}`);
 });
 
 runTest('multibyte content still fits under the byte cap', () => {
-  const body = { aps: { alert: { title: 'T', body: ('🚀 build failing — ' + 'é'.repeat(4000)) }, badge: 1 } };
+  const body = {
+    aps: { alert: { title: 'T', body: '🚀 build failing — ' + 'é'.repeat(4000) }, badge: 1 },
+  };
   const out = fitApnsPayload(body, 900);
   assert(size(out) <= 900, `byte-accurate fit: got ${size(out)}`);
 });
 
 runTest('body is omitted (not left as "") when truncation bottoms out', () => {
-  const body = { aps: { alert: { title: 'A reasonably long-ish notification title', body: 'z'.repeat(500) }, badge: 1 } };
+  const body = {
+    aps: {
+      alert: { title: 'A reasonably long-ish notification title', body: 'z'.repeat(500) },
+      badge: 1,
+    },
+  };
   const out = fitApnsPayload(body, 60); // impossibly small → body must fully truncate away
   assert(out.aps.alert.body === undefined, 'emptied body is undefined (omitted), not ""');
   assert(!JSON.stringify(out).includes('"body":""'), 'serialised payload has no empty body key');
 });
 
 runTest('exports a sane default cap (<= 4096)', () => {
-  assert(typeof APNS_MAX_BYTES === 'number' && APNS_MAX_BYTES > 0 && APNS_MAX_BYTES <= 4096, 'APNS_MAX_BYTES in range');
+  assert(
+    typeof APNS_MAX_BYTES === 'number' && APNS_MAX_BYTES > 0 && APNS_MAX_BYTES <= 4096,
+    'APNS_MAX_BYTES in range'
+  );
+});
+
+runTest('trims oversized top-level toolInput to fit (413 fix)', () => {
+  const huge = 'x'.repeat(6000);
+  // buildAlertBody spreads payload.data as TOP-LEVEL siblings of aps, so the
+  // heavy toolInput lands at body.toolInput (not body.data) in the real payload.
+  const body = {
+    aps: {
+      alert: { title: 'clairvoyance · Claude is asking', subtitle: 'Next step', body: 'short' },
+      badge: 1,
+    },
+    requestId: 'abc',
+    toolInput: { questions: [{ options: [{ description: huge }] }] },
+  };
+  const out = fitApnsPayload(body);
+  assert(size(out) <= APNS_MAX_BYTES, `payload still ${size(out)}B`);
+  assert(out.aps.alert.title === 'clairvoyance · Claude is asking', 'title preserved');
+  assert(out.aps.alert.body === 'short', 'short body preserved (toolInput trimmed instead)');
+  assert(out.requestId === 'abc', 'small top-level field preserved');
+  assert(out.toolInput === undefined, 'heavy toolInput dropped');
 });
 
 console.log(`\nResults: ${passed} passed, ${failed} failed, ${passed + failed} total\n`);

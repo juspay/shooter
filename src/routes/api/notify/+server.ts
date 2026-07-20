@@ -4,16 +4,23 @@ import type {
   DeviceRecord,
   FCMFanOutResult,
   NotificationData,
+  NotificationPayload,
   OptionChoice,
   ResponseKind,
+  StatusItem,
   WebPushFanOutResult,
 } from '$lib/types';
 
 import { env } from '$env/dynamic/private';
+import { classifyNotificationTier } from '$lib/modules/server/apn/apns-classify';
 import { LibraryAPNsService } from '$lib/modules/server/apn/library-apns';
 import { addNotification, getNotifications } from '$lib/modules/server/apn/notification-history';
 import { selectPlatforms, summarizeNotifyDelivery } from '$lib/modules/server/apn/notify-fanout';
 import { createPendingRequest } from '$lib/modules/server/apn/pending-requests';
+import {
+  makeStatusCoalescer,
+  summarizeStatusBuffer,
+} from '$lib/modules/server/apn/status-coalescer';
 import { validateAuth } from '$lib/modules/server/auth';
 import { isFCMConfigured, sendFCMNotificationMulti } from '$lib/modules/server/fcm/fcm-service.js';
 import { deviceTokenStore } from '$lib/modules/server/push/device-token-store';
@@ -86,6 +93,136 @@ function resolveIosDevices(override?: string): DeviceRecord[] {
 
 function serverApnEnv(): AppEnv {
   return env.APNS_PRODUCTION === 'true' ? 'production' : 'sandbox';
+}
+
+// Coalescing window for status-tier notifications. Multiple status events for
+// one project inside this window collapse into a single rolled-up push.
+const COALESCE_WINDOW_MS = 45_000;
+
+/**
+ * Deliver ONE coalesced push for a project's buffered status events. Reuses the
+ * same device resolution + fan-out + prune/touch as the immediate path, but with
+ * a per-project collapse-id so successive rollups replace the previous row rather
+ * than stacking. Fire-and-forget: invoked from the coalescer's flush timer.
+ */
+async function flushStatusRollup(project: string, items: StatusItem[]): Promise<void> {
+  if (items.length === 0) {
+    return;
+  }
+  const summary = summarizeStatusBuffer(items);
+  const payload: NotificationPayload = {
+    badge: 1,
+    body: summary.body,
+    data: {
+      category: 'status_rollup',
+      project,
+      source: 'status-coalescer',
+      timestamp: new Date().toISOString(),
+    },
+    message: null,
+    sound: 'default',
+    title: `${project} · ${summary.title}`,
+  };
+
+  const apnsClient = getAPNsClient();
+  const iosDevices = resolveIosDevices();
+  const androidTokens = resolveAndroidTokens();
+  // Web Push too, for parity with the immediate path (a web-only subscriber
+  // should still get status rollups). A rollup never targets an ad-hoc override
+  // token, so there is no `!override` guard to honor here — the resolved tokens
+  // are always real registry rows, which prune/touch correctly.
+  const webSubs = isWebPushConfigured() ? webPushStore.listActive() : [];
+
+  try {
+    const [apnsResult, fcmResult, webResult] = await Promise.all([
+      iosDevices.length > 0 && apnsClient.isConfigured()
+        ? apnsClient.sendToMany(iosDevices, payload, `status-${project}`)
+        : Promise.resolve(EMPTY_APNS_RESULT),
+      androidTokens.length > 0 && isFCMConfigured()
+        ? sendFCMNotificationMulti(androidTokens, payload)
+        : Promise.resolve(EMPTY_FCM_RESULT),
+      webSubs.length > 0
+        ? sendWebPushMulti(webSubs, {
+            body: summary.body,
+            category: undefined,
+            data: payload.data ?? undefined,
+            tag: `status-${project}`,
+            title: payload.title,
+            url: '/',
+          })
+        : Promise.resolve(EMPTY_WEB_RESULT),
+    ]);
+    const delivery = summarizeNotifyDelivery(apnsResult, fcmResult);
+    if (delivery.staleTokens.length > 0) {
+      deviceTokenStore.pruneByTokens(delivery.staleTokens);
+    }
+    if (delivery.succeededTokens.length > 0) {
+      deviceTokenStore.touchLastSeen(delivery.succeededTokens);
+    }
+    if (webResult.staleEndpoints.length > 0) {
+      webPushStore.pruneByEndpoints(webResult.staleEndpoints);
+    }
+    const okWebEndpoints = webResult.results.filter((r) => r.success).map((r) => r.endpoint);
+    if (okWebEndpoints.length > 0) {
+      webPushStore.touchLastSeen(okWebEndpoints);
+    }
+    addNotification(
+      buildNotificationRecord(
+        `status-${project}-rollup`,
+        payload.title,
+        summary.body,
+        delivery.delivered ? 'sent' : 'failed',
+        payload.data as NotificationData
+      )
+    );
+  } catch (err) {
+    console.error(`[notify] status rollup flush failed for ${project}:`, toErrorMessage(err));
+  }
+}
+
+// Module-level singleton so per-project buffers persist across requests.
+const statusCoalescer = makeStatusCoalescer({
+  flush: (project, items) => {
+    void flushStatusRollup(project, items);
+  },
+  windowMs: COALESCE_WINDOW_MS,
+});
+
+/**
+ * Apply the delivery tier for one notification. Returns a Response that
+ * short-circuits the handler when the push is dropped or coalesced, or null when
+ * this is a decision that must send immediately.
+ */
+function applyNotificationTier(
+  data: NotificationData | undefined,
+  canonicalRequestId: string,
+  title: string,
+  message: string
+): null | Response {
+  const category = typeof data?.category === 'string' ? data.category : undefined;
+  const tier = classifyNotificationTier(category);
+  if (tier === 'decision') {
+    return null;
+  }
+  const project = typeof data?.project === 'string' ? data.project : 'shooter';
+  if (tier === 'status') {
+    statusCoalescer.enqueue(project, { body: message, category: category ?? 'status', title });
+    addNotification(
+      buildNotificationRecord(
+        canonicalRequestId,
+        title,
+        message,
+        'filtered',
+        data,
+        `coalesced into ${project} rollup`
+      )
+    );
+    return json({ coalesced: true, project, success: true, timestamp: new Date().toISOString() });
+  }
+  addNotification(
+    buildNotificationRecord(canonicalRequestId, title, message, 'filtered', data, 'dropped tier')
+  );
+  return json({ dropped: true, success: true, timestamp: new Date().toISOString() });
 }
 
 /** A throwaway DeviceRecord wrapping a legacy env-seed or request-override token. */
@@ -493,6 +630,17 @@ export const POST: RequestHandler = async ({ request }) => {
       });
     }
 
+    // Tier gate: drop / coalesce non-decisions; null → decision sends below.
+    const tierResponse = applyNotificationTier(data, canonicalRequestId, title, message);
+    if (tierResponse) {
+      return tierResponse;
+    }
+
+    // Strip the multi-KB toolInput from the PUSH payload (primary 413 cause);
+    // the Decide screen reads it from the pending_requests row instead.
+    const { toolInput: _omitToolInput, ...pushData } = (data ?? {}) as NotificationData;
+    void _omitToolInput;
+
     // Build notification payload (shared between APNs and FCM)
     const payload = {
       badge: 1,
@@ -503,7 +651,7 @@ export const POST: RequestHandler = async ({ request }) => {
       // permission flow when only waitForResponse is provided.
       category: notificationCategory ?? (waitForResponse ? 'CLAUDE_PERMISSION' : undefined),
       data: {
-        ...data,
+        ...pushData,
         requestId: canonicalRequestId,
         source: 'modern-apns-api',
         timestamp: new Date().toISOString(),
