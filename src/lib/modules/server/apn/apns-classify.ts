@@ -14,6 +14,7 @@ import type {
   APNsFanOutResult,
   ApnsTokenDisposition,
   AppEnv,
+  NotificationTier,
 } from '$lib/types';
 
 /** Reasons that mean the token itself is dead, regardless of environment. */
@@ -100,4 +101,26 @@ export function summarizeApnsFanOut(
   }
 
   return { results, staleTokens, totalFailed, totalSent };
+}
+
+const DECISION_CATEGORIES: ReadonlySet<string> = new Set(['permission', 'question']);
+const STATUS_CATEGORIES: ReadonlySet<string> = new Set(['idle_input', 'intervention']);
+
+/**
+ * Single source of truth for how a notification category is delivered:
+ *  - decision → push immediately (permission / question — the user must act)
+ *  - status   → coalesce per-project (idle_input / intervention)
+ *  - drop     → never push (redundant or informational; in-app feed only)
+ *
+ * `permission_notification` is intentionally NOT status — it is redundant with
+ * the blocking `permission` push, so it drops.
+ */
+export function classifyNotificationTier(category: string | undefined): NotificationTier {
+  if (category && DECISION_CATEGORIES.has(category)) {
+    return 'decision';
+  }
+  if (category && STATUS_CATEGORIES.has(category)) {
+    return 'status';
+  }
+  return 'drop';
 }

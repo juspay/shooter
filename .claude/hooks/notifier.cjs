@@ -25,9 +25,7 @@ const path = require('path');
 
 // Detect runtime environment
 // Codex mode: invoked as `node notifier.cjs codex <HookEventName>`
-const IS_CODEX =
-  require.main === module &&
-  process.argv[2] === 'codex';
+const IS_CODEX = require.main === module && process.argv[2] === 'codex';
 const IS_OPENCODE =
   !IS_CODEX &&
   (typeof process.env.OPENCODE_VERSION !== 'undefined' ||
@@ -466,10 +464,7 @@ function adaptOpenCodeEvent(hookEventType, hookData = {}) {
  */
 function adaptCodexEvent(stdinData) {
   // Prefer the payload field; fall back to the CLI arg (argv[3]).
-  const hookEventName =
-    (stdinData && stdinData.hook_event_name) ||
-    process.argv[3] ||
-    'Unknown';
+  const hookEventName = (stdinData && stdinData.hook_event_name) || process.argv[3] || 'Unknown';
 
   const data = {};
   data.sessionId = stdinData?.session_id || '';
@@ -1118,6 +1113,16 @@ function handleIdleInput(event) {
   debugLog(`Idle input event: message=${d.message}`);
 
   const ctx = getSessionContext(d.sessionId);
+
+  // Smart-idle gate: drop internal agent-team/subagent choreography (teammate
+  // handoffs, "expected" idles). Only a genuine "your move" idle should push;
+  // the internal ones are the bulk of the notification noise.
+  const idleText = `${d.message || ''}\n${ctx.lastAssistantText || ''}`;
+  if (isInternalChoreographyIdle(idleText)) {
+    debugLog(`Smart-idle: dropped internal choreography idle for ${event.projectName}`);
+    return;
+  }
+
   const title = `${event.projectName} · Waiting for input`;
   const subtitle = ctx.goal
     ? `Goal: ${summarize(ctx.goal, 70)}`
@@ -1469,6 +1474,31 @@ function isBoilerplate(text) {
   );
 }
 
+// Agent-team choreography markers. When an idle event's message / last-assistant
+// text matches any of these, the idle is INTERNAL (a teammate or subagent
+// handoff, or an "expected" idle) rather than the top-level session genuinely
+// waiting on the user — so we drop it instead of pushing. Named + logged so the
+// list can be tuned against real traffic. See the notification-coalescing design.
+const INTERNAL_IDLE_MARKERS = [
+  /<teammate-message/i,
+  /idle after delivery/i,
+  /another claude session sent a message/i,
+  /review in progress/i,
+  // Deliberately specific: an earlier broad `/expected …? idle/` pattern could
+  // suppress a genuine user-facing idle (e.g. "I expected the build to idle"),
+  // so it was removed. The phrases above are the observed team-choreography ones.
+];
+
+/**
+ * True when an idle event is internal agent-team/subagent choreography rather
+ * than the top-level session genuinely waiting on the user.
+ */
+function isInternalChoreographyIdle(text) {
+  if (!text) return false;
+  const t = String(text);
+  return INTERNAL_IDLE_MARKERS.some((re) => re.test(t));
+}
+
 /**
  * Compress a message into a subtitle-sized summary.
  * Prefers the first sentence; falls back to a hard char limit. Whitespace and
@@ -1803,7 +1833,9 @@ function sendNotificationAndPoll(
         try {
           const body = JSON.parse(responseData);
           if (body && body.success === false) {
-            debugLog('Notification reached 0 devices (success:false) - falling through to local dialog');
+            debugLog(
+              'Notification reached 0 devices (success:false) - falling through to local dialog'
+            );
             resolve(null);
             return;
           }
@@ -1886,7 +1918,9 @@ function startPolling(requestId, resolve) {
           resolved = true;
           clearInterval(pollTimer);
           clearTimeout(overallTimeout);
-          debugLog(`Pending request not found (HTTP 404, ${elapsed}s) - falling through to local dialog`);
+          debugLog(
+            `Pending request not found (HTTP 404, ${elapsed}s) - falling through to local dialog`
+          );
           resolve(null);
           return;
         }
@@ -2229,6 +2263,8 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports.extractElicitationChoices = extractElicitationChoices;
   // Codex adapter (tests + wiring).
   module.exports.adaptCodexEvent = adaptCodexEvent;
+  // Smart-idle gate (tests/idle-gate.test.cjs).
+  module.exports.isInternalChoreographyIdle = isInternalChoreographyIdle;
 }
 
 // Run main() when called directly from CLI (Claude Code)

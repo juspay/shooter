@@ -21,8 +21,28 @@ export function fitApnsPayload(
   }
   const aps = body.aps as Record<string, unknown> | undefined;
   const alert = aps?.alert as Record<string, unknown> | undefined;
+
+  // First drop the biggest 413 offender: heavy custom fields. buildAlertBody
+  // spreads payload.data as TOP-LEVEL siblings of `aps`, so a multi-KB toolInput
+  // (echoing every AskUserQuestion option description) lands at body.toolInput,
+  // not body.data. These are redundant in the push — the Decide screen reads the
+  // full toolInput from the pending_requests row — so trim them BEFORE the
+  // human-readable alert text, so a short body/subtitle is never destroyed to fit
+  // bulky data. (Assign undefined, not `delete`, which the lint config forbids for
+  // dynamic keys — JSON.stringify omits undefined-valued keys, shrinking the same.)
+  if (payloadBytes(body) > maxBytes) {
+    for (const field of ['toolInput', 'options', 'question'] as const) {
+      if (payloadBytes(body) <= maxBytes) {
+        break;
+      }
+      if (field in body && body[field] !== undefined) {
+        body[field] = undefined;
+      }
+    }
+  }
+
   if (!alert) {
-    return body; // nothing safely trimmable (e.g. silent push) — leave as-is
+    return body; // nothing else safely trimmable (e.g. silent push) — leave as-is
   }
   for (const field of ['body', 'subtitle'] as const) {
     if (payloadBytes(body) <= maxBytes) {

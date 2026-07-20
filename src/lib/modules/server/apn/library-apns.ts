@@ -227,6 +227,14 @@ export class LibraryAPNsService {
       aps.category = payload.category;
     }
 
+    // Thread all of a project's notifications together in Notification Center
+    // (decisions + coalesced status rollups group under one project heading).
+    const project =
+      payload.data && typeof payload.data.project === 'string' ? payload.data.project : '';
+    if (project) {
+      aps['thread-id'] = project;
+    }
+
     const body: Record<string, unknown> = { aps };
     if (payload.data) {
       // Drop any caller-supplied `aps` so it can't replace the alert envelope
@@ -308,51 +316,70 @@ export class LibraryAPNsService {
       url,
     ];
 
-    try {
-      const { stdout } = await execFileAsync('curl', args, {
-        maxBuffer: 1024 * 1024,
-        timeout: (REQUEST_TIMEOUT_SECONDS + 5) * 1000,
-      });
-
-      const statusMatch = /__SHOOTER_HTTP_STATUS__:(\d+)/.exec(stdout);
-      const status = statusMatch ? parseInt(statusMatch[1], 10) : 0;
-      const bodyText = stdout.replace(/\n?__SHOOTER_HTTP_STATUS__:\d+\n?$/, '').trim();
-
-      if (status === 200) {
-        // Intentionally omit `details` here — including the raw 64-char
-        // device token would leak it through API responses and downstream
-        // logs, undercutting the redaction we do in the notifier.
-        return { failed: 0, httpStatus: 200, sent: 1, success: true };
-      }
-
-      let reason: string = bodyText;
-      let timestampMs: number | undefined;
+    // Retry once on a transport failure (curl throws → httpStatus 0): a transient
+    // network blip / DNS hiccup shouldn't silently drop the push. HTTP-level
+    // failures (4xx/5xx) return immediately below — they are never retried here.
+    let lastErr: unknown;
+    for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        const parsed: unknown = JSON.parse(bodyText);
-        if (parsed && typeof parsed === 'object') {
-          const obj = parsed as { reason?: unknown; timestamp?: unknown };
-          if (typeof obj.reason === 'string') {
-            reason = obj.reason;
-          }
-          if (typeof obj.timestamp === 'number') {
-            // APNs returns ms for 410; tolerate seconds defensively.
-            timestampMs = obj.timestamp < 1e12 ? obj.timestamp * 1000 : obj.timestamp;
-          }
+        const { stdout } = await execFileAsync('curl', args, {
+          maxBuffer: 1024 * 1024,
+          timeout: (REQUEST_TIMEOUT_SECONDS + 5) * 1000,
+        });
+
+        const statusMatch = /__SHOOTER_HTTP_STATUS__:(\d+)/.exec(stdout);
+        const status = statusMatch ? parseInt(statusMatch[1], 10) : 0;
+        const bodyText = stdout.replace(/\n?__SHOOTER_HTTP_STATUS__:\d+\n?$/, '').trim();
+
+        if (status === 200) {
+          // Intentionally omit `details` here — including the raw 64-char
+          // device token would leak it through API responses and downstream
+          // logs, undercutting the redaction we do in the notifier.
+          return { failed: 0, httpStatus: 200, sent: 1, success: true };
         }
-      } catch {
-        // raw body
+
+        let reason: string = bodyText;
+        let timestampMs: number | undefined;
+        try {
+          const parsed: unknown = JSON.parse(bodyText);
+          if (parsed && typeof parsed === 'object') {
+            const obj = parsed as { reason?: unknown; timestamp?: unknown };
+            if (typeof obj.reason === 'string') {
+              reason = obj.reason;
+            }
+            if (typeof obj.timestamp === 'number') {
+              // APNs returns ms for 410; tolerate seconds defensively.
+              timestampMs = obj.timestamp < 1e12 ? obj.timestamp * 1000 : obj.timestamp;
+            }
+          }
+        } catch {
+          // raw body
+        }
+        console.error(`[apns] Delivery failed (status=${status}): ${reason}`);
+        return {
+          error: reason,
+          failed: 1,
+          httpStatus: status,
+          sent: 0,
+          success: false,
+          timestampMs,
+        };
+      } catch (err) {
+        lastErr = err;
+        if (attempt === 0) {
+          await new Promise((resolve) => setTimeout(resolve, 250));
+        }
       }
-      console.error(`[apns] Delivery failed (status=${status}): ${reason}`);
-      return { error: reason, failed: 1, httpStatus: status, sent: 0, success: false, timestampMs };
-    } catch (err) {
-      // A failed execFile echoes the whole curl command — which carries the APNs JWT and the
-      // device token. Redact both before logging or returning so they don't leak into logs/responses.
-      const msg = toErrorMessage(err)
-        .replace(/bearer\s+[A-Za-z0-9._-]+/gi, 'bearer [REDACTED]')
-        .replace(/device\/[A-Fa-f0-9]+/g, 'device/[REDACTED]');
-      console.error(`[apns] curl transport error: ${msg}`);
-      return { error: msg, failed: 1, httpStatus: 0, sent: 0, success: false };
     }
+
+    // Both attempts threw → genuine transport failure. A failed execFile echoes
+    // the whole curl command — which carries the APNs JWT and the device token.
+    // Redact both before logging or returning so they don't leak into logs/responses.
+    const msg = toErrorMessage(lastErr)
+      .replace(/bearer\s+[A-Za-z0-9._-]+/gi, 'bearer [REDACTED]')
+      .replace(/device\/[A-Fa-f0-9]+/g, 'device/[REDACTED]');
+    console.error(`[apns] curl transport error: ${msg}`);
+    return { error: msg, failed: 1, httpStatus: 0, sent: 0, success: false };
   }
 
   private getJwt(): string {

@@ -56,3 +56,24 @@ export interface NotificationResult {
   statusCode: null | number;
   success: boolean;
 }
+
+/** How a push category should reach the phone (delivery tier). */
+export type NotificationTier = 'decision' | 'drop' | 'status';
+
+/** Per-project coalescer handle: buffers status items and flushes one rollup. */
+export interface StatusCoalescer {
+  enqueue: (project: string, item: StatusItem) => void;
+}
+
+/** One buffered status-tier notification awaiting per-project coalescing. */
+export interface StatusItem {
+  body: string;
+  category: string;
+  title: string;
+}
+
+/** The rolled-up title + body a coalesced status flush delivers. */
+export interface StatusSummary {
+  body: string;
+  title: string;
+}
