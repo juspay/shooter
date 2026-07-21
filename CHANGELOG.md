@@ -1,3 +1,9 @@
+## [1.32.0](https://github.com/juspay/shooter/compare/v1.31.2...v1.32.0) (2026-07-21)
+
+### Features
+
+* **(notify):**  coalesce notifications — decision-first delivery, smart idle, 413 fix ([db48f5f](https://github.com/juspay/shooter/commit/db48f5f9068beff7f168ae95ece7633e6aa84c4f))
+
 ## [1.31.2](https://github.com/juspay/shooter/compare/v1.31.1...v1.31.2) (2026-07-15)
 
 ### Bug Fixes
