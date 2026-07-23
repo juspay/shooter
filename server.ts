@@ -22,6 +22,7 @@ if (!existsSync(handlerPath)) {
   process.exit(1);
 }
 
+import { notificationStore } from './src/lib/modules/server/apn/notification-store.js';
 import { deviceTokenStore } from './src/lib/modules/server/push/device-token-store.js';
 import {
   startAutopilotEngine,
@@ -276,6 +277,11 @@ server.listen(requestedPort, () => {
     webPushStore.startupCleanup();
   } catch (err) {
     console.error('[web-push] startup cleanup failed:', err);
+  }
+  try {
+    notificationStore.startupCleanup();
+  } catch (err) {
+    console.error('[notification] startup cleanup failed:', err);
   }
   startAutopilotEngine();
 });

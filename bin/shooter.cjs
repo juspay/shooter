@@ -135,6 +135,10 @@ switch (command) {
   case 'guard':
     runGuard();
     break;
+  case 'notifications':
+  case 'notif':
+    runNotifications();
+    break;
   case 'version':
   case '--version':
   case '-v':
@@ -588,6 +592,106 @@ function resolvePort() {
     if (match) return match[1];
   } catch {}
   return DEFAULT_PORT;
+}
+
+// ── notifications (telemetry report) ────────────────────────────────
+
+function runNotifications() {
+  const http = require('http');
+  const port = resolvePort();
+  const apiKey = readApiKey();
+  if (!apiKey) {
+    console.error("No API key found. Run 'shooter setup' or set API_KEY in ~/.shooter/.env.");
+    process.exit(1);
+  }
+  const flagIdx = args.indexOf('--since');
+  const since =
+    flagIdx >= 0 && args[flagIdx + 1]
+      ? args[flagIdx + 1]
+      : args[1] && !args[1].startsWith('-')
+        ? args[1]
+        : '24h';
+
+  const req = http.request(
+    {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      host: 'localhost',
+      method: 'GET',
+      path: `/api/notify/stats?since=${encodeURIComponent(since)}`,
+      port,
+      timeout: 5000,
+    },
+    (res) => {
+      let body = '';
+      res.on('data', (c) => (body += c));
+      res.on('end', () => {
+        if (res.statusCode !== 200) {
+          console.error(`Failed to fetch stats (HTTP ${res.statusCode}). Try 'shooter status'.`);
+          process.exit(1);
+        }
+        let stats;
+        try {
+          stats = JSON.parse(body);
+        } catch {
+          console.error('Unexpected response from server.');
+          process.exit(1);
+        }
+        printNotificationReport(stats, since);
+      });
+    }
+  );
+  req.on('error', () => {
+    console.error(`Could not reach the server on port ${port}. Start it with 'shooter start'.`);
+    process.exit(1);
+  });
+  req.on('timeout', () => {
+    req.destroy();
+    console.error('Request to the server timed out.');
+    process.exit(1);
+  });
+  req.end();
+}
+
+function printNotificationReport(stats, since) {
+  const total = stats.total || 0;
+  console.log(`\nNotifications — last ${since} (${total} events)\n`);
+
+  const section = (label, obj) => {
+    const entries = Object.entries(obj || {}).sort((a, b) => b[1] - a[1]);
+    if (entries.length === 0) return;
+    console.log(`  ${label}`);
+    for (const [k, v] of entries) console.log(`    ${String(v).padStart(4)}  ${k}`);
+    console.log('');
+  };
+
+  section('By tier', stats.byTier);
+  section('By disposition', stats.byDisposition);
+  section('By category', stats.byCategory);
+
+  const projs = Object.entries(stats.byProject || {})
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10);
+  if (projs.length > 0) {
+    console.log('  Top projects');
+    for (const [k, v] of projs) console.log(`    ${String(v).padStart(4)}  ${k}`);
+    console.log('');
+  }
+
+  const d = stats.delivery || { byStatus: {}, failed: 0, sent: 0 };
+  console.log(`  Delivery: ${d.sent} delivered · ${d.failed} failed`);
+  const statuses = Object.entries(d.byStatus || {}).sort((a, b) => b[1] - a[1]);
+  if (statuses.length > 0) {
+    console.log(`    APNs HTTP: ${statuses.map(([k, v]) => `${k}×${v}`).join('  ')}`);
+  }
+  console.log('');
+
+  if (Array.isArray(stats.bursts) && stats.bursts.length > 0) {
+    console.log('  ⚠ Bursts (many pushes to one project in a short window):');
+    for (const b of stats.bursts) console.log(`    ${b.project}: ${b.count} in ${b.windowSec}s`);
+  } else {
+    console.log('  ✓ No bursts detected');
+  }
+  console.log('');
 }
 
 function showStatus() {
@@ -1488,6 +1592,7 @@ Commands:
   autostart on     Start automatically on login (macOS/Linux)
   autostart off    Disable autostart
   logs             Tail server logs
+  notifications    Notification telemetry report (alias: notif; --since 24h|7d)
   setup            Quick setup (API key + build, ~60 seconds)
   setup --push     Add/reconfigure push notifications
   update           Check for updates and install if available

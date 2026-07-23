@@ -542,6 +542,12 @@
         </div>
 
         <div class="settings-group">
+          <span class="settings-caption">Notifications</span>
+          <span class="settings-footnote">See what's been sent, coalesced, and dropped</span>
+          <a class="settings-link" href="/notifications">View notification telemetry →</a>
+        </div>
+
+        <div class="settings-group">
           <span class="settings-caption">Registered Devices</span>
           <span class="settings-footnote">Phones that receive push notifications</span>
           <Card>
@@ -818,6 +824,20 @@
     align-items: start;
   }
 
+  .settings-link {
+    display: block;
+    padding: var(--space-3) var(--space-4);
+    background: var(--component-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    color: var(--text-primary);
+    text-decoration: none;
+    font-size: var(--text-sm);
+    transition: border-color var(--transition-fast);
+  }
+  .settings-link:hover {
+    border-color: var(--border-hover);
+  }
   .settings-section {
     display: flex;
     flex-direction: column;

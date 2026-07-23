@@ -4,6 +4,7 @@ import type {
   DeviceRecord,
   FCMFanOutResult,
   NotificationData,
+  NotificationDisposition,
   NotificationPayload,
   OptionChoice,
   ResponseKind,
@@ -15,6 +16,7 @@ import { env } from '$env/dynamic/private';
 import { classifyNotificationTier } from '$lib/modules/server/apn/apns-classify';
 import { LibraryAPNsService } from '$lib/modules/server/apn/library-apns';
 import { addNotification, getNotifications } from '$lib/modules/server/apn/notification-history';
+import { notificationStore } from '$lib/modules/server/apn/notification-store';
 import { selectPlatforms, summarizeNotifyDelivery } from '$lib/modules/server/apn/notify-fanout';
 import { createPendingRequest } from '$lib/modules/server/apn/pending-requests';
 import {
@@ -166,17 +168,34 @@ async function flushStatusRollup(project: string, items: StatusItem[]): Promise<
     if (okWebEndpoints.length > 0) {
       webPushStore.touchLastSeen(okWebEndpoints);
     }
-    addNotification(
-      buildNotificationRecord(
-        `status-${project}-rollup`,
-        payload.title,
-        summary.body,
-        delivery.delivered ? 'sent' : 'failed',
-        payload.data as NotificationData
-      )
+    recordDisposition(
+      `status-${project}-rollup`,
+      payload.title,
+      summary.body,
+      delivery.delivered ? 'sent' : 'failed',
+      payload.data as NotificationData,
+      {
+        delivery: buildDeliveryDetail(
+          apnsResult,
+          fcmResult,
+          webResult,
+          iosDevices.length + androidTokens.length + webSubs.length
+        ),
+        reason: delivery.delivered ? null : 'rollup reached no device',
+      }
     );
   } catch (err) {
     console.error(`[notify] status rollup flush failed for ${project}:`, toErrorMessage(err));
+    recordDisposition(
+      `status-${project}-rollup`,
+      payload.title,
+      summary.body,
+      'failed',
+      payload.data as NotificationData,
+      {
+        reason: `rollup flush error: ${toErrorMessage(err)}`,
+      }
+    );
   }
 }
 
@@ -207,22 +226,88 @@ function applyNotificationTier(
   const project = typeof data?.project === 'string' ? data.project : 'shooter';
   if (tier === 'status') {
     statusCoalescer.enqueue(project, { body: message, category: category ?? 'status', title });
-    addNotification(
-      buildNotificationRecord(
-        canonicalRequestId,
-        title,
-        message,
-        'filtered',
-        data,
-        `coalesced into ${project} rollup`
-      )
-    );
+    recordDisposition(canonicalRequestId, title, message, 'coalesced', data, {
+      reason: `coalesced into ${project} rollup`,
+    });
     return json({ coalesced: true, project, success: true, timestamp: new Date().toISOString() });
   }
-  addNotification(
-    buildNotificationRecord(canonicalRequestId, title, message, 'filtered', data, 'dropped tier')
-  );
+  recordDisposition(canonicalRequestId, title, message, 'dropped', data, {
+    reason: 'dropped tier',
+  });
   return json({ dropped: true, success: true, timestamp: new Date().toISOString() });
+}
+
+/** Per-channel delivery detail for a telemetry event on an actual send. */
+function buildDeliveryDetail(
+  apns: APNsFanOutResult,
+  fcm: FCMFanOutResult,
+  web: null | WebPushFanOutResult,
+  deviceCount: number
+): { detail: null | string; deviceCount: number; failed: number; sent: number } {
+  const apnsHist: Record<string, number> = {};
+  for (const r of apns.results) {
+    const code = String(r.httpStatus ?? 0);
+    apnsHist[code] = (apnsHist[code] ?? 0) + 1;
+  }
+  const sent = apns.totalSent + fcm.successCount + (web?.successCount ?? 0);
+  const failed = apns.totalFailed + fcm.failureCount + (web?.failureCount ?? 0);
+  const detail = JSON.stringify({
+    apns: apnsHist,
+    fcm: { failed: fcm.failureCount, sent: fcm.successCount },
+    ...(web ? { web: { failed: web.failureCount, sent: web.successCount } } : {}),
+  });
+  return { detail, deviceCount, failed, sent };
+}
+
+/**
+ * Record a notification's outcome to BOTH the in-memory history (for GET
+ * /api/notify) and the persistent telemetry store (notification_events). The
+ * in-memory status collapses coalesced/dropped into 'filtered'; the persistent
+ * disposition keeps the precise outcome. `outcome` carries the optional reason +
+ * per-channel delivery detail (present only on an actual send).
+ */
+function recordDisposition(
+  id: string,
+  title: string,
+  message: string,
+  disposition: NotificationDisposition,
+  data: NotificationData | undefined,
+  outcome?: {
+    delivery?: { detail: null | string; deviceCount: number; failed: number; sent: number };
+    reason?: null | string;
+  }
+): void {
+  const reason = outcome?.reason ?? null;
+  const delivery = outcome?.delivery;
+  const historyStatus =
+    disposition === 'failed' || disposition === 'sent' || disposition === 'skipped'
+      ? disposition
+      : 'filtered';
+  addNotification(buildNotificationRecord(id, title, message, historyStatus, data, reason));
+
+  const category = typeof data?.category === 'string' ? data.category : undefined;
+  // Telemetry is best-effort: a DB write failure must NEVER turn a successful
+  // send (or any other outcome) into a failed /api/notify response.
+  try {
+    notificationStore.record({
+      category: category ?? null,
+      detail: delivery?.detail ?? null,
+      deviceCount: delivery?.deviceCount ?? 0,
+      disposition,
+      failed: delivery?.failed ?? 0,
+      id,
+      project: typeof data?.project === 'string' ? data.project : null,
+      reason: reason ?? null,
+      sent: delivery?.sent ?? 0,
+      sessionId: typeof data?.sessionId === 'string' ? data.sessionId : null,
+      // status_rollup is the OUTPUT of coalescing — record it as the status tier
+      // (classifyNotificationTier would call it 'drop' since it's not a push input).
+      tier: category === 'status_rollup' ? 'status' : classifyNotificationTier(category),
+      title,
+    });
+  } catch (err) {
+    console.error('[telemetry] failed to record notification event:', toErrorMessage(err));
+  }
 }
 
 /** A throwaway DeviceRecord wrapping a legacy env-seed or request-override token. */
@@ -584,16 +669,9 @@ export const POST: RequestHandler = async ({ request }) => {
     );
 
     if (!shouldSendNotification.send) {
-      addNotification(
-        buildNotificationRecord(
-          canonicalRequestId,
-          title,
-          message,
-          'filtered',
-          data,
-          shouldSendNotification.reason
-        )
-      );
+      recordDisposition(canonicalRequestId, title, message, 'filtered', data, {
+        reason: shouldSendNotification.reason,
+      });
 
       return json({
         message: 'Notification filtered (not sent)',
@@ -620,7 +698,7 @@ export const POST: RequestHandler = async ({ request }) => {
         });
       }
 
-      addNotification(buildNotificationRecord(canonicalRequestId, title, message, 'skipped', data));
+      recordDisposition(canonicalRequestId, title, message, 'skipped', data);
 
       return json({
         message: 'Push skipped (WebSocket clients connected)',
@@ -763,15 +841,21 @@ export const POST: RequestHandler = async ({ request }) => {
       });
     }
 
-    addNotification(
-      buildNotificationRecord(
-        canonicalRequestId,
-        title,
-        message,
-        summary.delivered ? 'sent' : 'failed',
-        data,
-        summary.delivered ? null : 'No registered device accepted the notification'
-      )
+    recordDisposition(
+      canonicalRequestId,
+      title,
+      message,
+      summary.delivered ? 'sent' : 'failed',
+      data,
+      {
+        delivery: buildDeliveryDetail(
+          apnsResult,
+          fcmResult,
+          webResult,
+          iosDevices.length + androidTokens.length + webSubs.length
+        ),
+        reason: summary.delivered ? null : 'No registered device accepted the notification',
+      }
     );
 
     // 200 even when nothing was delivered (success:false) so the notifier hook
