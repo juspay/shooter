@@ -30,6 +30,63 @@ export interface LibraryResult {
   sent: LibrarySentItem[];
 }
 
+/** A detected burst: many notifications to one project in a short window. */
+export interface NotificationBurst {
+  count: number;
+  project: string;
+  windowSec: number;
+}
+
+/** Delivery health within a stats window. */
+export interface NotificationDeliveryStats {
+  byStatus: Record<string, number>;
+  failed: number;
+  sent: number;
+}
+
+/** How a notification event was ultimately handled. */
+export type NotificationDisposition =
+  | 'coalesced'
+  | 'dropped'
+  | 'failed'
+  | 'filtered'
+  | 'sent'
+  | 'skipped';
+
+/** One notification event to persist for telemetry. */
+export interface NotificationEventInput {
+  category?: null | string;
+  detail?: null | string;
+  deviceCount?: number;
+  disposition: NotificationDisposition;
+  failed?: number;
+  id: string;
+  project?: null | string;
+  reason?: null | string;
+  sent?: number;
+  sessionId?: null | string;
+  tier: NotificationTier;
+  title?: null | string;
+  ts?: number;
+}
+
+/** A persisted notification-event row. */
+export interface NotificationEventRow {
+  category: null | string;
+  detail: null | string;
+  deviceCount: number;
+  disposition: string;
+  failed: number;
+  id: string;
+  project: null | string;
+  reason: null | string;
+  sent: number;
+  sessionId: null | string;
+  tier: string;
+  title: null | string;
+  ts: number;
+}
+
 export interface NotificationPayload {
   badge: null | number;
   body: null | string;
@@ -55,6 +112,24 @@ export interface NotificationResult {
   status: null | number;
   statusCode: null | number;
   success: boolean;
+}
+
+/** Aggregated notification telemetry over a time window. */
+export interface NotificationStats {
+  bursts: NotificationBurst[];
+  byCategory: Record<string, number>;
+  byDisposition: Record<string, number>;
+  byProject: Record<string, number>;
+  byTier: Record<string, number>;
+  delivery: NotificationDeliveryStats;
+  total: number;
+  windowMs: number;
+}
+
+/** The GET /api/notify/stats response: aggregated stats + recent rows. */
+export interface NotificationStatsResponse extends NotificationStats {
+  recent: NotificationEventRow[];
+  since: number;
 }
 
 /** How a push category should reach the phone (delivery tier). */
