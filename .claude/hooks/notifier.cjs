@@ -951,6 +951,16 @@ function buildPlanModeNotification(event) {
 }
 
 /**
+ * True when a PermissionRequest is for AskUserQuestion. Its answer is chosen at
+ * the laptop (handleAskUserQuestion is info-only), and the rich question push
+ * already notified the user — so the generic allow/deny permission push here is a
+ * redundant duplicate.
+ */
+function isAskUserQuestionTool(d) {
+  return d?.tool === 'AskUserQuestion' || d?.toolName === 'AskUserQuestion';
+}
+
+/**
  * Handle permission events (agent needs user to approve a tool)
  *
  * Builds a rich notification with tool name + details when available,
@@ -963,6 +973,16 @@ function buildPlanModeNotification(event) {
 async function handlePermission(event) {
   const d = event.data;
   debugLog(`Permission event: tool=${d.tool}, message=${d.message}`);
+
+  // AskUserQuestion's rich question push (from PreToolUse) already told the user,
+  // and its answer is picked at the laptop — so this generic allow/deny push is a
+  // pure duplicate. Skip it and output nothing, which defers to Claude Code's
+  // native question UI (same as the no-response fallthrough below). Real tool
+  // permissions and plan-mode approvals are unaffected.
+  if (isAskUserQuestionTool(d)) {
+    debugLog('AskUserQuestion permission — question push already sent; deferring to laptop');
+    return;
+  }
 
   const planMode = isPlanModePermission(d);
 
@@ -1065,7 +1085,11 @@ async function handlePermissionNotification(event) {
 
   const ctx = getSessionContext(event.data.sessionId);
   const { title, subtitle, body } = buildPermissionNotification(event, ctx);
-  sendNotification(title, body, 'permission', event.source, subtitle);
+  // Category 'permission_notification' (not 'permission') so the server tier gate
+  // DROPS it: this is the "a permission dialog is open" heads-up, which duplicates
+  // the real permission/question push. Sending it as 'permission' made it a full
+  // decision push (the drop rule never fired) — the +6s duplicate we're removing.
+  sendNotification(title, body, 'permission_notification', event.source, subtitle);
 }
 
 /**
@@ -2265,6 +2289,8 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports.adaptCodexEvent = adaptCodexEvent;
   // Smart-idle gate (tests/idle-gate.test.cjs).
   module.exports.isInternalChoreographyIdle = isInternalChoreographyIdle;
+  // AskUserQuestion permission dedup (tests/permission-dedup.test.cjs).
+  module.exports.isAskUserQuestionTool = isAskUserQuestionTool;
 }
 
 // Run main() when called directly from CLI (Claude Code)
