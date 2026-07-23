@@ -1,3 +1,9 @@
+## [1.33.1](https://github.com/juspay/shooter/compare/v1.33.0...v1.33.1) (2026-07-23)
+
+### Bug Fixes
+
+* **(notifier):**  dedup AskUserQuestion pushes — 3 notifications per ask become 1 ([eb6ba61](https://github.com/juspay/shooter/commit/eb6ba61a4b7b23578d47477ef32bb3ecc6bf476d))
+
 ## [1.33.0](https://github.com/juspay/shooter/compare/v1.32.0...v1.33.0) (2026-07-23)
 
 ### Features
