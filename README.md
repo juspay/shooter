@@ -1,8 +1,11 @@
 # Shooter
 
-**Mobile push notifications and remote terminal access for AI coding sessions.**
+**Stay in command of your AI coding sessions — from your phone.**
+
+Shooter turns your phone into a remote control for Claude Code (and OpenCode) running on your dev machine: **smart** push notifications when your agent actually needs you, a full **remote terminal** in your pocket, and a **live view** of every session — all through a mobile web app served over a secure Cloudflare Tunnel.
 
 [![SvelteKit](https://img.shields.io/badge/SvelteKit-FF3E00?logo=svelte&logoColor=white)](https://kit.svelte.dev/)
+[![Svelte 5](https://img.shields.io/badge/Svelte_5-FF3E00?logo=svelte&logoColor=white)](https://svelte.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js_20+-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![WebSocket](https://img.shields.io/badge/WebSocket-010101?logo=socket.io&logoColor=white)](#websocket-channels)
@@ -11,23 +14,46 @@
 
 ---
 
-## What is Shooter?
+## Why Shooter?
 
-Shooter turns your phone into a remote control for AI coding sessions running on your dev machine. It delivers push notifications to iOS and Android when Claude Code or OpenCode events occur -- tool usage, permission requests, session completions -- and lets you approve or deny permission prompts directly from a notification. You can also launch remote terminal sessions, stream output in real time, and browse structured AI conversation history, all from a mobile-optimized web interface accessible anywhere through a Cloudflare Tunnel.
+You kick off a long agentic run and step away. Minutes later Claude needs a decision — approve a command, answer a question, review a plan — and you have no idea. Meanwhile a dozen other sessions are firing off notifications you don't care about.
+
+Shooter fixes both ends of that problem:
+
+- **It reaches you when it matters.** Permission requests and questions buzz your phone instantly — you Allow / Deny or answer right from the notification.
+- **It doesn't spam you.** Idle chatter is coalesced per project, duplicate pushes are deduplicated, and _every_ notification is recorded so you can see and tune exactly what reaches you.
+- **It puts the whole session in your pocket.** A real terminal (that survives server restarts), a structured chat view of the conversation, and a browsable history of every project.
 
 ## Features
 
-- **Push notifications** -- Real-time alerts for tool usage, permission requests, session starts/stops, errors, and task completions (iOS via APNs, Android via FCM)
-- **Bidirectional permissions** -- Approve or deny Claude Code permission prompts from your phone; the hook blocks until you respond
-- **Remote terminal** -- Launch shell, Claude Code, or OpenCode sessions from your phone with full xterm.js rendering
-- **Terminal persistence** -- PTY processes run in holder processes that survive server restarts; metadata persisted in SQLite
-- **Structured Chat view** -- AI conversations rendered as message bubbles with tool-use cards and thinking indicators, parsed live from JSONL session files
-- **Session browser** -- Browse coding session history across all projects
-- **QR code pairing** -- Scan a QR code from the `/config` page to connect mobile apps to the server
-- **WebSocket streaming** -- Three multiplexed channels: terminal I/O, session updates, and global events
-- **Quick keys** -- Mobile-optimized touch bar for Ctrl+C, Tab, arrow keys, Esc, and other special characters
-- **Claude Code hooks** -- Lifecycle hooks for 13 event types with context-aware notification categorization
-- **Docker support** -- Multi-stage Dockerfile with arm64 and amd64 support
+### 📲 Smart notifications, not noise
+
+- **Decision-first delivery** — permission requests and `AskUserQuestion` prompts push instantly; approve/deny or answer from the lock screen. The hook blocks until you respond.
+- **Per-project coalescing** — bursts of idle/status events roll up into a single push instead of one-per-event.
+- **Smart-idle gate** — internal agent-team choreography ("teammate idle", "review in progress") is dropped at the source, so only a genuine "your move" reaches you.
+- **AskUserQuestion dedup** — one push per question instead of the three Claude Code hooks would otherwise fire.
+- **Notification telemetry** — every notification (`sent` / `coalesced` / `dropped` / `failed`) is persisted to SQLite. Read it with the `shooter notifications` CLI or the in-app **`/notifications`** page: volume by tier & project, **burst detection**, and delivery health (APNs 200/400/413 rates).
+- iOS via APNs (curl over HTTP/2), Android via FCM, and Web Push for the PWA.
+
+### 💻 Remote terminal in your pocket
+
+- Launch a **shell, Claude Code, or OpenCode** session from your phone with full xterm.js rendering.
+- **Survives restarts** — PTYs run in detached holder processes with scrollback; metadata is persisted in SQLite, so the server reattaches on restart and nothing is lost.
+- Mobile **quick-keys** (Ctrl+C, Tab, arrows, Esc) and a touch-optimized UI.
+
+### 🧠 See and coordinate every session
+
+- **Structured chat view** — the conversation as message bubbles with tool-use cards and thinking indicators, parsed live from Claude Code JSONL.
+- **Session browser** — history across every project, plus a live dashboard and activity feed.
+- **Session over Sessions (SoS)** — coordinate multiple running agents as one super-session with routing rules.
+- **NeuroLink AI** — optional in-app AI assistance.
+
+### 🚀 Runs anywhere, installs in one line
+
+- One-command installer; a full `shooter` CLI (`start` / `stop` / `status` / `autostart` / `update` / `logs` / `notifications`).
+- **Cloudflare Tunnel** for secure public HTTPS + WSS with no port-forwarding.
+- **Docker** (arm64 + amd64), QR-code pairing, and ticket-authenticated WebSockets.
+- Claude Code lifecycle hooks for 13 event types with context-aware categorization.
 
 ---
 
@@ -102,8 +128,9 @@ pnpm start
 |    +-- PTY Manager (node-pty + holder processes)         |
 |    +-- Terminal Store (SQLite persistence)                |
 |    +-- Session Watcher (chokidar file watching)          |
-|    +-- APNs Client (iOS push via @parse/node-apn)        |
-|    +-- FCM Client (Android push via firebase-admin)      |
+|    +-- Notification pipeline: tier gate + in-memory       |
+|    |     per-project coalescer + SQLite telemetry store   |
+|    +-- Delivery: APNs (curl/HTTP-2), FCM, Web Push        |
 +------------------------------+---------------------------+
                                |
                      Cloudflare Tunnel
@@ -423,17 +450,19 @@ pnpm format:check  # Check formatting without writing
 
 The `shooter` command (via `bin/shooter.cjs` or the global `shooter` symlink) supports:
 
-| Command                 | Description                                                                                 |
-| ----------------------- | ------------------------------------------------------------------------------------------- |
-| `shooter start`         | Start the server (default if no command given)                                              |
-| `shooter stop`          | Stop the running server gracefully (SIGTERM, then SIGKILL after 5s)                         |
-| `shooter status`        | Show PID, URL, autostart state, log path                                                    |
-| `shooter autostart on`  | Enable autostart on login (LaunchAgent on macOS, systemd on Linux)                          |
-| `shooter autostart off` | Disable autostart and remove the service definition                                         |
-| `shooter logs`          | Tail server logs (log file on macOS, journalctl on Linux)                                   |
-| `shooter setup`         | Quick setup (~60s): API key + build. `--auto` for non-interactive, `--push` for push config |
-| `shooter version`       | Print version number                                                                        |
-| `shooter help`          | Show all available commands                                                                 |
+| Command                 | Description                                                                                                                |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `shooter start`         | Start the server (default if no command given)                                                                             |
+| `shooter stop`          | Stop the running server gracefully (SIGTERM, then SIGKILL after 5s)                                                        |
+| `shooter status`        | Show PID, URL, autostart state, log path                                                                                   |
+| `shooter autostart on`  | Enable autostart on login (LaunchAgent on macOS, systemd on Linux)                                                         |
+| `shooter autostart off` | Disable autostart and remove the service definition                                                                        |
+| `shooter logs`          | Tail server logs (log file on macOS, journalctl on Linux)                                                                  |
+| `shooter update`        | Pull the latest release, reinstall, rebuild, and restart — with automatic rollback on failure                              |
+| `shooter notifications` | Notification telemetry report: volume by tier/project, burst detection, delivery health (alias `notif`; `--since 24h\|7d`) |
+| `shooter setup`         | Quick setup (~60s): API key + build. `--auto` for non-interactive, `--push` for push config                                |
+| `shooter version`       | Print version number                                                                                                       |
+| `shooter help`          | Show all available commands                                                                                                |
 
 Process state is tracked via a PID file at `~/.shooter/shooter.pid`. Logs are written to `~/.shooter/logs/shooter.log` when running via autostart.
 
