@@ -254,7 +254,7 @@ import { Button, Card, Input } from '$lib/modules/client/common';
 
 ```text
 src/lib/modules/server/apn/
-├── library-apns.ts   # APNs service (using @parse/node-apn)
+├── library-apns.ts   # APNs service (curl over HTTP/2)
 ├── pending-requests.ts # In-memory bidirectional permission store
 └── types.ts          # Shared notification types
 ```
