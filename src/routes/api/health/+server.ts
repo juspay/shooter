@@ -5,6 +5,7 @@ import { validateAuth } from '$lib/modules/server/auth';
 import { deviceTokenStore } from '$lib/modules/server/push/device-token-store';
 import { getProviderAvailability } from '$lib/modules/shared/providers';
 import { json } from '@sveltejs/kit';
+import { execFileSync } from 'child_process';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -19,6 +20,23 @@ const PKG_VERSION: string = ((): string => {
     return pkg.version || 'unknown';
   } catch {
     return 'unknown';
+  }
+})();
+
+// The commit this process is serving. The auto-update guard compares it against
+// the commit it just pulled: version alone cannot confirm a restart succeeded,
+// because `docs`/`chore`/`ci` updates ship without changing the version.
+const PKG_COMMIT: string = ((): string => {
+  const root = process.env.SHOOTER_PKG_ROOT || process.cwd();
+  try {
+    return execFileSync('git', ['rev-parse', '--short', 'HEAD'], {
+      cwd: root,
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 5000,
+    }).trim();
+  } catch {
+    return '';
   }
 })();
 
@@ -100,6 +118,7 @@ export const GET: RequestHandler = ({ request, url }) => {
       providers: aiProviders,
     },
     checks,
+    commit: PKG_COMMIT,
     configuration,
     devices: {
       android: androidDeviceCount,
@@ -124,6 +143,7 @@ export const GET: RequestHandler = ({ request, url }) => {
     // response so we don't leak system capability details to anonymous callers.
     const publicWarnings = health.warnings.filter((w) => !w.includes('AI provider'));
     return json({
+      commit: health.commit,
       status: health.status,
       timestamp: health.timestamp,
       version: health.version,

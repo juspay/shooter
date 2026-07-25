@@ -988,6 +988,20 @@ function runSetup() {
 
 // ── update ──────────────────────────────────────────────────────────
 
+/**
+ * Human-readable summary of a pending update. Version-less updates (docs, chore,
+ * ci, style and test — including `chore(deps):` security bumps) carry the same
+ * version number, so report the commit delta instead of a meaningless
+ * "1.2.3 → 1.2.3".
+ */
+function describeUpdate(result) {
+  if (result.latestVersion !== result.currentVersion) {
+    return `${result.currentVersion} → ${result.latestVersion}`;
+  }
+  const n = result.commitsBehind;
+  return `${n} new commit${n === 1 ? '' : 's'} on v${result.currentVersion}`;
+}
+
 function runUpdate(subcommand) {
   const { checkForUpdate } = require(path.join(PKG_ROOT, 'scripts', 'update-checker.cjs'));
   const { recordCheck, isVersionSuppressed } = require(
@@ -1003,13 +1017,11 @@ function runUpdate(subcommand) {
       console.error(`Update check failed: ${result.error}`);
       process.exitCode = 1;
     } else if (result.updateAvailable) {
-      console.log(`Update available: ${result.currentVersion} → ${result.latestVersion}`);
+      console.log(`Update available: ${describeUpdate(result)}`);
       console.log(`  Current commit: ${result.currentCommit}`);
       console.log(`  Latest commit:  ${result.latestCommit}`);
-      if (isVersionSuppressed(result.latestVersion)) {
-        console.log(
-          `  (version ${result.latestVersion} is temporarily suppressed — will retry in <24h)`
-        );
+      if (isVersionSuppressed(result.updateRef)) {
+        console.log('  (this update is temporarily suppressed — will retry in <24h)');
       }
     } else {
       console.log(`Already up to date: v${result.currentVersion} (${result.currentCommit})`);
@@ -1039,8 +1051,8 @@ function runUpdate(subcommand) {
     return;
   }
 
-  if (isVersionSuppressed(result.latestVersion)) {
-    console.log(`Update to ${result.latestVersion} is temporarily suppressed (previous failure).`);
+  if (isVersionSuppressed(result.updateRef)) {
+    console.log(`Update to ${describeUpdate(result)} is temporarily suppressed (previous failure).`);
     console.log('Suppression expires within 24 hours. Use a fresh git pull to override.');
     return;
   }
@@ -1103,7 +1115,7 @@ function performUpdate(result) {
     });
   } catch (err) {
     console.error('  Git pull failed:', err.message || err);
-    suppressVersion(result.latestVersion, 'pull_failed');
+    suppressVersion(result.updateRef, 'pull_failed');
     return false;
   }
 
@@ -1118,7 +1130,7 @@ function performUpdate(result) {
   } catch (err) {
     console.error('  pnpm install failed:', err.message || err);
     rollback(savedHead);
-    suppressVersion(result.latestVersion, 'install_failed');
+    suppressVersion(result.updateRef, 'install_failed');
     return false;
   }
 
@@ -1133,7 +1145,7 @@ function performUpdate(result) {
   } catch (err) {
     console.error('  Build failed:', err.message || err);
     rollback(savedHead);
-    suppressVersion(result.latestVersion, 'build_failed');
+    suppressVersion(result.updateRef, 'build_failed');
     return false;
   }
 
@@ -1412,12 +1424,12 @@ function runGuard() {
         return;
       }
 
-      if (isVersionSuppressed(result.latestVersion)) {
-        log(`version ${result.latestVersion} is suppressed, skipping`);
+      if (isVersionSuppressed(result.updateRef)) {
+        log(`update ${result.updateRef} is suppressed, skipping`);
         return;
       }
 
-      log(`update available: ${result.currentVersion} → ${result.latestVersion}`);
+      log(`update available: ${describeUpdate(result)}`);
 
       // 2. Save current HEAD for rollback
       let savedHead = '';
@@ -1440,7 +1452,7 @@ function runGuard() {
       } catch (err) {
         const stderr = err.stderr ? err.stderr.toString().trim().slice(-500) : '';
         log(`git pull failed: ${err.message}${stderr ? '\n' + stderr : ''}`);
-        suppressVersion(result.latestVersion, 'pull_failed');
+        suppressVersion(result.updateRef, 'pull_failed');
         return;
       }
 
@@ -1457,7 +1469,7 @@ function runGuard() {
         const stderr = err.stderr ? err.stderr.toString().trim().slice(-500) : '';
         log(`pnpm install failed: ${err.message}${stderr ? '\n' + stderr : ''}`);
         guardRollback(savedHead);
-        suppressVersion(result.latestVersion, 'install_failed');
+        suppressVersion(result.updateRef, 'install_failed');
         return;
       }
 
@@ -1474,7 +1486,7 @@ function runGuard() {
         const stderr = err.stderr ? err.stderr.toString().trim().slice(-500) : '';
         log(`build failed: ${err.message}${stderr ? '\n' + stderr : ''}`);
         guardRollback(savedHead);
-        suppressVersion(result.latestVersion, 'build_failed');
+        suppressVersion(result.updateRef, 'build_failed');
         return;
       }
 
@@ -1489,7 +1501,7 @@ function runGuard() {
         });
       } catch {
         log('WARNING: launchctl kickstart failed');
-        suppressVersion(result.latestVersion, 'restart_failed');
+        suppressVersion(result.updateRef, 'restart_failed');
         updateRestartInProgress = false;
         return;
       }
@@ -1505,7 +1517,14 @@ function runGuard() {
           });
           if (resp.ok) {
             const data = await resp.json();
-            if (data.version === result.latestVersion) {
+            // Confirm the *new* process is serving. A version match proves
+            // nothing for version-less updates (docs/chore/ci keep the same
+            // version), so a restart that silently failed would look healthy.
+            // Compare the served commit when we know which one we pulled.
+            const serving = result.latestCommit
+              ? data.commit === result.latestCommit
+              : data.version === result.latestVersion;
+            if (serving) {
               healthy = true;
               break;
             }
@@ -1516,13 +1535,13 @@ function runGuard() {
       }
 
       if (healthy) {
-        log(`update successful: now running v${result.latestVersion}`);
+        log(`update successful: now running v${result.latestVersion} (${result.latestCommit})`);
         recordSuccessfulUpdate(result.latestVersion, result.currentVersion);
         // New server will spawn its own guard — exit this one
         process.exit(0);
       } else {
-        log(`WARNING: server unhealthy after update to ${result.latestVersion}`);
-        suppressVersion(result.latestVersion, 'unhealthy_after_restart');
+        log(`WARNING: server unhealthy after update to ${describeUpdate(result)}`);
+        suppressVersion(result.updateRef, 'unhealthy_after_restart');
         updateRestartInProgress = false;
       }
     } catch (err) {
