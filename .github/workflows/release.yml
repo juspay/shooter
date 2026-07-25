@@ -79,12 +79,20 @@ jobs:
           registry-url: 'https://npm.pkg.github.com'
           scope: '@juspay'
 
+      # Publish only what isn't on the registry yet. Release-less commits
+      # (docs/chore/ci all map to `release: false`) would otherwise re-publish the
+      # current version and fail with a 409, turning `release` red. Probing the
+      # registry rather than diffing the version keeps a rerun able to publish a
+      # version whose earlier publish attempt failed.
       - name: Publish to GitHub Packages
         run: |
-          if [ -f "package.json" ]; then
-            echo "Publishing to GitHub Packages..."
+          version=$(node -p "require('./package.json').version")
+          if npm view "@juspay/shooter@${version}" version --registry https://npm.pkg.github.com >/dev/null 2>&1; then
+            echo "@juspay/shooter@${version} is already on GitHub Packages — nothing to publish."
+          else
+            echo "Publishing ${version} to GitHub Packages..."
             pnpm publish --access public --no-git-checks --registry https://npm.pkg.github.com
-            echo "Published to GitHub Packages successfully!"
+            echo "Published ${version} to GitHub Packages successfully!"
           fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
