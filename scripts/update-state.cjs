@@ -182,10 +182,27 @@ function isVersionSuppressed(version, stateFilePath) {
 }
 
 /**
+ * Drop suppression entries whose 24-hour window has elapsed. Keys can include a
+ * commit hash, so without pruning the map would grow once per failed update and
+ * never shrink.
+ */
+function pruneExpiredSuppressions(state, now) {
+  const kept = {};
+  for (const [key, entry] of Object.entries(state.suppressedVersions)) {
+    const suppressedAt = Date.parse(entry?.suppressedAt);
+    if (!Number.isNaN(suppressedAt) && now - suppressedAt < SUPPRESSION_TTL_MS) {
+      kept[key] = entry;
+    }
+  }
+  state.suppressedVersions = kept;
+}
+
+/**
  * Add a version to the suppressed list and persist.
  */
 function suppressVersion(version, reason, stateFilePath) {
   withUpdateStateLocked((state) => {
+    pruneExpiredSuppressions(state, Date.now());
     state.suppressedVersions[version] = {
       suppressedAt: new Date().toISOString(),
       reason,
@@ -227,6 +244,7 @@ function recordCheck(latestVersion, stateFilePath) {
 module.exports = {
   getDefaultUpdateState,
   loadUpdateState,
+  pruneExpiredSuppressions,
   saveUpdateState,
   isVersionSuppressed,
   suppressVersion,

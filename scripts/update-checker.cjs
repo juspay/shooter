@@ -1,8 +1,8 @@
 /**
- * Git-based auto-update version checker for Shooter.
+ * Git-based auto-update checker for Shooter.
  *
- * Runs `git fetch` and compares the local package.json version against
- * origin/release. Designed to be failure-tolerant — any error silently
+ * Runs `git fetch` and reports whether origin/release carries commits the local
+ * checkout does not. Designed to be failure-tolerant — any error silently
  * returns `{ updateAvailable: false }`.
  *
  * Adapted from @juspay/neurolink's updateChecker.ts.
@@ -56,6 +56,41 @@ function isNewerVersion(current, latest) {
 // ---------------------------------------------------------------------------
 
 /**
+ * Count commits reachable from origin/release but not from HEAD.
+ * Returns null when the count cannot be determined, so callers can fall back.
+ */
+function countCommitsBehind(pkgRoot) {
+  try {
+    const out = execFileSync(
+      'git',
+      ['rev-list', '--count', 'HEAD..origin/release'],
+      {
+        cwd: pkgRoot,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+        timeout: GIT_SHOW_TIMEOUT_MS,
+      }
+    ).trim();
+    const count = Number.parseInt(out, 10);
+    return Number.isNaN(count) ? null : count;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Identifier used to suppress a failed update for 24h. A version alone is not
+ * unique enough: version-less updates would otherwise suppress the version the
+ * installation is already running, blocking every later update at that version.
+ */
+function buildUpdateRef(currentVersion, latestVersion, latestCommit) {
+  if (isNewerVersion(currentVersion, latestVersion) || !latestCommit) {
+    return latestVersion;
+  }
+  return `${latestVersion}+${latestCommit}`;
+}
+
+/**
  * Returns the current git branch name, or null on failure.
  */
 function getCurrentBranch(pkgRoot) {
@@ -76,14 +111,15 @@ function getCurrentBranch(pkgRoot) {
 // ---------------------------------------------------------------------------
 
 /**
- * Check for updates by comparing local package.json version against
- * origin/release's package.json.
+ * Check for updates by counting commits the local checkout is behind
+ * origin/release, falling back to a package.json version comparison when that
+ * count is unavailable.
  *
  * On failure, returns { updateAvailable: false, checkFailed: true, error: '...' }
  * so callers can distinguish "no update" from "check error".
  *
  * @param {string} pkgRoot - Absolute path to the Shooter repo root.
- * @returns {{ updateAvailable: boolean, checkFailed: boolean, error: string, currentVersion: string, latestVersion: string, currentCommit: string, latestCommit: string, branch: string }}
+ * @returns {{ updateAvailable: boolean, checkFailed: boolean, error: string, currentVersion: string, latestVersion: string, currentCommit: string, latestCommit: string, commitsBehind: number, updateRef: string, branch: string }}
  */
 function checkForUpdate(pkgRoot) {
   const fail = {
@@ -94,6 +130,8 @@ function checkForUpdate(pkgRoot) {
     latestVersion: 'unknown',
     currentCommit: '',
     latestCommit: '',
+    commitsBehind: 0,
+    updateRef: '',
     branch: '',
   };
 
@@ -175,7 +213,16 @@ function checkForUpdate(pkgRoot) {
       ).trim();
     } catch { /* ignore */ }
 
-    const updateAvailable = isNewerVersion(currentVersion, latestVersion);
+    // Detect updates by commit drift, not by version. `docs`, `chore`, `ci`,
+    // `style` and `test` all map to `"release": false` in .releaserc.json, so
+    // they ship without a version bump — dependency security bumps land as
+    // `chore(deps):` and a version comparison would never see them. Fall back to
+    // the version comparison only when the commit count is unavailable.
+    const commitsBehind = countCommitsBehind(pkgRoot);
+    const updateAvailable =
+      commitsBehind === null
+        ? isNewerVersion(currentVersion, latestVersion)
+        : commitsBehind > 0;
 
     return {
       updateAvailable,
@@ -185,6 +232,8 @@ function checkForUpdate(pkgRoot) {
       latestVersion,
       currentCommit,
       latestCommit,
+      commitsBehind: commitsBehind === null ? 0 : commitsBehind,
+      updateRef: buildUpdateRef(currentVersion, latestVersion, latestCommit),
       branch: branch || '',
     };
   } catch (err) {
@@ -193,4 +242,11 @@ function checkForUpdate(pkgRoot) {
   }
 }
 
-module.exports = { checkForUpdate, isNewerVersion, parseSemVer, getCurrentBranch };
+module.exports = {
+  buildUpdateRef,
+  checkForUpdate,
+  countCommitsBehind,
+  getCurrentBranch,
+  isNewerVersion,
+  parseSemVer,
+};
