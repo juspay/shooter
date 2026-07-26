@@ -1,3 +1,9 @@
+## [1.33.2](https://github.com/juspay/shooter/compare/v1.33.1...v1.33.2) (2026-07-26)
+
+### Bug Fixes
+
+* **(update):**  detect updates by commit drift, not version alone ([7f97d0e](https://github.com/juspay/shooter/commit/7f97d0ee8bfe2df6dbb87b6cb9d508392e9dec34))
+
 ## [1.33.1](https://github.com/juspay/shooter/compare/v1.33.0...v1.33.1) (2026-07-23)
 
 ### Bug Fixes

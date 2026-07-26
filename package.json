@@ -1,6 +1,6 @@
 {
   "name": "@juspay/shooter",
-  "version": "1.33.1",
+  "version": "1.33.2",
   "description": "Turn your phone into a remote control for Claude Code — smart push notifications, a remote terminal, and live session views over a Cloudflare Tunnel",
   "keywords": [
     "claude-code",
