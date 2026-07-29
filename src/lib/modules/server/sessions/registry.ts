@@ -10,7 +10,7 @@
  * provider-specific because their mechanisms differ too much to unify cheaply.
  */
 
-import type { ConversationMessage, ProjectGroup, ProviderDef } from '$lib/types';
+import type { ConversationMessage, ProjectGroup, ProviderDef, ResumeStrategy } from '$lib/types';
 
 import { getAmpConversation, listAmpProjects } from './amp-reader';
 import { getCodexConversation, listCodexProjects } from './codex-reader';
@@ -107,6 +107,47 @@ export const AI_COMMANDS: string[] = PROVIDERS.filter((p) => p.isAI).map((p) => 
 
 /** All provider binary names (for the terminal allowlist + connect validation). */
 export const PROVIDER_COMMANDS: string[] = PROVIDERS.map((p) => p.command);
+
+/**
+ * Whether a provider's CLI can return to an existing conversation. Providers
+ * whose `resumeArgs` yields nothing have no resume flag, so launching them
+ * always begins a new session.
+ */
+export function canResumeCommand(command: string): boolean {
+  const provider = PROVIDERS.find((p) => p.command === command);
+  if (!provider) {
+    return false;
+  }
+  return provider.resumeArgs('probe').length > 0;
+}
+
+/**
+ * Decide what connecting to a session should do. Without `allowFresh`, a
+ * provider that cannot resume is refused rather than quietly starting a new
+ * conversation and orphaning the transcript the caller asked for.
+ */
+export function decideResumeStrategy(
+  command: string,
+  sessionId: string,
+  allowFresh: boolean
+): ResumeStrategy {
+  const provider = PROVIDERS.find((p) => p.command === command);
+  if (!provider) {
+    return { kind: 'refuse', reason: `Unknown command '${command}'` };
+  }
+  if (canResumeCommand(command)) {
+    return { args: provider.resumeArgs(sessionId), kind: 'resume' };
+  }
+  if (allowFresh) {
+    return { kind: 'fresh' };
+  }
+  return {
+    kind: 'refuse',
+    reason:
+      `${provider.label} (${command}) has no resume support — connecting would start a new ` +
+      `session and leave this conversation behind. Pass allowFresh to start a new one anyway.`,
+  };
+}
 
 /** Resolve a session's conversation across providers (Claude first, with its project dir). */
 export function getProviderConversation(

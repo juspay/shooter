@@ -46,6 +46,16 @@ export interface ProviderDef {
   source: SessionSource;
 }
 
+/**
+ * What connecting to a session should do. Providers without a resume flag
+ * cannot return to an existing conversation, so starting one is a new session —
+ * `refuse` keeps that from happening silently behind a "Connect" button.
+ */
+export type ResumeStrategy =
+  | { args: string[]; kind: 'resume' }
+  | { kind: 'fresh' }
+  | { kind: 'refuse'; reason: string };
+
 export interface TextPart {
   content: string;
   type: 'text';

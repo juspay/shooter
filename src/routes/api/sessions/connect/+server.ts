@@ -1,5 +1,5 @@
 import { validateAuth } from '$lib/modules/server/auth';
-import { PROVIDER_COMMANDS, resumeArgsForCommand } from '$lib/modules/server/sessions/registry';
+import { decideResumeStrategy, PROVIDER_COMMANDS } from '$lib/modules/server/sessions/registry';
 import { ptyManager } from '$lib/modules/server/terminal/pty-manager';
 import { toErrorMessage } from '$lib/modules/server/utils/error';
 import { json } from '@sveltejs/kit';
@@ -15,9 +15,16 @@ export const POST: RequestHandler = async ({ request }) => {
     return authError;
   }
 
-  let body: { command?: string; cwd?: string; noCreate?: boolean; sessionId?: string };
+  let body: {
+    allowFresh?: boolean;
+    command?: string;
+    cwd?: string;
+    noCreate?: boolean;
+    sessionId?: string;
+  };
   try {
     body = (await request.json()) as {
+      allowFresh?: boolean;
       command?: string;
       cwd?: string;
       noCreate?: boolean;
@@ -27,7 +34,7 @@ export const POST: RequestHandler = async ({ request }) => {
     return json({ error: 'Invalid JSON in request body' }, { status: 400 });
   }
 
-  const { command, cwd, noCreate, sessionId } = body;
+  const { allowFresh, command, cwd, noCreate, sessionId } = body;
 
   // --- Validate required fields ---
 
@@ -109,15 +116,27 @@ export const POST: RequestHandler = async ({ request }) => {
     return json({ error: 'No existing terminal for this session' }, { status: 404 });
   }
 
-  // --- Build args based on command (resume convention differs per agent CLI) ---
+  // --- Decide whether connecting can actually return to this conversation ---
+  //
+  // Providers without a resume flag (gemini, qwen, cursor-agent, copilot, amp)
+  // would otherwise launch with no args, silently starting a NEW session and
+  // orphaning the transcript the caller asked to reconnect to. Refuse unless the
+  // caller explicitly accepts a fresh session.
 
-  const args: string[] = resumeArgsForCommand(command, sessionId);
+  const strategy = decideResumeStrategy(command, sessionId, allowFresh === true);
+
+  if (strategy.kind === 'refuse') {
+    return json({ canResume: false, command, error: strategy.reason, sessionId }, { status: 409 });
+  }
+
+  const args: string[] = strategy.kind === 'resume' ? strategy.args : [];
 
   try {
     const terminal = await ptyManager.create(command, args, realCwd, 120, 40);
 
     console.log(
-      `[sessions/connect] Created terminal ${terminal.id} for ${command} session ${sessionId} (pid=${terminal.pid})`
+      `[sessions/connect] Created terminal ${terminal.id} for ${command} session ${sessionId} ` +
+        `(pid=${terminal.pid}, ${strategy.kind === 'resume' ? 'resumed' : 'fresh session'})`
     );
 
     return json(
@@ -130,6 +149,7 @@ export const POST: RequestHandler = async ({ request }) => {
         cwd: terminal.cwd,
         id: terminal.id,
         pid: terminal.pid,
+        resumed: strategy.kind === 'resume',
         sessionId,
         sessionWs: `/ws/session/${terminal.id}`,
         terminalId: terminal.id,

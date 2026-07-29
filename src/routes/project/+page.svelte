@@ -28,6 +28,7 @@
   let project = $state<null | ProjectGroup>(null);
   let loading = $state(true);
   let config = $state<null | ShooterConfig>(null);
+  let connectError = $state<null | string>(null);
   let fetchError = $state<null | string>(null);
   let pollTimer: null | ReturnType<typeof setInterval> = null;
   let visibleCount = $state(PAGE_SIZE);
@@ -165,6 +166,7 @@
     }
 
     connectingSessionId = sessionId;
+    connectError = null;
 
     try {
       const response = await fetch('/api/sessions/connect', {
@@ -183,9 +185,16 @@
       if (response.ok) {
         const result = (await response.json()) as { terminalId: string };
         void goto(`/terminals/${result.terminalId}`);
+        return;
       }
+
+      // A refusal means this agent cannot resume — say so instead of leaving
+      // the button looking dead.
+      const detail = (await response.json().catch(() => null)) as null | { error?: string };
+      connectError = detail?.error ?? `Could not connect to session (HTTP ${response.status})`;
     } catch (error) {
       console.error('Failed to connect to session:', error);
+      connectError = 'Could not connect to session — the server may be unreachable.';
     } finally {
       connectingSessionId = null;
     }
@@ -240,6 +249,10 @@
     <main class="main">
       {#if fetchError}
         <Banner text={fetchError} classes="banner-error" />
+      {/if}
+
+      {#if connectError}
+        <Banner text={connectError} classes="banner-error" />
       {/if}
 
       {#if loading && !project}

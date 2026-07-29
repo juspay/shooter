@@ -25,6 +25,7 @@ export type * from './sessions';
 export type {
   ConversationMessage,
   MessagePart,
+  ResumeStrategy,
   TextPart,
   ThinkingPart,
   ToolResultPart,
