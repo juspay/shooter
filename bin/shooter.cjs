@@ -135,6 +135,9 @@ switch (command) {
   case 'guard':
     runGuard();
     break;
+  case 'attach':
+    runAttach();
+    break;
   case 'notifications':
   case 'notif':
     runNotifications();
@@ -592,6 +595,72 @@ function resolvePort() {
     if (match) return match[1];
   } catch {}
   return DEFAULT_PORT;
+}
+
+// ── attach (drive a Shooter terminal from this shell) ───────────────
+
+/** Print the running terminals so the user can pick one to attach to. */
+function printTerminalChoices(terminals) {
+  console.log('Running terminals:\n');
+  for (const terminal of terminals) {
+    const cwd = (terminal.cwd || '').replace(process.env.HOME || '~', '~');
+    console.log(`  ${terminal.id}  ${(terminal.command || '?').padEnd(10)} ${cwd}`);
+  }
+  console.log('\nAttach with: shooter attach <id>');
+}
+
+function runAttach() {
+  const port = resolvePort();
+  const apiKey = readApiKey();
+  if (!apiKey) {
+    console.error("No API key found. Run 'shooter setup' or set API_KEY in ~/.shooter/.env.");
+    process.exit(1);
+  }
+
+  const baseUrl = `http://localhost:${port}`;
+  const { attach, listTerminals } = require(path.join(PKG_ROOT, 'scripts', 'attach-client.cjs'));
+  const requested = args[1] && !args[1].startsWith('-') ? args[1] : null;
+
+  void (async () => {
+    const running = (await listTerminals(baseUrl, apiKey)).filter((t) => t.status === 'running');
+
+    if (running.length === 0) {
+      console.log('No running terminals. Start one from the Shooter app, or:');
+      console.log('  curl -X POST localhost:' + port + '/api/terminals ...');
+      return;
+    }
+
+    let target = null;
+    if (requested) {
+      // Accept a unique id prefix, the way git accepts short SHAs.
+      const exact = running.find((t) => t.id === requested);
+      const prefixed = running.filter((t) => t.id.startsWith(requested));
+      if (exact) {
+        target = exact;
+      } else if (prefixed.length === 1) {
+        target = prefixed[0];
+      } else if (prefixed.length > 1) {
+        console.error(`'${requested}' matches ${prefixed.length} terminals — be more specific.\n`);
+        printTerminalChoices(prefixed);
+        process.exit(1);
+      } else {
+        console.error(`No running terminal matches '${requested}'.\n`);
+        printTerminalChoices(running);
+        process.exit(1);
+      }
+    } else if (running.length === 1) {
+      target = running[0];
+    } else {
+      printTerminalChoices(running);
+      return;
+    }
+
+    const code = await attach({ apiKey, baseUrl, terminalId: target.id });
+    process.exit(code);
+  })().catch((err) => {
+    console.error(`attach failed: ${err.message || err}`);
+    process.exit(1);
+  });
 }
 
 // ── notifications (telemetry report) ────────────────────────────────
@@ -1611,6 +1680,7 @@ Commands:
   autostart on     Start automatically on login (macOS/Linux)
   autostart off    Disable autostart
   logs             Tail server logs
+  attach [id]      Attach this shell to a Shooter terminal (Ctrl-] to detach)
   notifications    Notification telemetry report (alias: notif; --since 24h|7d)
   setup            Quick setup (API key + build, ~60 seconds)
   setup --push     Add/reconfigure push notifications
