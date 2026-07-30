@@ -1,3 +1,9 @@
+## [1.34.1](https://github.com/juspay/shooter/compare/v1.34.0...v1.34.1) (2026-07-30)
+
+### Bug Fixes
+
+* **(ci):**  pass event data through env instead of interpolating it into scripts ([926f748](https://github.com/juspay/shooter/commit/926f7481a67d763335fdf7b1fab021c418c7a5c2))
+
 ## [1.34.0](https://github.com/juspay/shooter/compare/v1.33.3...v1.34.0) (2026-07-30)
 
 ### Features
