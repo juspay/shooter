@@ -1,3 +1,9 @@
+## [1.34.0](https://github.com/juspay/shooter/compare/v1.33.3...v1.34.0) (2026-07-30)
+
+### Features
+
+* **(cli):**  add shooter attach — drive a Shooter terminal from your shell ([231830c](https://github.com/juspay/shooter/commit/231830c2d2372c1e177de2430f7d26d4e5e0a1b9))
+
 ## [1.33.3](https://github.com/juspay/shooter/compare/v1.33.2...v1.33.3) (2026-07-30)
 
 ### Bug Fixes
