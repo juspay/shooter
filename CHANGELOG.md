@@ -1,3 +1,9 @@
+## [1.35.0](https://github.com/juspay/shooter/compare/v1.34.1...v1.35.0) (2026-07-30)
+
+### Features
+
+* **(terminal):**  orphan terminals whose directory is gone, and bound the count ([12e3e41](https://github.com/juspay/shooter/commit/12e3e4124251d2422ac514d8ee93cef23a2a0152))
+
 ## [1.34.1](https://github.com/juspay/shooter/compare/v1.34.0...v1.34.1) (2026-07-30)
 
 ### Bug Fixes
