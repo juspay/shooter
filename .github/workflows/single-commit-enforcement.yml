@@ -27,29 +27,42 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Values from the event are passed through `env:` rather than interpolated
+      # into the script. A `${{ }}` expression is substituted textually before
+      # bash parses the line, so any attacker-controlled value — a branch name or
+      # a commit message, both of which may contain backticks or $() — would be
+      # executed rather than read. Environment variables are never re-parsed.
       - name: Validate Single Commit Policy
         id: validate
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_REF: ${{ github.head_ref }}
+          HEAD_REPO_ID: ${{ github.event.pull_request.head.repo.id }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          REF_NAME: ${{ github.ref_name }}
+          REPO_ID: ${{ github.event.repository.id }}
         run: |
           # Determine the base branch and current branch
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            BASE_BRANCH="origin/${{ github.base_ref }}"
-            BRANCH_NAME="${{ github.head_ref }}"
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            BASE_BRANCH="origin/$BASE_REF"
+            BRANCH_NAME="$HEAD_REF"
 
             # Handle external vs internal contributors differently using repository IDs
-            if [ "${{ github.event.pull_request.head.repo.id }}" != "${{ github.event.repository.id }}" ]; then
+            if [ "$HEAD_REPO_ID" != "$REPO_ID" ]; then
               CURRENT_BRANCH="HEAD"
               echo "External contributor detected"
-              git checkout "${{ github.event.pull_request.head.sha }}"
+              git checkout "$HEAD_SHA"
               CURRENT_BRANCH="HEAD"
             else
               echo "Internal contributor detected"
-              git checkout "origin/${{ github.head_ref }}"
-              CURRENT_BRANCH="origin/${{ github.head_ref }}"
+              git checkout "origin/$HEAD_REF"
+              CURRENT_BRANCH="origin/$HEAD_REF"
             fi
           else
             BASE_BRANCH="origin/release"
             CURRENT_BRANCH="HEAD"
-            BRANCH_NAME="${{ github.ref_name }}"
+            BRANCH_NAME="$REF_NAME"
           fi
 
           echo "Validating single commit policy..."
@@ -58,7 +71,7 @@ jobs:
 
           git fetch origin
 
-          COMMIT_COUNT=$(git rev-list --count $CURRENT_BRANCH ^$BASE_BRANCH 2>/dev/null || echo "0")
+          COMMIT_COUNT=$(git rev-list --count "$CURRENT_BRANCH" "^$BASE_BRANCH" 2>/dev/null || echo "0")
 
           echo "commits_ahead=$COMMIT_COUNT" >> $GITHUB_OUTPUT
           echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
@@ -95,8 +108,9 @@ jobs:
 
       - name: Validate Commit Message Format
         if: steps.validate.outputs.status == 'compliant'
+        env:
+          COMMIT_MSG: ${{ steps.validate.outputs.commit_message }}
         run: |
-          COMMIT_MSG="${{ steps.validate.outputs.commit_message }}"
           echo "Validating commit message format: '$COMMIT_MSG'"
 
           if ! echo "$COMMIT_MSG" | grep -qE "^[a-z]+(\([^)]+\))?: .+"; then
@@ -115,10 +129,10 @@ jobs:
 
       - name: Check for Merge Commits
         if: steps.validate.outputs.status == 'compliant'
+        env:
+          BASE_BRANCH: ${{ steps.validate.outputs.base_branch }}
         run: |
-          BASE_BRANCH="${{ steps.validate.outputs.base_branch }}"
-
-          MERGE_COMMITS=$(git rev-list --merges HEAD ^$BASE_BRANCH)
+          MERGE_COMMITS=$(git rev-list --merges HEAD "^$BASE_BRANCH")
           if [ -n "$MERGE_COMMITS" ]; then
             echo "POLICY VIOLATION: Branch contains merge commits"
             echo "Merge commits are not allowed in feature branches."
@@ -134,10 +148,10 @@ jobs:
 
       - name: Provide Squash Instructions
         if: steps.validate.outputs.status == 'violation'
+        env:
+          BRANCH_NAME: ${{ steps.validate.outputs.branch_name }}
+          COMMIT_COUNT: ${{ steps.validate.outputs.commits_ahead }}
         run: |
-          COMMIT_COUNT="${{ steps.validate.outputs.commits_ahead }}"
-          BRANCH_NAME="${{ steps.validate.outputs.branch_name }}"
-
           echo "========================================================================"
           echo "SINGLE COMMIT POLICY VIOLATION"
           echo "========================================================================"
@@ -171,8 +185,11 @@ jobs:
       - name: Check Comment Permissions
         if: steps.validate.outputs.status == 'compliant'
         id: check-permissions
+        env:
+          HEAD_REPO_ID: ${{ github.event.pull_request.head.repo.id }}
+          REPO_ID: ${{ github.event.repository.id }}
         run: |
-          if [ "${{ github.event.pull_request.head.repo.id }}" != "${{ github.event.repository.id }}" ]; then
+          if [ "$HEAD_REPO_ID" != "$REPO_ID" ]; then
             echo "External contributor PR detected - comment posting will be skipped"
             echo "can_comment=false" >> $GITHUB_OUTPUT
           else
@@ -225,12 +242,13 @@ jobs:
 
       - name: Generate Policy Summary
         if: always()
+        env:
+          STATUS: ${{ steps.validate.outputs.status }}
         run: |
           echo "========================================================================"
           echo "SHOOTER SINGLE COMMIT POLICY ENFORCEMENT SUMMARY"
           echo "========================================================================"
 
-          STATUS="${{ steps.validate.outputs.status }}"
           case $STATUS in
             "compliant")
               echo "STATUS: POLICY COMPLIANT"
