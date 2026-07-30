@@ -136,27 +136,51 @@ export const POST: RequestHandler = async ({ request }) => {
       return json({ error: 'rows must be a positive number' }, { status: 400 });
     }
 
-    const terminal = await ptyManager.create(command, args ?? [], realCwd, cols ?? 80, rows ?? 24);
+    // Every running terminal holds a detached holder process plus cached
+    // scrollback and a replay ring, so the footprint is bounded rather than
+    // allowed to accumulate silently. The slot is claimed synchronously: create()
+    // awaits a fork before registering the terminal, so a count-then-create
+    // check would let concurrent requests overshoot the cap permanently.
+    const capacity = ptyManager.reserveCreateSlot();
+    if (!capacity.allowed) {
+      return json({ error: capacity.reason }, { status: 429 });
+    }
 
-    console.log(
-      `[terminals] Created terminal ${terminal.id} (pid=${terminal.pid}, command=${command})`
-    );
+    if (capacity.warn && capacity.reason) {
+      console.warn(`[terminals] ${capacity.reason}`);
+    }
 
-    return json(
-      {
-        command: terminal.command,
-        createdAt:
-          terminal.createdAt instanceof Date
-            ? terminal.createdAt.toISOString()
-            : terminal.createdAt,
-        cwd: terminal.cwd,
-        id: terminal.id,
-        pid: terminal.pid,
-        sessionWs: `/ws/session/${terminal.id}`,
-        ws: `/ws/terminal/${terminal.id}`,
-      },
-      { status: 201 }
-    );
+    try {
+      const terminal = await ptyManager.create(
+        command,
+        args ?? [],
+        realCwd,
+        cols ?? 80,
+        rows ?? 24
+      );
+
+      console.log(
+        `[terminals] Created terminal ${terminal.id} (pid=${terminal.pid}, command=${command})`
+      );
+
+      return json(
+        {
+          command: terminal.command,
+          createdAt:
+            terminal.createdAt instanceof Date
+              ? terminal.createdAt.toISOString()
+              : terminal.createdAt,
+          cwd: terminal.cwd,
+          id: terminal.id,
+          pid: terminal.pid,
+          sessionWs: `/ws/session/${terminal.id}`,
+          ws: `/ws/terminal/${terminal.id}`,
+        },
+        { status: 201 }
+      );
+    } finally {
+      ptyManager.releaseCreateSlot();
+    }
   } catch (error) {
     console.error('[terminals] Failed to create terminal:', toErrorMessage(error));
     return json({ error: 'Failed to create terminal' }, { status: 500 });

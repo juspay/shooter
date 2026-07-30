@@ -1,4 +1,5 @@
 import type {
+  CapacityAssessment,
   ConversationMessage,
   PtyManagedTerminal as ManagedTerminal,
   PtyOutputBuffer as OutputBuffer,
@@ -23,6 +24,7 @@ import { withAgentPermissionMode } from './agent-launch.js';
 import { HolderClient } from './holder-client';
 import { openCodeWatcher } from './opencode-watcher';
 import { TerminalEmulator } from './terminal-emulator';
+import { assessCapacity, evaluateReconnect } from './terminal-guards';
 import { terminalStore } from './terminal-store';
 
 export type { ManagedTerminal };
@@ -60,6 +62,11 @@ const __dirname = path.dirname(__filename);
 
 class PtyManager {
   private cleanupTimer: null | ReturnType<typeof setInterval> = null;
+  // Creates that have been admitted but have not finished forking their holder.
+  // create() awaits the fork and the socket connect before registering the
+  // terminal, so counting only registered terminals would let concurrent
+  // requests overshoot the cap — permanently, since holders are detached.
+  private pendingCreates = 0;
   // Clients currently converging via a resnapshot (Phase 2). While pending, a
   // client receives no normal output frames — the forthcoming snapshot brings
   // it to the current screen. WeakSet so disconnected sockets drop out on GC.
@@ -180,10 +187,6 @@ class PtyManager {
       // Best effort — don't crash the cleanup cycle
     }
   }
-
-  // -----------------------------------------------------------------------
-  // reconnectAll — recover persisted terminals on server startup
-  // -----------------------------------------------------------------------
 
   async create(
     command: string,
@@ -316,10 +319,6 @@ class PtyManager {
     return terminal;
   }
 
-  // -----------------------------------------------------------------------
-  // disconnectAll — graceful shutdown: disconnect clients, keep holders alive
-  // -----------------------------------------------------------------------
-
   destroy(): void {
     if (this.cleanupTimer) {
       clearInterval(this.cleanupTimer);
@@ -365,10 +364,6 @@ class PtyManager {
     }
   }
 
-  // -----------------------------------------------------------------------
-  // get
-  // -----------------------------------------------------------------------
-
   detach(id: string, ws: WebSocket): boolean {
     const terminal = this.terminals.get(id);
     if (!terminal) {
@@ -381,8 +376,7 @@ class PtyManager {
   }
 
   // -----------------------------------------------------------------------
-  // list — running first, then recently exited, each group sorted by
-  //        createdAt descending
+  // reconnectAll — recover persisted terminals on server startup
   // -----------------------------------------------------------------------
 
   disconnectAll(): void {
@@ -417,7 +411,7 @@ class PtyManager {
   }
 
   // -----------------------------------------------------------------------
-  // kill — route through holder: SIGTERM, then SIGKILL after 5 s
+  // disconnectAll — graceful shutdown: disconnect clients, keep holders alive
   // -----------------------------------------------------------------------
 
   get(id: string): ManagedTerminal | null {
@@ -425,7 +419,7 @@ class PtyManager {
   }
 
   // -----------------------------------------------------------------------
-  // remove — remove an exited terminal from the map
+  // get
   // -----------------------------------------------------------------------
 
   getScrollback(id: string): null | string {
@@ -438,13 +432,18 @@ class PtyManager {
   }
 
   // -----------------------------------------------------------------------
-  // resize
+  // list — running first, then recently exited, each group sorted by
+  //        createdAt descending
   // -----------------------------------------------------------------------
 
   /** Current highest assigned seq for a terminal, or null if unknown. */
   getSeqCounter(id: string): null | number {
     return this.terminals.get(id)?.seqCounter ?? null;
   }
+
+  // -----------------------------------------------------------------------
+  // kill — route through holder: SIGTERM, then SIGKILL after 5 s
+  // -----------------------------------------------------------------------
 
   /**
    * Return the ring entries with seq > afterSeq, in order. Returns an empty
@@ -476,6 +475,10 @@ class PtyManager {
     }
     return ring.filter((e) => e.seq > afterSeq);
   }
+
+  // -----------------------------------------------------------------------
+  // remove — remove an exited terminal from the map
+  // -----------------------------------------------------------------------
 
   kill(id: string): boolean {
     const terminal = this.terminals.get(id);
@@ -517,7 +520,7 @@ class PtyManager {
   }
 
   // -----------------------------------------------------------------------
-  // attach — register a WebSocket client and replay scrollback
+  // resize
   // -----------------------------------------------------------------------
 
   list(): ManagedTerminal[] {
@@ -538,10 +541,6 @@ class PtyManager {
     return [...running, ...exited];
   }
 
-  // -----------------------------------------------------------------------
-  // detach — remove a WebSocket client
-  // -----------------------------------------------------------------------
-
   async reconnectAll(): Promise<void> {
     const running = terminalStore.listRunning();
     if (running.length === 0) {
@@ -552,6 +551,23 @@ class PtyManager {
     console.log(`[pty-manager] Reconnecting to ${running.length} persisted terminal(s)...`);
 
     for (const record of running) {
+      // A terminal's cwd is checked when it is created and never again. If the
+      // directory has since been removed — a closed git worktree, usually —
+      // restoring it as `running` produces a terminal that looks alive but
+      // cannot run a command, and it would come back on every restart.
+      const decision = evaluateReconnect(record, record.cwd ? existsSync(record.cwd) : false);
+      if (decision.action === 'orphan') {
+        console.warn(
+          `[pty-manager] Orphaning terminal ${record.id}: ${decision.reason ?? 'not reconnectable'}`
+        );
+        // The holder is a detached process: marking the record orphaned without
+        // reclaiming it would leave it running forever, holding its scrollback
+        // buffer and its socket. Nothing will ever reconnect to it.
+        this.reclaimHolder(record);
+        terminalStore.markOrphaned(record.id);
+        continue;
+      }
+
       try {
         await this.reconnectOne(record);
       } catch (err) {
@@ -562,8 +578,13 @@ class PtyManager {
     }
   }
 
+  /** Release a slot claimed by reserveCreateSlot(). */
+  releaseCreateSlot(): void {
+    this.pendingCreates = Math.max(0, this.pendingCreates - 1);
+  }
+
   // -----------------------------------------------------------------------
-  // getScrollback — return raw scrollback data for replay
+  // attach — register a WebSocket client and replay scrollback
   // -----------------------------------------------------------------------
 
   remove(id: string): boolean {
@@ -580,8 +601,26 @@ class PtyManager {
   }
 
   // -----------------------------------------------------------------------
-  // cleanup — evict exited terminals older than 1 hour, cap at 10 exited;
-  //           also clean up old SQLite records
+  // detach — remove a WebSocket client
+  // -----------------------------------------------------------------------
+
+  /**
+   * Synchronously claim a slot for a new terminal. Runs to completion before
+   * any await, so two concurrent callers cannot both be admitted at the cap.
+   * When `allowed` is true the caller MUST call releaseCreateSlot() once the
+   * create settles, success or failure.
+   */
+  reserveCreateSlot(): CapacityAssessment {
+    const running = [...this.terminals.values()].filter((t) => t.status === 'running').length;
+    const assessment = assessCapacity(running + this.pendingCreates);
+    if (assessment.allowed) {
+      this.pendingCreates++;
+    }
+    return assessment;
+  }
+
+  // -----------------------------------------------------------------------
+  // getScrollback — return raw scrollback data for replay
   // -----------------------------------------------------------------------
 
   resize(id: string, cols: number, rows: number): boolean {
@@ -611,7 +650,8 @@ class PtyManager {
   }
 
   // -----------------------------------------------------------------------
-  // destroy — emergency forced kill (kills holder processes too)
+  // cleanup — evict exited terminals older than 1 hour, cap at 10 exited;
+  //           also clean up old SQLite records
   // -----------------------------------------------------------------------
 
   /**
@@ -646,7 +686,7 @@ class PtyManager {
   }
 
   // -----------------------------------------------------------------------
-  // Private: reconnectOne — reconnect to a single persisted terminal
+  // destroy — emergency forced kill (kills holder processes too)
   // -----------------------------------------------------------------------
 
   private appendScrollback(terminal: ManagedTerminal, data: string): void {
@@ -665,6 +705,10 @@ class PtyManager {
       }
     }
   }
+
+  // -----------------------------------------------------------------------
+  // Private: reconnectOne — reconnect to a single persisted terminal
+  // -----------------------------------------------------------------------
 
   /**
    * Assign the next sequence number to an output chunk and append it to the
@@ -731,10 +775,6 @@ class PtyManager {
     setTimeout(poll, RESNAPSHOT_POLL_MS);
   }
 
-  // -----------------------------------------------------------------------
-  // Private: handleReconnectFailure — handle failed reconnection
-  // -----------------------------------------------------------------------
-
   private broadcastOutput(terminal: ManagedTerminal, data: string): void {
     // Assign a sequence number and append to the replay ring before broadcasting.
     const seq = this.appendSeqRing(terminal, data);
@@ -776,6 +816,10 @@ class PtyManager {
     }
   }
 
+  // -----------------------------------------------------------------------
+  // Private: handleReconnectFailure — handle failed reconnection
+  // -----------------------------------------------------------------------
+
   /**
    * Legacy broadcast path used only when the emulator is disabled
    * (SHOOTER_SNAPSHOT_FALLBACK=raw). Drops the oldest buffered output to make
@@ -816,10 +860,6 @@ class PtyManager {
     }
   }
 
-  // -----------------------------------------------------------------------
-  // Private: startSessionDiscovery — polling for session files
-  // -----------------------------------------------------------------------
-
   /** Broadcast a terminal-exited event to /ws/events for the activity feed. */
   private emitTerminalExited(terminalId: string, exitCode: null | number): void {
     broadcastEvent({
@@ -828,6 +868,10 @@ class PtyManager {
       type: 'terminal-exited',
     });
   }
+
+  // -----------------------------------------------------------------------
+  // Private: startSessionDiscovery — polling for session files
+  // -----------------------------------------------------------------------
 
   /** Evict a terminal, freeing all resources. */
   private evict(id: string): void {
@@ -870,11 +914,6 @@ class PtyManager {
     this.terminals.delete(id);
   }
 
-  // -----------------------------------------------------------------------
-  // Private: appendScrollback — append to cached scrollback string,
-  //          trim from midpoint when cap exceeded
-  // -----------------------------------------------------------------------
-
   /** Attempt to flush buffered messages to a WebSocket client. */
   private flushOutputBuffer(ws: WebSocket, buffer: OutputBuffer): void {
     while (buffer.data.length > 0) {
@@ -889,8 +928,8 @@ class PtyManager {
   }
 
   // -----------------------------------------------------------------------
-  // Private: broadcastOutput — send output to all connected WS clients
-  //          with backpressure management
+  // Private: appendScrollback — append to cached scrollback string,
+  //          trim from midpoint when cap exceeded
   // -----------------------------------------------------------------------
 
   private handleReconnectFailure(
@@ -933,6 +972,34 @@ class PtyManager {
     // Mark as orphaned in SQLite (not added to in-memory Map)
     terminalStore.markOrphaned(record.id);
     console.log(`[pty-manager] Marked terminal ${record.id} as orphaned`);
+  }
+
+  // -----------------------------------------------------------------------
+  // Private: broadcastOutput — send output to all connected WS clients
+  //          with backpressure management
+  // -----------------------------------------------------------------------
+
+  /**
+   * Stop a holder process nothing will reconnect to, and remove its socket.
+   * Best effort throughout: a holder that is already gone is the desired state,
+   * so every failure here is ignored rather than aborting startup recovery.
+   */
+  private reclaimHolder(record: Pick<TerminalRecord, 'holderPid' | 'id' | 'socketPath'>): void {
+    if (record.holderPid && record.holderPid > 0) {
+      try {
+        process.kill(record.holderPid, 'SIGKILL');
+        console.log(`[pty-manager] Killed orphaned holder ${record.holderPid} for ${record.id}`);
+      } catch {
+        // Already exited — nothing to reclaim.
+      }
+    }
+    if (record.socketPath) {
+      try {
+        unlinkSync(record.socketPath);
+      } catch {
+        // Socket already removed.
+      }
+    }
   }
 
   private async reconnectOne(record: TerminalRecord): Promise<void> {

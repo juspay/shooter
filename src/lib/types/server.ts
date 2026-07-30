@@ -15,6 +15,13 @@ import type { ConversationMessage } from './sessions';
 
 // ── holder-client types ─────────────────────────────────────────────
 
+/** Whether another terminal may be created (see terminal/terminal-guards.ts). */
+export interface CapacityAssessment {
+  allowed: boolean;
+  reason?: string;
+  warn: boolean;
+}
+
 export interface CodexWatchState {
   callbacks: Set<(messages: ConversationMessage[]) => void>;
   idleTimer: null | ReturnType<typeof setTimeout>;
@@ -120,11 +127,17 @@ export interface PtyManagedTerminal {
   watcherOffset: number;
 }
 
-// ── codex-watcher types ─────────────────────────────────────────────
-
 export interface PtyOutputBuffer {
   data: string[];
   size: number;
+}
+
+// ── codex-watcher types ─────────────────────────────────────────────
+
+/** What to do with a persisted terminal on startup (see terminal-guards.ts). */
+export interface ReconnectDecision {
+  action: 'orphan' | 'reconnect';
+  reason?: string;
 }
 
 /**
