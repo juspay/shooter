@@ -1,3 +1,9 @@
+## [1.33.3](https://github.com/juspay/shooter/compare/v1.33.2...v1.33.3) (2026-07-30)
+
+### Bug Fixes
+
+* **(sessions):**  refuse to "resume" agents that cannot resume ([c78ac47](https://github.com/juspay/shooter/commit/c78ac47ff9d5c8ec7992134a2adfd5df8145f6e7))
+
 ## [1.33.2](https://github.com/juspay/shooter/compare/v1.33.1...v1.33.2) (2026-07-26)
 
 ### Bug Fixes
