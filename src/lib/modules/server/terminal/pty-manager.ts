@@ -79,11 +79,12 @@ class PtyManager {
     }, CLEANUP_INTERVAL_MS);
   }
 
-  // -----------------------------------------------------------------------
-  // create — now async: forks a holder process, connects via HolderClient,
-  //          persists to SQLite
-  // -----------------------------------------------------------------------
-
+  /**
+   * Register a WebSocket client and bring it up to date. Three paths, in order
+   * of preference: replay just the gap from the seq ring when the client
+   * reports a lastSeq still held there, otherwise send a current-screen
+   * snapshot when the client supports one, otherwise replay raw scrollback.
+   */
   attach(id: string, ws: WebSocket, opts?: { lastSeq?: number; snapshot?: boolean }): boolean {
     const terminal = this.terminals.get(id);
     if (!terminal) {
@@ -148,6 +149,10 @@ class PtyManager {
     return true;
   }
 
+  /**
+   * Evict exited terminals older than 1 hour, cap at 10 exited; also clean up
+   * old SQLite records.
+   */
   cleanup(): void {
     const now = Date.now();
     const exited: { exitedAt: number; id: string }[] = [];
@@ -188,6 +193,11 @@ class PtyManager {
     }
   }
 
+  /**
+   * Start a terminal: fork a detached holder to own the PTY, connect to it over
+   * its Unix socket, and persist the record to SQLite so the terminal can be
+   * recovered after a server restart.
+   */
   async create(
     command: string,
     args: string[],
@@ -319,6 +329,7 @@ class PtyManager {
     return terminal;
   }
 
+  /** Emergency forced kill (kills holder processes too). */
   destroy(): void {
     if (this.cleanupTimer) {
       clearInterval(this.cleanupTimer);
@@ -364,6 +375,7 @@ class PtyManager {
     }
   }
 
+  /** Remove a WebSocket client. */
   detach(id: string, ws: WebSocket): boolean {
     const terminal = this.terminals.get(id);
     if (!terminal) {
@@ -375,10 +387,7 @@ class PtyManager {
     return true;
   }
 
-  // -----------------------------------------------------------------------
-  // reconnectAll — recover persisted terminals on server startup
-  // -----------------------------------------------------------------------
-
+  /** Graceful shutdown: disconnect clients, keep holders alive. */
   disconnectAll(): void {
     if (this.cleanupTimer) {
       clearInterval(this.cleanupTimer);
@@ -410,18 +419,11 @@ class PtyManager {
     this.terminals.clear();
   }
 
-  // -----------------------------------------------------------------------
-  // disconnectAll — graceful shutdown: disconnect clients, keep holders alive
-  // -----------------------------------------------------------------------
-
   get(id: string): ManagedTerminal | null {
     return this.terminals.get(id) ?? null;
   }
 
-  // -----------------------------------------------------------------------
-  // get
-  // -----------------------------------------------------------------------
-
+  /** Return raw scrollback data for replay. */
   getScrollback(id: string): null | string {
     const terminal = this.terminals.get(id);
     if (!terminal) {
@@ -431,19 +433,10 @@ class PtyManager {
     return terminal.scrollback;
   }
 
-  // -----------------------------------------------------------------------
-  // list — running first, then recently exited, each group sorted by
-  //        createdAt descending
-  // -----------------------------------------------------------------------
-
   /** Current highest assigned seq for a terminal, or null if unknown. */
   getSeqCounter(id: string): null | number {
     return this.terminals.get(id)?.seqCounter ?? null;
   }
-
-  // -----------------------------------------------------------------------
-  // kill — route through holder: SIGTERM, then SIGKILL after 5 s
-  // -----------------------------------------------------------------------
 
   /**
    * Return the ring entries with seq > afterSeq, in order. Returns an empty
@@ -476,10 +469,7 @@ class PtyManager {
     return ring.filter((e) => e.seq > afterSeq);
   }
 
-  // -----------------------------------------------------------------------
-  // remove — remove an exited terminal from the map
-  // -----------------------------------------------------------------------
-
+  /** Route through holder: SIGTERM, then SIGKILL after 5 s. */
   kill(id: string): boolean {
     const terminal = this.terminals.get(id);
     if (!terminal) {
@@ -519,10 +509,11 @@ class PtyManager {
     return true;
   }
 
-  // -----------------------------------------------------------------------
-  // resize
-  // -----------------------------------------------------------------------
-
+  /**
+   * Running terminals first, then recently exited. Running sorts by createdAt
+   * descending; exited sorts by exitedAt descending, falling back to createdAt
+   * when the exit time is unknown.
+   */
   list(): ManagedTerminal[] {
     const all = Array.from(this.terminals.values());
 
@@ -541,6 +532,7 @@ class PtyManager {
     return [...running, ...exited];
   }
 
+  /** Recover persisted terminals on server startup. */
   async reconnectAll(): Promise<void> {
     const running = terminalStore.listRunning();
     if (running.length === 0) {
@@ -583,10 +575,7 @@ class PtyManager {
     this.pendingCreates = Math.max(0, this.pendingCreates - 1);
   }
 
-  // -----------------------------------------------------------------------
-  // attach — register a WebSocket client and replay scrollback
-  // -----------------------------------------------------------------------
-
+  /** Remove an exited terminal from the map. */
   remove(id: string): boolean {
     const terminal = this.terminals.get(id);
     if (!terminal) {
@@ -599,10 +588,6 @@ class PtyManager {
     this.evict(id);
     return true;
   }
-
-  // -----------------------------------------------------------------------
-  // detach — remove a WebSocket client
-  // -----------------------------------------------------------------------
 
   /**
    * Synchronously claim a slot for a new terminal. Runs to completion before
@@ -618,10 +603,6 @@ class PtyManager {
     }
     return assessment;
   }
-
-  // -----------------------------------------------------------------------
-  // getScrollback — return raw scrollback data for replay
-  // -----------------------------------------------------------------------
 
   resize(id: string, cols: number, rows: number): boolean {
     const terminal = this.terminals.get(id);
@@ -648,11 +629,6 @@ class PtyManager {
       return false;
     }
   }
-
-  // -----------------------------------------------------------------------
-  // cleanup — evict exited terminals older than 1 hour, cap at 10 exited;
-  //           also clean up old SQLite records
-  // -----------------------------------------------------------------------
 
   /**
    * Compute the current-screen snapshot from the emulator and send it as a
@@ -685,10 +661,7 @@ class PtyManager {
     }
   }
 
-  // -----------------------------------------------------------------------
-  // destroy — emergency forced kill (kills holder processes too)
-  // -----------------------------------------------------------------------
-
+  /** Append to cached scrollback string, trim from midpoint when cap exceeded. */
   private appendScrollback(terminal: ManagedTerminal, data: string): void {
     terminal.scrollback += data;
 
@@ -705,10 +678,6 @@ class PtyManager {
       }
     }
   }
-
-  // -----------------------------------------------------------------------
-  // Private: reconnectOne — reconnect to a single persisted terminal
-  // -----------------------------------------------------------------------
 
   /**
    * Assign the next sequence number to an output chunk and append it to the
@@ -775,6 +744,7 @@ class PtyManager {
     setTimeout(poll, RESNAPSHOT_POLL_MS);
   }
 
+  /** Send output to all connected WS clients with backpressure management. */
   private broadcastOutput(terminal: ManagedTerminal, data: string): void {
     // Assign a sequence number and append to the replay ring before broadcasting.
     const seq = this.appendSeqRing(terminal, data);
@@ -815,10 +785,6 @@ class PtyManager {
       this.flushOutputBuffer(ws, buffer);
     }
   }
-
-  // -----------------------------------------------------------------------
-  // Private: handleReconnectFailure — handle failed reconnection
-  // -----------------------------------------------------------------------
 
   /**
    * Legacy broadcast path used only when the emulator is disabled
@@ -868,10 +834,6 @@ class PtyManager {
       type: 'terminal-exited',
     });
   }
-
-  // -----------------------------------------------------------------------
-  // Private: startSessionDiscovery — polling for session files
-  // -----------------------------------------------------------------------
 
   /** Evict a terminal, freeing all resources. */
   private evict(id: string): void {
@@ -927,11 +889,7 @@ class PtyManager {
     }
   }
 
-  // -----------------------------------------------------------------------
-  // Private: appendScrollback — append to cached scrollback string,
-  //          trim from midpoint when cap exceeded
-  // -----------------------------------------------------------------------
-
+  /** Handle failed reconnection. */
   private handleReconnectFailure(
     record: Pick<TerminalRecord, 'holderPid' | 'id' | 'socketPath'>
   ): void {
@@ -974,11 +932,6 @@ class PtyManager {
     console.log(`[pty-manager] Marked terminal ${record.id} as orphaned`);
   }
 
-  // -----------------------------------------------------------------------
-  // Private: broadcastOutput — send output to all connected WS clients
-  //          with backpressure management
-  // -----------------------------------------------------------------------
-
   /**
    * Stop a holder process nothing will reconnect to, and remove its socket.
    * Best effort throughout: a holder that is already gone is the desired state,
@@ -1002,6 +955,7 @@ class PtyManager {
     }
   }
 
+  /** Reconnect to a single persisted terminal. */
   private async reconnectOne(record: TerminalRecord): Promise<void> {
     if (!record.socketPath) {
       throw new Error('No socket path stored');
@@ -1179,6 +1133,14 @@ class PtyManager {
     }
   }
 
+  /**
+   * Find the session file a freshly launched agent will write to, so the
+   * terminal can be tied to its transcript. Claude Code watches its project
+   * directory for a JSONL created after launch; OpenCode looks the session up
+   * in its SQLite database; the read-only providers resolve through their own
+   * path conventions. Both watching paths filter on creation time so they
+   * cannot latch onto an older session in the same directory.
+   */
   private startSessionDiscovery(terminal: ManagedTerminal): void {
     const { command, cwd, id } = terminal;
 
