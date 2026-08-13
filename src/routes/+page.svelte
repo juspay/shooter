@@ -18,6 +18,7 @@
     DashboardView,
     disconnect,
     getCards,
+    UsagePanel,
   } from '$lib/modules/client/dashboard';
   import InfiniteScroll from '$lib/modules/client/nav/InfiniteScroll.svelte';
   import NavBar from '$lib/modules/client/nav/NavBar.svelte';
@@ -201,6 +202,8 @@
         <Button classes="btn-primary" onclick={navigateToConfig} text="Configure Settings" />
       </EmptyState>
     {:else}
+      <UsagePanel />
+
       <AutopilotPanel />
 
       <!-- Dashboard section: active terminal sessions -->

@@ -35,5 +35,6 @@ export type {
 export type * from './sos';
 export type * from './system-status';
 export type * from './terminal-client';
+export type * from './usage';
 export * from './webpush';
 export type * from './ws';

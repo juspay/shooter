@@ -1,0 +1,236 @@
+# Token-Usage Type Definitions
+# Non-top file - referenced from index.yaml
+# Shapes returned by GET /api/usage: per-model and per-session token totals
+# aggregated from Claude Code JSONL transcripts, plus a rolling burn rate.
+
+Usage:
+  # ─── Pricing ─────────────────────────────────────────────────────
+
+  ModelRate:
+    type: object
+    description: >-
+      Billing rate for one model, in USD per MILLION tokens. Supplied by the
+      operator via SHOOTER_MODEL_PRICING or ~/.shooter/pricing.json; rates are
+      never inferred, because a guessed rate produces confident wrong spend.
+    required:
+      - input
+      - output
+      - cacheWrite
+      - cacheRead
+    properties:
+      input:
+        type: number
+        description: USD per million fresh (uncached) input tokens
+      output:
+        type: number
+        description: USD per million generated output tokens
+      cacheWrite:
+        type: number
+        description: USD per million tokens written to the prompt cache
+      cacheRead:
+        type: number
+        description: USD per million tokens served from the prompt cache
+
+  # ─── Token Counters ──────────────────────────────────────────────
+
+  TokenCounts:
+    type: object
+    description: >-
+      The four token classes Anthropic bills separately. Cache reads are an
+      order of magnitude cheaper than fresh input and cache writes are dearer,
+      so collapsing these into one "input" number makes cost unrecoverable.
+    required:
+      - inputTokens
+      - outputTokens
+      - cacheCreationTokens
+      - cacheReadTokens
+      - totalTokens
+    properties:
+      inputTokens:
+        type: number
+        description: Fresh (uncached) prompt tokens
+      outputTokens:
+        type: number
+        description: Generated completion tokens
+      cacheCreationTokens:
+        type: number
+        description: Tokens written into the prompt cache
+      cacheReadTokens:
+        type: number
+        description: Tokens served from the prompt cache
+      totalTokens:
+        type: number
+        description: Sum of all four classes
+
+  # ─── Per-Model Rollup ────────────────────────────────────────────
+
+  ModelUsage:
+    type: object
+    description: Token totals and cost for a single model id
+    required:
+      - modelId
+      - tokens
+      - costUsd
+      - priced
+      - requests
+    properties:
+      modelId:
+        type: string
+        description: Model identifier exactly as written in the transcript
+      tokens:
+        $ref: './specs/types/usage.yaml#/Usage/TokenCounts'
+      costUsd:
+        type: number
+        description: Computed spend. Always 0 when `priced` is false — read `priced` first
+      priced:
+        type: boolean
+        description: >-
+          Whether a rate was configured for this model. False means the cost is
+          UNKNOWN, not zero; callers must render it as unpriced rather than $0.
+      requests:
+        type: number
+        description: Number of distinct assistant responses counted
+
+  # ─── Per-Session Rollup ──────────────────────────────────────────
+
+  SessionUsage:
+    type: object
+    description: Token totals for one Claude Code session file
+    required:
+      - sessionId
+      - projectName
+      - projectPath
+      - modelIds
+      - tokens
+      - costUsd
+      - priced
+      - requests
+      - lastActivityAt
+    properties:
+      sessionId:
+        type: string
+        description: Session identifier (JSONL filename without extension)
+      projectName:
+        type: string
+        description: Human-readable project name (last two path segments)
+      projectPath:
+        type: string
+        description: Encoded project directory name under ~/.claude/projects
+      modelIds:
+        type: array
+        description: Every model id that appeared in this session
+        items:
+          type: string
+      tokens:
+        $ref: './specs/types/usage.yaml#/Usage/TokenCounts'
+      costUsd:
+        type: number
+        description: Computed spend across all priced models in this session
+      priced:
+        type: boolean
+        description: False when any model in the session lacks a configured rate
+      requests:
+        type: number
+        description: Number of distinct assistant responses in this session
+      lastActivityAt:
+        type: string
+        description: ISO 8601 timestamp of the most recent usage-bearing record
+
+  # ─── Burn Rate ───────────────────────────────────────────────────
+
+  BurnRate:
+    type: object
+    description: Consumption over the trailing window, for the top-style readout
+    required:
+      - windowMinutes
+      - tokensPerMinute
+      - costPerHour
+      - priced
+      - tokens
+    properties:
+      windowMinutes:
+        type: number
+        description: Width of the trailing window this rate was computed over
+      tokensPerMinute:
+        type: number
+        description: Total tokens consumed in the window divided by its width
+      costPerHour:
+        type: number
+        description: Extrapolated hourly spend. 0 when `priced` is false
+      priced:
+        type: boolean
+        description: False when any model active in the window lacks a rate
+      tokens:
+        $ref: './specs/types/usage.yaml#/Usage/TokenCounts'
+
+  # ─── Snapshot ────────────────────────────────────────────────────
+
+  UsageSnapshot:
+    type: object
+    description: >-
+      Everything GET /api/usage returns. Every figure describes the trailing
+      window only — this is a live monitor, not a lifetime ledger. Whole-history
+      totals are deliberately not offered: the transcript corpus runs to
+      gigabytes and reading it would take tens of seconds per request.
+    required:
+      - generatedAt
+      - windowMinutes
+      - filesScanned
+      - truncatedFiles
+      - tokens
+      - costUsd
+      - priced
+      - requests
+      - sessions
+      - models
+      - unpricedModels
+      - burn
+    properties:
+      generatedAt:
+        type: string
+        description: ISO 8601 timestamp this snapshot was built
+      windowMinutes:
+        type: number
+        description: Trailing window every figure in this payload covers
+      filesScanned:
+        type: number
+        description: Transcripts whose mtime put them inside the window
+      truncatedFiles:
+        type: number
+        description: >-
+          Transcripts whose in-window records exceeded the per-file tail budget.
+          Non-zero means the figures are a lower bound — some records were not
+          read. Surfaced rather than silently dropped.
+      tokens:
+        $ref: './specs/types/usage.yaml#/Usage/TokenCounts'
+      costUsd:
+        type: number
+        description: Total spend across every priced model
+      priced:
+        type: boolean
+        description: False when any observed model lacks a configured rate
+      requests:
+        type: number
+        description: Total distinct assistant responses counted
+      sessions:
+        type: array
+        description: >-
+          Per-session rollups, heaviest first by total tokens. This is a "what
+          is burning my budget" panel, so consumption orders the list, not
+          recency; the UI sizes its bars against the first row.
+        items:
+          $ref: './specs/types/usage.yaml#/Usage/SessionUsage'
+      models:
+        type: array
+        description: Per-model rollups, largest token count first
+        items:
+          $ref: './specs/types/usage.yaml#/Usage/ModelUsage'
+      unpricedModels:
+        type: array
+        description: >-
+          Model ids seen in the transcripts with no configured rate. Non-empty
+          means the cost figures are a lower bound, not a total.
+        items:
+          type: string
+      burn:
+        $ref: './specs/types/usage.yaml#/Usage/BurnRate'
