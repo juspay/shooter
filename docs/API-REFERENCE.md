@@ -369,6 +369,96 @@ curl https://your-host/api/ws-status \
 
 ---
 
+## Usage
+
+### GET /api/usage
+
+Token consumption and spend for recent agent activity, aggregated from Claude Code JSONL transcripts (including subagent transcripts). Powers the "Burn" panel on the dashboard.
+
+Every figure covers the **trailing window only** — this is a live monitor, not a lifetime ledger. The transcript corpus routinely runs to gigabytes, so whole-history totals are deliberately not offered.
+
+**Authentication:** Required
+
+**Query parameters:**
+
+| Parameter | Default | Description                                                                      |
+| --------- | ------- | -------------------------------------------------------------------------------- |
+| `window`  | `60`    | Trailing window in minutes (1--1440).                                            |
+| `limit`   | `20`    | Maximum per-session rows returned (1--200). Totals always cover the full window. |
+| `refresh` | --      | `true` bypasses the 5-second response cache.                                     |
+
+**Response:**
+
+```json
+{
+  "generatedAt": "2026-08-13T02:41:00.000Z",
+  "windowMinutes": 60,
+  "filesScanned": 52,
+  "truncatedFiles": 0,
+  "tokens": {
+    "inputTokens": 4210,
+    "outputTokens": 918273,
+    "cacheCreationTokens": 15400821,
+    "cacheReadTokens": 389104772,
+    "totalTokens": 405428076
+  },
+  "costUsd": 312.09,
+  "priced": true,
+  "requests": 2439,
+  "sessions": [
+    {
+      "sessionId": "4cc685eb-8a37-420b-9ded-60a6a602a8ce",
+      "projectName": "temp/dopamine",
+      "projectPath": "/Users/dev/Developer/temp/dopamine",
+      "modelIds": ["claude-opus-5"],
+      "tokens": { "...": "as above" },
+      "costUsd": 41.22,
+      "priced": true,
+      "requests": 127,
+      "lastActivityAt": "2026-08-13T02:40:12.913Z"
+    }
+  ],
+  "models": [
+    {
+      "modelId": "claude-opus-5",
+      "tokens": { "...": "as above" },
+      "costUsd": 189.6,
+      "priced": true,
+      "requests": 1804
+    }
+  ],
+  "unpricedModels": [],
+  "burn": {
+    "windowMinutes": 60,
+    "tokensPerMinute": 6754928,
+    "costPerHour": 312.09,
+    "priced": true,
+    "tokens": { "...": "as above" }
+  }
+}
+```
+
+**Reading the response:**
+
+- `priced` is the field that matters, not `costUsd`. When `priced` is `false` the cost is **unknown**, not zero -- some model in the window has no rate configured (see `unpricedModels` and the `SHOOTER_MODEL_PRICING` variable in [ENVIRONMENT.md](ENVIRONMENT.md)). Token counts are always exact regardless.
+- `truncatedFiles` greater than zero means some transcript exceeded the per-file read budget, so the figures are a **lower bound**.
+
+**Status codes:**
+
+| Code | Meaning                          |
+| ---- | -------------------------------- |
+| 200  | Success                          |
+| 401  | Missing or invalid authorization |
+
+**Example:**
+
+```bash
+curl "https://your-host/api/usage?window=15" \
+  -H "Authorization: Bearer $API_KEY"
+```
+
+---
+
 ## Sessions
 
 ### GET /api/sessions

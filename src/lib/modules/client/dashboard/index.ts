@@ -11,3 +11,4 @@ export {
   updateSessionSummary,
 } from './store.svelte';
 export { SessionSummarizer } from './summarizer';
+export { default as UsagePanel } from './UsagePanel.svelte';
