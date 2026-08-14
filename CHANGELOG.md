@@ -1,3 +1,9 @@
+## [1.36.0](https://github.com/juspay/shooter/compare/v1.35.0...v1.36.0) (2026-08-14)
+
+### Features
+
+* **(usage):**  live token burn and spend for running agents ([0ccb151](https://github.com/juspay/shooter/commit/0ccb15100238a43e89937736003f3b317da723f5))
+
 ## [1.35.0](https://github.com/juspay/shooter/compare/v1.34.1...v1.35.0) (2026-07-30)
 
 ### Features
