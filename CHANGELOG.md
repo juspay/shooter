@@ -1,3 +1,9 @@
+## [1.36.1](https://github.com/juspay/shooter/compare/v1.36.0...v1.36.1) (2026-08-18)
+
+### Performance Improvements
+
+* **(hooks):**  stop blocking the agent's tool loop on the notify response ([f4581aa](https://github.com/juspay/shooter/commit/f4581aa195af38a65a8229404ee4f9b3f7737dc8))
+
 ## [1.36.0](https://github.com/juspay/shooter/compare/v1.35.0...v1.36.0) (2026-08-14)
 
 ### Features
